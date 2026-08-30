@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Gestão de Almoxarifado">
+  <rect width="512" height="512" rx="112" fill="#17324D"/>
+  <path d="M116 188 256 112l140 76v156L256 420 116 344V188Z" fill="#E7A23B"/>
+  <path d="m256 112 140 76-140 76-140-76 140-76Z" fill="#FFD17C"/>
+  <path d="M116 188l140 76v156l-140-76V188Z" fill="#C97920"/>
+  <path d="M396 188 256 264v156l140-76V188Z" fill="#E7A23B"/>
+  <path d="M256 264v156" stroke="#17324D" stroke-width="18"/>
+</svg>
