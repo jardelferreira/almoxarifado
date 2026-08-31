@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useRef, useState } from "react";
+import { uploadArquivo } from "@/lib/r2";
 import { Database, Download, FileSpreadsheet, HardDriveDownload, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -100,6 +101,30 @@ function DadosPage() {
               <Button variant="outline" onClick={() => inputXlsx.current?.click()}>
                 <Upload className="size-4" /> Importar planilha
               </Button>
+              <input
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                onChange={async (event) => {
+                  const file = event.target.files?.[0];
+
+                  if (!file) {
+                    return;
+                  }
+
+                  try {
+                    const formData = new FormData();
+                    formData.append("file", file);
+
+                    const resultado = await uploadArquivo({
+                      data: formData,
+                    });
+
+                    console.log("Upload concluído:", resultado);
+                  } catch (error) {
+                    console.error("Erro no upload:", error);
+                  }
+                }}
+              />
             </div>
           </CardContent>
         </Card>

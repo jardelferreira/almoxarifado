@@ -10,6 +10,7 @@ import type {
   Produto,
   Projeto,
   Unidade,
+  Arquivo,
 } from "@/types";
 
 export class AlmoxarifadoDB extends Dexie {
@@ -23,6 +24,7 @@ export class AlmoxarifadoDB extends Dexie {
   movimentacoes!: Table<Movimentacao, string>;
   equipes!: Table<Equipe, string>;
   equipe_membros!: Table<EquipeMembro, string>;
+  arquivos!: Table<Arquivo, string>;
 
   constructor() {
     super("almoxarifado");
@@ -63,7 +65,27 @@ export class AlmoxarifadoDB extends Dexie {
           "id, projeto_id, data, tipo, produto_id, funcionario_id, encarregado_id, empresa_id, local_id, equipe_id",
         equipes: "id, nome, ativo",
         equipe_membros: "id, equipe_id, funcionario_id, [equipe_id+funcionario_id]",
+        arquivos: "id, projeto_id, criado_em, tipo, mime_type",
       })
+    this.version(4).stores({
+      projetos: "id, codigo, nome, status",
+      categorias: "id, nome, ativo",
+      unidades: "id, sigla, ativo",
+      empresas: "id, nome, tipo, ativo",
+      funcionarios:
+        "id, nome, matricula, empresa_id, encarregado_id, equipe_raiz_id, status",
+      locais:
+        "id, nome, codigo, local_pai_id, ativo",
+      produtos:
+        "id, nome, codigo, categoria_id, unidade_id, ativo",
+      movimentacoes:
+        "id, projeto_id, data, tipo, produto_id, funcionario_id, encarregado_id, empresa_id, local_id, equipe_id",
+      equipes: "id, nome, ativo",
+      equipe_membros:
+        "id, equipe_id, funcionario_id, [equipe_id+funcionario_id]",
+      arquivos:
+        "id, projeto_id, criado_em, tipo, mime_type",
+    })
       .upgrade(async (tx) => {
         const equipeLegadoId = "equipe_legado";
         const equipes = tx.table("equipes");
@@ -101,3 +123,4 @@ export const uid = () =>
   typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
     : `id_${Math.random().toString(36).slice(2)}_${Date.now()}`;
+

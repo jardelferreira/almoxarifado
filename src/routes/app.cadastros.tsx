@@ -144,15 +144,15 @@ function CadastrosPage() {
         </p>
       </div>
 
-      <Tabs defaultValue="produtos">
-        <TabsList className="flex-wrap">
-          <TabsTrigger value="produtos">Produtos</TabsTrigger>
-          <TabsTrigger value="categorias">Categorias</TabsTrigger>
-          <TabsTrigger value="unidades">Unidades</TabsTrigger>
-          <TabsTrigger value="empresas">Empresas</TabsTrigger>
-          <TabsTrigger value="funcionarios">Funcionários</TabsTrigger>
-          <TabsTrigger value="locais">Locais</TabsTrigger>
-          <TabsTrigger value="equipes">Equipes</TabsTrigger>
+      <Tabs defaultValue="produtos" className="w-full">
+        <TabsList className="overflow-x-auto w-full justify-start p-2">
+          <TabsTrigger className="text-lg mb-2" value="produtos">Produtos</TabsTrigger>
+          <TabsTrigger className="text-lg mb-2" value="categorias">Categorias</TabsTrigger>
+          <TabsTrigger className="text-lg mb-2" value="unidades">Unidades</TabsTrigger>
+          <TabsTrigger className="text-lg mb-2" value="empresas">Empresas</TabsTrigger>
+          <TabsTrigger className="text-lg mb-2" value="funcionarios">Funcionários</TabsTrigger>
+          <TabsTrigger className="text-lg mb-2" value="locais">Locais</TabsTrigger>
+          <TabsTrigger className="text-lg mb-2" value="equipes">Equipes</TabsTrigger>
         </TabsList>
 
         {(

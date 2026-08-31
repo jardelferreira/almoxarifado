@@ -139,6 +139,43 @@ function Home() {
     toast.success("Backup restaurado");
   };
 
+  const limparDados = async () => {
+    if (
+      !confirm(
+        "Limpar todos os dados salvos neste dispositivo? Esta ação remove projetos, estoque, movimentações e backups locais. Não pode ser desfeita.",
+      )
+    ) {
+      return;
+    }
+
+    try {
+      if ("indexedDB" in window && typeof indexedDB.databases === "function") {
+        const bancos = await indexedDB.databases();
+        await Promise.all(
+          bancos
+            .filter((db) => db.name)
+            .map(
+              (db) =>
+                new Promise<void>((resolve, reject) => {
+                  const request = indexedDB.deleteDatabase(db.name!);
+                  request.onsuccess = () => resolve();
+                  request.onerror = () => reject(request.error ?? new Error("Erro ao limpar banco de dados"));
+                  request.onblocked = () => resolve();
+                }),
+            ),
+        );
+      }
+
+      localStorage.clear();
+      sessionStorage.clear();
+      toast.success("Dados do app limpos");
+      window.location.reload();
+    } catch (error) {
+      console.error(error);
+      toast.error("Não foi possível limpar todos os dados do app");
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border bg-sidebar px-6 py-10 text-sidebar-foreground">
@@ -157,7 +194,7 @@ function Home() {
       </header>
 
       <main className="mx-auto max-w-5xl px-6 py-8">
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <Button className="h-auto justify-start gap-3 py-4" onClick={() => setNovoAberto(true)}>
             <Plus className="size-5" />
             <span className="text-left">
@@ -185,6 +222,17 @@ function Home() {
             <span className="text-left">
               <span className="block font-semibold">Restaurar backup</span>
               <span className="block text-xs text-muted-foreground">Arquivo .json</span>
+            </span>
+          </Button>
+          <Button
+            variant="destructive"
+            className="h-auto justify-start gap-3 py-4"
+            onClick={() => void limparDados()}
+          >
+            <Trash2 className="size-5" />
+            <span className="text-left">
+              <span className="block font-semibold">Limpar dados</span>
+              <span className="block text-xs opacity-80">Apaga tudo localmente</span>
             </span>
           </Button>
         </div>
