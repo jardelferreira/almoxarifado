@@ -82,27 +82,50 @@ function Home() {
       toast.error("Informe código e nome do projeto");
       return;
     }
-    let empresaId: string | null = null;
-    if (form.empresa.trim()) {
-      const emp = await repo.empresas.save({
-        nome: form.empresa.trim(),
-        tipo: "PROPRIA",
-        ativo: true,
+
+    try {
+      // Primeiro criamos o projeto para obter seu ID.
+      const p = await repo.saveProjeto({
+        codigo: form.codigo.trim(),
+        nome: form.nome.trim(),
+        empresa_id: null,
+        status: "ATIVO",
+        data_inicio: form.data_inicio || null,
+        data_fim: form.data_fim || null,
+        observacao: null,
       });
-      empresaId = emp.id;
+
+      // A empresa depende do projeto, portanto é criada depois.
+      let empresaId: string | null = null;
+
+      if (form.empresa.trim()) {
+        const emp = await repo.empresas.save(p.id, {
+          projeto_id: p.id,
+          nome: form.empresa.trim(),
+          tipo: "PROPRIA",
+          ativo: true,
+        });
+
+        empresaId = emp.id;
+
+        // Atualiza o projeto com a empresa recém-criada.
+        await repo.saveProjeto({
+          ...p,
+          empresa_id: empresaId,
+        });
+      }
+
+      toast.success("Projeto criado");
+      setNovoAberto(false);
+      abrir(p.id);
+    } catch (error) {
+      console.error(error);
+      toast.error(
+        `Não foi possível criar o projeto: ${
+          error instanceof Error ? error.message : "erro desconhecido"
+        }`,
+      );
     }
-    const p = await repo.saveProjeto({
-      codigo: form.codigo.trim(),
-      nome: form.nome.trim(),
-      empresa_id: empresaId,
-      status: "ATIVO",
-      data_inicio: form.data_inicio || null,
-      data_fim: form.data_fim || null,
-      observacao: null,
-    });
-    toast.success("Projeto criado");
-    setNovoAberto(false);
-    abrir(p.id);
   };
 
   const onXlsx = async (file: File) => {
@@ -299,10 +322,43 @@ function Home() {
                     size="sm"
                     variant="outline"
                     onClick={async () => {
+                      const codigo = prompt("Novo código do projeto", p.codigo);
+
+                      if (codigo === null) {
+                        return;
+                      }
+
+                      if (!codigo.trim()) {
+                        toast.error("Informe um código para o projeto");
+                        return;
+                      }
+
                       const nome = prompt("Novo nome do projeto", p.nome);
-                      if (nome) {
-                        await repo.saveProjeto({ ...p, nome });
-                        toast.success("Projeto renomeado");
+
+                      if (nome === null) {
+                        return;
+                      }
+
+                      if (!nome.trim()) {
+                        toast.error("Informe um nome para o projeto");
+                        return;
+                      }
+
+                      try {
+                        await repo.saveProjeto({
+                          ...p,
+                          codigo: codigo.trim(),
+                          nome: nome.trim(),
+                        });
+
+                        toast.success("Projeto atualizado");
+                      } catch (error) {
+                        console.error(error);
+                        toast.error(
+                          error instanceof Error
+                            ? error.message
+                            : "Não foi possível atualizar o projeto",
+                        );
                       }
                     }}
                   >

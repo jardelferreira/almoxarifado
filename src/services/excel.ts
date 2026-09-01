@@ -94,6 +94,7 @@ export function lerArquivo(buffer: ArrayBuffer): DatasetImportado {
 
   const empresas: Empresa[] = rows(wb, "EMPRESAS").map((r) => ({
     id: S(r["ID"]) || uid(),
+    projeto_id: "",
     nome: S(r["NOME"]),
     tipo: (S(r["TIPO"]).toUpperCase().startsWith("PR") ? "PROPRIA" : "TERCEIRA") as Empresa["tipo"],
     ativo: B(r["ATIVO"]),
@@ -101,6 +102,7 @@ export function lerArquivo(buffer: ArrayBuffer): DatasetImportado {
 
   const funcionarios: Funcionario[] = rows(wb, "FUNCIONARIOS").map((r) => ({
     id: S(r["ID"]) || uid(),
+    projeto_id: "",
     matricula: S(r["MATRICULA"]) || null,
     nome: S(r["NOME"]),
     funcao: S(r["FUNCAO"]) || null,
@@ -114,6 +116,7 @@ export function lerArquivo(buffer: ArrayBuffer): DatasetImportado {
 
   const locais: Local[] = rows(wb, "LOCAIS").map((r) => ({
     id: S(r["ID"]) || uid(),
+    projeto_id: "",
     codigo: S(r["CODIGO"]) || null,
     nome: S(r["NOME"]),
     local_pai_id: S(r["LOCAL_PAI_ID"]) || null,
@@ -122,6 +125,7 @@ export function lerArquivo(buffer: ArrayBuffer): DatasetImportado {
 
   const produtos: Produto[] = rows(wb, "PRODUTOS").map((r) => ({
     id: S(r["ID"]) || uid(),
+    projeto_id: "",
     codigo: S(r["CODIGO"]) || null,
     nome: S(r["NOME"]),
     descricao: S(r["DESCRICAO"]) || null,
@@ -135,6 +139,7 @@ export function lerArquivo(buffer: ArrayBuffer): DatasetImportado {
 
   const equipes: Equipe[] = rows(wb, "EQUIPES").map((r) => ({
     id: S(r["ID"]) || uid(),
+    projeto_id: "",
     nome: S(r["NOME"]),
     descricao: S(r["DESCRICAO"]) || null,
     ativo: B(r["ATIVO"]),
@@ -241,12 +246,154 @@ export function lerArquivo(buffer: ArrayBuffer): DatasetImportado {
   };
 }
 
-/** Grava o dataset no IndexedDB, mesclando por ID. */
-export async function salvarDataset(ds: DatasetImportado, projetoId?: string) {
+/**
+ * Importa/restaura um projeto.
+ *
+ * Se o projeto já existir, a importação funciona como uma restauração
+ * completa: os registros daquele projeto são substituídos pelos dados
+ * presentes na planilha, mantendo os IDs do backup.
+ *
+ * Se o projeto não existir, ele é criado usando os IDs da planilha.
+ *
+ * Categorias e unidades são globais e continuam sendo mescladas por ID.
+ */
+export async function salvarDataset(
+  ds: DatasetImportado,
+  projetoId?: string,
+) {
   if (ds.movimentacoes.some((m) => !m.equipe_id)) {
-    throw new Error("Todas as movimentações importadas precisam informar EQUIPE_ID");
+    throw new Error(
+      "Todas as movimentações importadas precisam informar EQUIPE_ID",
+    );
   }
+
   const db = getDB();
+
+  /*
+   * Quando projetoId é informado, ele representa explicitamente
+   * o projeto de destino.
+   *
+   * Quando não é informado, usamos o projeto presente na planilha.
+   */
+  const projetoBackup = ds.projetos[0];
+
+  const destinoId = projetoId ?? projetoBackup?.id;
+
+  if (!destinoId) {
+    throw new Error(
+      "Não foi possível determinar o projeto de destino da importação.",
+    );
+  }
+
+  /*
+   * Se o projeto já existe, mantemos exatamente o ID dele.
+   * Se não existe, o projeto da planilha será criado.
+   */
+  const projetoExistente = await db.projetos.get(destinoId);
+
+  /*
+   * Montamos explicitamente o Projeto para garantir que os campos
+   * obrigatórios tenham valores mesmo quando a planilha não os informar.
+   */
+  const projetoDestino: Projeto = {
+    id: destinoId,
+    codigo:
+      projetoBackup?.codigo ??
+      projetoExistente?.codigo ??
+      destinoId,
+    nome:
+      projetoBackup?.nome ??
+      projetoExistente?.nome ??
+      "Projeto importado",
+    empresa_id:
+      projetoBackup?.empresa_id ??
+      projetoExistente?.empresa_id ??
+      null,
+    status:
+      projetoBackup?.status ??
+      projetoExistente?.status ??
+      "ATIVO",
+    data_inicio:
+      projetoBackup?.data_inicio ??
+      projetoExistente?.data_inicio ??
+      null,
+    data_fim:
+      projetoBackup?.data_fim ??
+      projetoExistente?.data_fim ??
+      null,
+    observacao:
+      projetoBackup?.observacao ??
+      projetoExistente?.observacao ??
+      null,
+  };
+
+  /*
+   * Ao restaurar para um projeto existente, os IDs precisam permanecer
+   * iguais aos da planilha. Isso permite que o backup seja realmente
+   * uma atualização do mesmo conjunto de dados.
+   */
+  const empresas = ds.empresas.map((empresa) => ({
+    ...empresa,
+    projeto_id: destinoId,
+  }));
+
+  const funcionarios = ds.funcionarios.map((funcionario) => ({
+    ...funcionario,
+    projeto_id: destinoId,
+  }));
+
+  const locais = ds.locais.map((local) => ({
+    ...local,
+    projeto_id: destinoId,
+  }));
+
+  const produtos = ds.produtos.map((produto) => ({
+    ...produto,
+    projeto_id: destinoId,
+  }));
+
+  const equipes = ds.equipes.map((equipe) => ({
+    ...equipe,
+    projeto_id: destinoId,
+  }));
+
+  const movimentacoes = ds.movimentacoes.map((movimentacao) => ({
+    ...movimentacao,
+    projeto_id: destinoId,
+  }));
+
+  /*
+   * Os membros de equipe são validados pelas equipes e funcionários
+   * presentes no próprio backup.
+   */
+  const equipeIds = new Set(equipes.map((equipe) => equipe.id));
+  const funcionarioIds = new Set(
+    funcionarios.map((funcionario) => funcionario.id),
+  );
+
+  const equipeMembros = ds.equipeMembros.filter(
+    (membro) =>
+      equipeIds.has(membro.equipe_id) &&
+      funcionarioIds.has(membro.funcionario_id),
+  );
+
+  /*
+   * IDs existentes no backup.
+   *
+   * Eles serão usados para remover registros antigos que não fazem
+   * mais parte da restauração.
+   */
+  const ids = {
+    empresas: new Set(empresas.map((item) => item.id)),
+    funcionarios: new Set(funcionarios.map((item) => item.id)),
+    locais: new Set(locais.map((item) => item.id)),
+    produtos: new Set(produtos.map((item) => item.id)),
+    equipes: new Set(equipes.map((item) => item.id)),
+    movimentacoes: new Set(
+      movimentacoes.map((item) => item.id),
+    ),
+  };
+
   await db.transaction(
     "rw",
     [
@@ -262,30 +409,112 @@ export async function salvarDataset(ds: DatasetImportado, projetoId?: string) {
       db.equipe_membros,
     ],
     async () => {
-      if (ds.projetos.length) await db.projetos.bulkPut(ds.projetos);
+      /*
+       * 1. Projeto
+       */
+      await db.projetos.put(projetoDestino);
+
+      /*
+       * 2. Catálogos globais
+       *
+       * Não removemos categorias/unidades que não estejam no backup,
+       * pois elas podem estar sendo utilizadas por outros projetos.
+       */
       await db.categorias.bulkPut(ds.categorias);
       await db.unidades.bulkPut(ds.unidades);
-      await db.empresas.bulkPut(ds.empresas);
-      await db.funcionarios.bulkPut(ds.funcionarios);
-      await db.locais.bulkPut(ds.locais);
-      await db.produtos.bulkPut(ds.produtos);
-      await db.equipes.bulkPut(ds.equipes);
-      await db.equipe_membros.bulkPut(ds.equipeMembros);
-      const alvo = projetoId ?? ds.projetos[0]?.id;
-      await db.movimentacoes.bulkPut(
-        ds.movimentacoes.map((m) => ({
-          ...m,
-          projeto_id: m.projeto_id || alvo || "",
-        })),
+
+      /*
+       * 3. Remove registros antigos do projeto que não existem
+       *    mais no backup.
+       *
+       * Isso transforma a operação em uma restauração completa.
+       */
+      const [empresasAtuais, funcionariosAtuais, locaisAtuais, produtosAtuais, equipesAtuais, movimentacoesAtuais] =
+        await Promise.all([
+          db.empresas.where("projeto_id").equals(destinoId).toArray(),
+          db.funcionarios.where("projeto_id").equals(destinoId).toArray(),
+          db.locais.where("projeto_id").equals(destinoId).toArray(),
+          db.produtos.where("projeto_id").equals(destinoId).toArray(),
+          db.equipes.where("projeto_id").equals(destinoId).toArray(),
+          db.movimentacoes.where("projeto_id").equals(destinoId).toArray(),
+        ]);
+
+      await db.empresas.bulkDelete(
+        empresasAtuais
+          .filter((item) => !ids.empresas.has(item.id))
+          .map((item) => item.id),
       );
+
+      await db.funcionarios.bulkDelete(
+        funcionariosAtuais
+          .filter((item) => !ids.funcionarios.has(item.id))
+          .map((item) => item.id),
+      );
+
+      await db.locais.bulkDelete(
+        locaisAtuais
+          .filter((item) => !ids.locais.has(item.id))
+          .map((item) => item.id),
+      );
+
+      await db.produtos.bulkDelete(
+        produtosAtuais
+          .filter((item) => !ids.produtos.has(item.id))
+          .map((item) => item.id),
+      );
+
+      await db.equipes.bulkDelete(
+        equipesAtuais
+          .filter((item) => !ids.equipes.has(item.id))
+          .map((item) => item.id),
+      );
+
+      await db.movimentacoes.bulkDelete(
+        movimentacoesAtuais
+          .filter((item) => !ids.movimentacoes.has(item.id))
+          .map((item) => item.id),
+      );
+
+      /*
+       * 4. Substitui os dados do projeto pelo backup.
+       */
+      await db.empresas.bulkPut(empresas);
+      await db.funcionarios.bulkPut(funcionarios);
+      await db.locais.bulkPut(locais);
+      await db.produtos.bulkPut(produtos);
+      await db.equipes.bulkPut(equipes);
+      await db.movimentacoes.bulkPut(movimentacoes);
+
+      /*
+       * 5. Membros de equipe.
+       *
+       * Primeiro removemos os membros das equipes deste projeto
+       * e depois gravamos exatamente os membros do backup.
+       */
+      if (equipeIds.size > 0) {
+        await db.equipe_membros
+          .where("equipe_id")
+          .anyOf([...equipeIds])
+          .delete();
+      }
+
+      if (equipeMembros.length > 0) {
+        await db.equipe_membros.bulkPut(equipeMembros);
+      }
     },
   );
 }
 
 export async function exportarProjeto(projetoId: string) {
   const db = getDB();
+
+  const projeto = await db.projetos.get(projetoId);
+
+  if (!projeto) {
+    throw new Error("Projeto não encontrado.");
+  }
+
   const [
-    projeto,
     categorias,
     unidades,
     empresas,
@@ -293,19 +522,26 @@ export async function exportarProjeto(projetoId: string) {
     locais,
     produtos,
     equipes,
-    equipeMembros,
   ] = await Promise.all([
-    db.projetos.get(projetoId),
     db.categorias.toArray(),
     db.unidades.toArray(),
-    db.empresas.toArray(),
-    db.funcionarios.toArray(),
-    db.locais.toArray(),
-    db.produtos.toArray(),
-    db.equipes.toArray(),
-    db.equipe_membros.toArray(),
+    db.empresas.where("projeto_id").equals(projetoId).toArray(),
+    db.funcionarios.where("projeto_id").equals(projetoId).toArray(),
+    db.locais.where("projeto_id").equals(projetoId).toArray(),
+    db.produtos.where("projeto_id").equals(projetoId).toArray(),
+    db.equipes.where("projeto_id").equals(projetoId).toArray(),
   ]);
-  const movimentacoes = await db.movimentacoes.where("projeto_id").equals(projetoId).toArray();
+
+  const equipeIds = new Set(equipes.map((e) => e.id));
+
+  const equipeMembros = await db.equipe_membros
+    .filter((m) => equipeIds.has(m.equipe_id))
+    .toArray();
+
+  const movimentacoes = await db.movimentacoes
+    .where("projeto_id")
+    .equals(projetoId)
+    .toArray();
 
   const empresaPorId = new Map(empresas.map((e) => [e.id, e.nome]));
   const funcionarioPorId = new Map(funcionarios.map((f) => [f.id, f.nome]));
@@ -319,7 +555,9 @@ export async function exportarProjeto(projetoId: string) {
   const add = (nome: string, data: Record<string, unknown>[], header: string[]) => {
     const ws = XLSX.utils.json_to_sheet(data, { header });
     const ultimaColuna = XLSX.utils.encode_col(Math.max(header.length - 1, 0));
-    ws["!autofilter"] = { ref: `A1:${ultimaColuna}${Math.max(data.length + 1, 1)}` };
+    ws["!autofilter"] = {
+      ref: `A1:${ultimaColuna}${Math.max(data.length + 1, 1)}`,
+    };
     ws["!freeze"] = { xSplit: 0, ySplit: 1 };
     ws["!rows"] = [{ hpt: 24 }];
     ws["!cols"] = header.map((campo) => ({
@@ -336,6 +574,7 @@ export async function exportarProjeto(projetoId: string) {
 
     for (let coluna = 0; coluna < header.length; coluna += 1) {
       const celula = ws[XLSX.utils.encode_cell({ r: 0, c: coluna })];
+
       if (celula) {
         celula.s = {
           fill: { fgColor: { rgb: "17324D" } },
@@ -344,6 +583,7 @@ export async function exportarProjeto(projetoId: string) {
         };
       }
     }
+
     XLSX.utils.book_append_sheet(wb, ws, nome);
   };
 
@@ -351,28 +591,28 @@ export async function exportarProjeto(projetoId: string) {
     "CONFIGURACAO",
     [
       { CAMPO: "VERSAO", VALOR: "1.0" },
-      { CAMPO: "PROJETO", VALOR: projeto?.nome ?? "" },
+      { CAMPO: "PROJETO", VALOR: projeto.nome },
+      { CAMPO: "PROJETO_ID", VALOR: projeto.id },
       { CAMPO: "EXPORTADO_EM", VALOR: new Date().toISOString() },
     ],
     ["CAMPO", "VALOR"],
   );
+
   add(
     "PROJETOS",
-    projeto
-      ? [
-          {
-            ID: projeto.id,
-            CODIGO: projeto.codigo,
-            NOME: projeto.nome,
-            EMPRESA: empresaPorId.get(projeto.empresa_id ?? "") ?? "",
-            EMPRESA_ID: projeto.empresa_id ?? "",
-            STATUS: projeto.status,
-            DATA_INICIO: projeto.data_inicio ?? "",
-            DATA_FIM: projeto.data_fim ?? "",
-            OBSERVACAO: projeto.observacao ?? "",
-          },
-        ]
-      : [],
+    [
+      {
+        ID: projeto.id,
+        CODIGO: projeto.codigo,
+        NOME: projeto.nome,
+        EMPRESA: empresaPorId.get(projeto.empresa_id ?? "") ?? "",
+        EMPRESA_ID: projeto.empresa_id ?? "",
+        STATUS: projeto.status,
+        DATA_INICIO: projeto.data_inicio ?? "",
+        DATA_FIM: projeto.data_fim ?? "",
+        OBSERVACAO: projeto.observacao ?? "",
+      },
+    ],
     [
       "ID",
       "CODIGO",
@@ -385,11 +625,17 @@ export async function exportarProjeto(projetoId: string) {
       "OBSERVACAO",
     ],
   );
+
   add(
     "CATEGORIAS",
-    categorias.map((c) => ({ ID: c.id, NOME: c.nome, ATIVO: c.ativo ? 1 : 0 })),
+    categorias.map((c) => ({
+      ID: c.id,
+      NOME: c.nome,
+      ATIVO: c.ativo ? 1 : 0,
+    })),
     ["ID", "NOME", "ATIVO"],
   );
+
   add(
     "UNIDADES",
     unidades.map((u) => ({
@@ -400,11 +646,18 @@ export async function exportarProjeto(projetoId: string) {
     })),
     ["ID", "SIGLA", "DESCRICAO", "ATIVO"],
   );
+
   add(
     "EMPRESAS",
-    empresas.map((e) => ({ ID: e.id, NOME: e.nome, TIPO: e.tipo, ATIVO: e.ativo ? 1 : 0 })),
+    empresas.map((e) => ({
+      ID: e.id,
+      NOME: e.nome,
+      TIPO: e.tipo,
+      ATIVO: e.ativo ? 1 : 0,
+    })),
     ["ID", "NOME", "TIPO", "ATIVO"],
   );
+
   add(
     "FUNCIONARIOS",
     funcionarios.map((f) => ({
@@ -434,6 +687,7 @@ export async function exportarProjeto(projetoId: string) {
       "STATUS",
     ],
   );
+
   add(
     "LOCAIS",
     locais.map((l) => ({
@@ -446,6 +700,7 @@ export async function exportarProjeto(projetoId: string) {
     })),
     ["ID", "CODIGO", "NOME", "LOCAL_PAI", "LOCAL_PAI_ID", "ATIVO"],
   );
+
   add(
     "PRODUTOS",
     produtos.map((p) => ({
@@ -477,6 +732,7 @@ export async function exportarProjeto(projetoId: string) {
       "ATIVO",
     ],
   );
+
   add(
     "EQUIPES",
     equipes.map((e) => ({
@@ -488,6 +744,7 @@ export async function exportarProjeto(projetoId: string) {
     })),
     ["ID", "NOME", "DESCRICAO", "ATIVO", "ESTOQUE_SEGREGADO"],
   );
+
   add(
     "EQUIPE_MEMBROS",
     equipeMembros.map((m) => ({
@@ -499,6 +756,7 @@ export async function exportarProjeto(projetoId: string) {
     })),
     ["ID", "EQUIPE", "FUNCIONARIO", "EQUIPE_ID", "FUNCIONARIO_ID"],
   );
+
   add(
     "MOVIMENTACOES",
     movimentacoes.map((m) => ({
@@ -509,7 +767,9 @@ export async function exportarProjeto(projetoId: string) {
       PRODUTO: produtoPorId.get(m.produto_id)?.nome ?? "",
       PRODUTO_ID: m.produto_id,
       QUANTIDADE: (m.sinal ?? 1) < 0 ? -m.quantidade : m.quantidade,
-      UNIDADE: unidadePorId.get(produtoPorId.get(m.produto_id)?.unidade_id ?? "") ?? "",
+      UNIDADE: unidadePorId.get(
+        produtoPorId.get(m.produto_id)?.unidade_id ?? "",
+      ) ?? "",
       FUNCIONARIO: funcionarioPorId.get(m.funcionario_id ?? "") ?? "",
       FUNCIONARIO_ID: m.funcionario_id ?? "",
       ENCARREGADO: funcionarioPorId.get(m.encarregado_id ?? "") ?? "",
@@ -545,11 +805,13 @@ export async function exportarProjeto(projetoId: string) {
     ],
   );
 
-  const slug = (projeto?.codigo || projeto?.nome || "PROJETO")
+  const slug = (projeto.codigo || projeto.nome || "PROJETO")
     .toUpperCase()
     .replace(/[^A-Z0-9]+/g, "_");
+
   XLSX.writeFile(wb, `MODELO_GESTAO_ALMOXARIFADO_${slug}.xlsx`);
 }
+
 
 export async function gerarBackup() {
   const db = getDB();

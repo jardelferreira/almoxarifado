@@ -102,7 +102,8 @@ function DadosPage() {
                 <Upload className="size-4" /> Importar planilha
               </Button>
               <input
-                type="file"
+                type="hidden"
+                className="d-none"
                 accept=".xlsx,.xls,.csv"
                 onChange={async (event) => {
                   const file = event.target.files?.[0];

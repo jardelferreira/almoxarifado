@@ -95,41 +95,140 @@ function CadastrosPage() {
   };
 
   const salvar = async () => {
-    if (!editando) return;
+    if (!editando || !projetoId) {
+      toast.error("Nenhum projeto ativo selecionado");
+      return;
+    }
+
     const { aba, item } = editando;
     const nomeCampo = aba === "unidades" ? "sigla" : "nome";
+
     if (!String(item[nomeCampo] ?? "").trim()) {
       toast.error("Informe o nome");
       return;
     }
+
     if (aba === "produtos") {
       const p = item as unknown as Produto;
+
       if (!p.categoria_id || !p.unidade_id) {
         toast.error("Produto precisa de categoria e unidade");
         return;
       }
+
       p.estoque_minimo = Number(p.estoque_minimo) || 0;
     }
+
     if (aba === "equipes") {
       const { membro_ids, ...dadosEquipe } = item;
-      const equipe = await repo.equipes.save(dadosEquipe as unknown as Equipe);
-      await repo.salvarMembrosDaEquipe(equipe.id, (membro_ids as string[] | undefined) ?? []);
+
+      const equipe = await repo.equipes.save(
+        projetoId,
+        dadosEquipe as unknown as Equipe,
+      );
+
+      await repo.salvarMembrosDaEquipe(
+        equipe.id,
+        (membro_ids as string[] | undefined) ?? [],
+      );
+
       toast.success("Equipe salva");
       setEditando(null);
       return;
     }
-    // @ts-expect-error acesso dinâmico ao repositório
-    await repo[aba].save(item);
+
+    if (aba === "categorias") {
+      await repo.categorias.save(
+        item as unknown as Categoria,
+      );
+    } else if (aba === "unidades") {
+      await repo.unidades.save(
+        item as unknown as Unidade,
+      );
+    } else if (aba === "empresas") {
+      await repo.empresas.save(
+        projetoId,
+        item as unknown as Empresa,
+      );
+    } else if (aba === "funcionarios") {
+      await repo.funcionarios.save(
+        projetoId,
+        item as unknown as Funcionario,
+      );
+    } else if (aba === "locais") {
+      await repo.locais.save(
+        projetoId,
+        item as unknown as Local,
+      );
+    } else if (aba === "produtos") {
+      await repo.produtos.save(
+        projetoId,
+        item as unknown as Produto,
+      );
+    }
+
     toast.success("Cadastro salvo");
     setEditando(null);
   };
 
-  const toggleAtivo = async (aba: Aba, row: object, campo: "ativo" | "status") => {
+  const toggleAtivo = async (
+    aba: Aba,
+    row: object,
+    campo: "ativo" | "status",
+  ) => {
+    if (!projetoId) {
+      toast.error("Nenhum projeto ativo selecionado");
+      return;
+    }
+
     const item = row as Record<string, unknown>;
+
     const novoValor =
-      campo === "ativo" ? !item["ativo"] : item["status"] === "ATIVO" ? "INATIVO" : "ATIVO";
-    // @ts-expect-error acesso dinâmico ao repositório
-    await repo[aba].save({ ...item, [campo]: novoValor });
+      campo === "ativo"
+        ? !item["ativo"]
+        : item["status"] === "ATIVO"
+          ? "INATIVO"
+          : "ATIVO";
+
+    const atualizado = {
+      ...item,
+      [campo]: novoValor,
+    };
+
+    if (aba === "categorias") {
+      await repo.categorias.save(
+        atualizado as unknown as Categoria,
+      );
+    } else if (aba === "unidades") {
+      await repo.unidades.save(
+        atualizado as unknown as Unidade,
+      );
+    } else if (aba === "empresas") {
+      await repo.empresas.save(
+        projetoId,
+        atualizado as unknown as Empresa,
+      );
+    } else if (aba === "funcionarios") {
+      await repo.funcionarios.save(
+        projetoId,
+        atualizado as unknown as Funcionario,
+      );
+    } else if (aba === "locais") {
+      await repo.locais.save(
+        projetoId,
+        atualizado as unknown as Local,
+      );
+    } else if (aba === "produtos") {
+      await repo.produtos.save(
+        projetoId,
+        atualizado as unknown as Produto,
+      );
+    } else if (aba === "equipes") {
+      await repo.equipes.save(
+        projetoId,
+        atualizado as unknown as Equipe,
+      );
+    }
   };
 
   const nomeDe = <T extends { id: string; nome: string }>(arr: T[], id?: string | null) =>

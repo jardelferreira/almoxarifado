@@ -3,7 +3,12 @@ export type ID = string;
 export type ProjetoStatus = "ATIVO" | "PAUSADO" | "ENCERRADO";
 export type EmpresaTipo = "PROPRIA" | "TERCEIRA";
 export type FuncionarioStatus = "ATIVO" | "INATIVO";
-export type MovimentacaoTipo = "ENTRADA" | "SAIDA" | "DEVOLUCAO" | "AJUSTE" | "TRANSFERENCIA";
+export type MovimentacaoTipo =
+  | "ENTRADA"
+  | "SAIDA"
+  | "DEVOLUCAO"
+  | "AJUSTE"
+  | "TRANSFERENCIA";
 
 export interface Projeto {
   id: ID;
@@ -30,15 +35,23 @@ export interface Unidade {
   ativo: boolean;
 }
 
+/**
+ * Empresa pertence ao contexto de um projeto.
+ */
 export interface Empresa {
   id: ID;
+  projeto_id: ID;
   nome: string;
   tipo: EmpresaTipo;
   ativo: boolean;
 }
 
+/**
+ * Funcionário pertence ao contexto de um projeto.
+ */
 export interface Funcionario {
   id: ID;
+  projeto_id: ID;
   matricula?: string | null | undefined;
   nome: string;
   funcao?: string | null | undefined;
@@ -49,16 +62,24 @@ export interface Funcionario {
   equipe_raiz_id?: ID | null | undefined;
 }
 
+/**
+ * Local pertence ao contexto de um projeto.
+ */
 export interface Local {
   id: ID;
+  projeto_id: ID;
   codigo?: string | null | undefined;
   nome: string;
   local_pai_id?: ID | null | undefined;
   ativo: boolean;
 }
 
+/**
+ * Produto pertence ao contexto de um projeto.
+ */
 export interface Produto {
   id: ID;
+  projeto_id: ID;
   codigo?: string | null | undefined;
   nome: string;
   descricao?: string | null | undefined;
@@ -73,20 +94,41 @@ export interface Produto {
 export interface Movimentacao {
   id: ID;
   projeto_id: ID;
-  data: string; // ISO yyyy-mm-dd
+  data: string;
   tipo: MovimentacaoTipo;
   produto_id: ID;
-  quantidade: number; // sempre positivo
-  sinal?: (1 | -1) | undefined; // usado por AJUSTE / TRANSFERENCIA
+  quantidade: number;
+  sinal?: (1 | -1) | undefined;
   funcionario_id?: ID | null | undefined;
   encarregado_id?: ID | null | undefined;
   empresa_id?: ID | null | undefined;
   local_id?: ID | null | undefined;
   local_destino_id?: ID | null | undefined;
-  movimentacao_origem_id?: ID | null | undefined; // devolução vinculada a uma saída
+  movimentacao_origem_id?: ID | null | undefined;
   observacao?: string | null | undefined;
+
   /** Toda movimentação pertence ao estoque de uma equipe. */
   equipe_id: ID;
+}
+
+/**
+ * Equipe pertence ao contexto de um projeto.
+ */
+export interface Equipe {
+  id: ID;
+  projeto_id: ID;
+  nome: string;
+  descricao?: string | null | undefined;
+  ativo: boolean;
+
+  /** Mantido para compatibilidade: todo estoque novo é segregado por equipe. */
+  estoque_segregado: boolean;
+}
+
+export interface EquipeMembro {
+  id: ID;
+  equipe_id: ID;
+  funcionario_id: ID;
 }
 
 export interface EstoqueItem {
@@ -98,21 +140,6 @@ export interface EstoqueItem {
   estoque: number;
   minimo: number;
   baixo: boolean;
-}
-
-export interface Equipe {
-  id: ID;
-  nome: string;
-  descricao?: string | null;
-  ativo: boolean;
-  /** Mantido para compatibilidade: todo estoque novo é segregado por equipe. */
-  estoque_segregado: boolean;
-}
-
-export interface EquipeMembro {
-  id: ID;
-  equipe_id: ID;
-  funcionario_id: ID;
 }
 
 export interface Arquivo {
