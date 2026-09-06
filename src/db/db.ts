@@ -11,6 +11,9 @@ import type {
   Projeto,
   Unidade,
   Arquivo,
+  Equipamento,
+  Apropriacao,
+  MovimentacaoEquipamento,
 } from "@/types";
 
 export class AlmoxarifadoDB extends Dexie {
@@ -25,6 +28,9 @@ export class AlmoxarifadoDB extends Dexie {
   equipes!: Table<Equipe, string>;
   equipe_membros!: Table<EquipeMembro, string>;
   arquivos!: Table<Arquivo, string>;
+  equipamentos!: Table<Equipamento, string>;
+  apropriacoes!: Table<Apropriacao, string>;
+  movimentacoes_equipamentos!: Table<MovimentacaoEquipamento, string>;
 
   constructor() {
     super("almoxarifado");
@@ -205,6 +211,35 @@ export class AlmoxarifadoDB extends Dexie {
         await migrarTabela("produtos", "projeto_id");
         await migrarTabela("equipes", "projeto_id");
       });
+    this.version(6).stores({
+      // Tudo que já existe permanece igual
+      projetos: "id, codigo, nome, status",
+      categorias: "id, nome, ativo",
+      unidades: "id, sigla, ativo",
+      empresas: "id, projeto_id, nome, tipo, ativo",
+      funcionarios:
+        "id, projeto_id, nome, matricula, empresa_id, encarregado_id, equipe_raiz_id, status",
+      locais:
+        "id, projeto_id, nome, codigo, local_pai_id, ativo",
+      produtos:
+        "id, projeto_id, nome, codigo, categoria_id, unidade_id, ativo",
+      // MOVIMENTAÇÕES DE PRODUTOS — permanece separada
+      movimentacoes:
+        "id, projeto_id, data, tipo, produto_id, funcionario_id, encarregado_id, empresa_id, local_id, equipe_id",
+      equipes:
+        "id, projeto_id, nome, ativo",
+      equipe_membros:
+        "id, equipe_id, funcionario_id, [equipe_id+funcionario_id]",
+      arquivos:
+        "id, projeto_id, criado_em, tipo, mime_type",
+      // NOVO MÓDULO DE EQUIPAMENTOS
+      equipamentos:
+        "id, projeto_id, categoria_id, empresa_id, equipe_id, identificacao, serial, patrimonio, status",
+      apropriacoes:
+        "id, equipamento_id, funcionario_id, [equipamento_id+funcionario_id]",
+      movimentacoes_equipamentos:
+        "id, projeto_id, equipamento_id, tipo, data, tipo_origem, origem_id, tipo_destino, destino_id",
+    });
   }
 }
 
