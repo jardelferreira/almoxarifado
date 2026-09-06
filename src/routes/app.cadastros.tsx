@@ -554,6 +554,7 @@ function CadastrosPage() {
                     opcoes={[
                       { value: "PROPRIA", label: "Própria" },
                       { value: "TERCEIRA", label: "Terceira" },
+                      { value: "FORNECEDOR", label: "Fornecedor" },
                     ]}
                   />
                 </div>

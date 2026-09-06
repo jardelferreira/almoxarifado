@@ -96,7 +96,11 @@ export function lerArquivo(buffer: ArrayBuffer): DatasetImportado {
     id: S(r["ID"]) || uid(),
     projeto_id: "",
     nome: S(r["NOME"]),
-    tipo: (S(r["TIPO"]).toUpperCase().startsWith("PR") ? "PROPRIA" : "TERCEIRA") as Empresa["tipo"],
+    tipo: (S(r["TIPO"]).toUpperCase().startsWith("PR")
+      ? "PROPRIA"
+      : S(r["TIPO"]).toUpperCase().startsWith("FO")
+        ? "FORNECEDOR"
+        : "TERCEIRA") as Empresa["tipo"],
     ativo: B(r["ATIVO"]),
   }));
 

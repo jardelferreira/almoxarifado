@@ -1,7 +1,7 @@
 export type ID = string;
 
 export type ProjetoStatus = "ATIVO" | "PAUSADO" | "ENCERRADO";
-export type EmpresaTipo = "PROPRIA" | "TERCEIRA";
+export type EmpresaTipo = "PROPRIA" | "TERCEIRA" | "FORNECEDOR";
 export type FuncionarioStatus = "ATIVO" | "INATIVO";
 export type MovimentacaoTipo =
   | "ENTRADA"

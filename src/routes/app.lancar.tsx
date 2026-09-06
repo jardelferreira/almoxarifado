@@ -185,6 +185,20 @@ function Formulario({ modo }: { modo: string }) {
       toast.error("Informe local de origem e destino");
       return;
     }
+    if (cfg.tipo === "ENTRADA") {
+      const empresa = dados.empresas.find((e) => e.id === empresaId);
+      if (!empresa || empresa.tipo !== "FORNECEDOR") {
+        toast.error("Selecione uma empresa do tipo fornecedor");
+        return;
+      }
+    }
+    if (cfg.tipo === "SAIDA") {
+      const empresa = dados.empresas.find((e) => e.id === funcionario?.empresa_id);
+      if (empresa?.tipo === "FORNECEDOR") {
+        toast.error("Saídas não podem ser vinculadas a um fornecedor");
+        return;
+      }
+    }
     if (cfg.tipo === "AJUSTE" && !observacao.trim()) {
       toast.error("Informe o motivo do ajuste");
       return;
@@ -251,8 +265,14 @@ function Formulario({ modo }: { modo: string }) {
 
   const opt = <T extends { id: string; nome: string }>(arr: T[]) =>
     arr.map((x) => ({ value: x.id, label: x.nome }));
-  const funcAtivos = dados.funcionarios.filter((f) => f.status === "ATIVO");
-  const empAtivas = dados.empresas.filter((e) => e.ativo);
+  const funcAtivos = dados.funcionarios.filter((f) => {
+    if (f.status !== "ATIVO") return false;
+    const empresa = dados.empresas.find((e) => e.id === f.empresa_id);
+    return empresa?.tipo !== "FORNECEDOR";
+  });
+  const empAtivas = dados.empresas.filter(
+    (e) => e.ativo && (cfg.tipo === "ENTRADA" ? e.tipo === "FORNECEDOR" : true),
+  );
   const locAtivos = dados.locais.filter((l) => l.ativo);
 
   return (
@@ -384,7 +404,7 @@ function Formulario({ modo }: { modo: string }) {
 
           {cfg.campos.includes("empresa") && (
             <div className="space-y-1.5">
-              <Label>Empresa</Label>
+              <Label>{cfg.tipo === "ENTRADA" ? "Fornecedor" : "Empresa"}</Label>
               <Combobox
                 placeholder="Selecionar"
                 value={empresaId}
