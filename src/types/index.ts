@@ -157,3 +157,92 @@ export interface Arquivo {
 
   criado_em: string;
 }
+
+export type EquipamentoTipoControle = "INDIVIDUAL" | "QUANTITATIVO";
+export type EquipamentoVinculo = "PROPRIO" | "ALUGADO" | "EMPRESTIMO";
+export type EquipamentoStatus = "ATIVO" | "ENCERRADO";
+
+export interface Equipamento {
+  id: ID;
+  projeto_id: ID;
+  categoria_id: ID;
+
+  nome: string;
+  tipo_controle: EquipamentoTipoControle;
+
+  quantidade: number;
+  devolvido: number;
+
+  marca?: string | null | undefined;
+  modelo?: string | null | undefined;
+  patrimonio?: string | null | undefined;
+  identificacao?: string | null | undefined;
+  serial?: string | null | undefined;
+
+  empresa_id: ID;
+  vinculo: EquipamentoVinculo;
+
+  /**
+   * Equipe à qual o equipamento é destinado.
+   * null = equipamento destinado ao projeto como um todo.
+   */
+  equipe_id?: ID | null | undefined;
+
+  data_entrada: string;
+  referencia_documento?: string | null | undefined;
+  observacoes?: string | null | undefined;
+
+  status: EquipamentoStatus;
+
+  criado_em: string;
+  atualizado_em: string;
+}
+
+export interface Apropriacao {
+  id: ID;
+  equipamento_id: ID;
+  funcionario_id: ID;
+  quantidade: number;
+
+  criado_em: string;
+  atualizado_em: string;
+}
+
+export type MovimentacaoEquipamentoTipo =
+  | "ENTRADA"
+  | "SAIDA"
+  | "DEVOLUCAO"
+  | "TRANSFERENCIA"
+  | "MANUTENCAO"
+  | "RETIRADA_MANUTENCAO"
+  | "RETORNO_MANUTENCAO"
+  | "DEVOLUCAO_FORNECEDOR";
+
+export type MovimentacaoEquipamentoParte =
+  | "EMPRESA"
+  | "EQUIPE"
+  | "FUNCIONARIO";
+
+export interface MovimentacaoEquipamento {
+  id: ID;
+
+  projeto_id: ID;
+  equipamento_id: ID;
+
+  tipo: MovimentacaoEquipamentoTipo;
+  quantidade: number;
+
+  tipo_origem: MovimentacaoEquipamentoParte;
+  origem_id: ID;
+
+  tipo_destino: MovimentacaoEquipamentoParte;
+  destino_id: ID;
+
+  data: string;
+
+  observacoes?: string | null | undefined;
+
+  criado_em: string;
+  atualizado_em: string;
+}  
+
