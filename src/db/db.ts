@@ -1,6 +1,7 @@
 import Dexie, { type Table } from "dexie";
 import type {
   Categoria,
+  CategoriaEquipamento,
   Empresa,
   Equipe,
   EquipeMembro,
@@ -12,6 +13,7 @@ import type {
   Unidade,
   Arquivo,
   Equipamento,
+  EstoqueEquipamento,
   Apropriacao,
   MovimentacaoEquipamento,
 } from "@/types";
@@ -19,6 +21,7 @@ import type {
 export class AlmoxarifadoDB extends Dexie {
   projetos!: Table<Projeto, string>;
   categorias!: Table<Categoria, string>;
+  categorias_equipamentos!: Table<CategoriaEquipamento, string>;
   unidades!: Table<Unidade, string>;
   empresas!: Table<Empresa, string>;
   funcionarios!: Table<Funcionario, string>;
@@ -29,6 +32,7 @@ export class AlmoxarifadoDB extends Dexie {
   equipe_membros!: Table<EquipeMembro, string>;
   arquivos!: Table<Arquivo, string>;
   equipamentos!: Table<Equipamento, string>;
+  estoque_equipamentos!: Table<EstoqueEquipamento, string>;
   apropriacoes!: Table<Apropriacao, string>;
   movimentacoes_equipamentos!: Table<MovimentacaoEquipamento, string>;
 
@@ -239,6 +243,74 @@ export class AlmoxarifadoDB extends Dexie {
         "id, equipamento_id, funcionario_id, [equipamento_id+funcionario_id]",
       movimentacoes_equipamentos:
         "id, projeto_id, equipamento_id, tipo, data, tipo_origem, origem_id, tipo_destino, destino_id",
+    });
+
+    this.version(7).stores({
+      projetos: "id, codigo, nome, status",
+      categorias: "id, nome, ativo",
+      categorias_equipamentos: "id, nome, ativo",
+      unidades: "id, sigla, ativo",
+      empresas: "id, projeto_id, nome, tipo, ativo",
+      funcionarios:
+        "id, projeto_id, nome, matricula, empresa_id, encarregado_id, equipe_raiz_id, status",
+      locais: "id, projeto_id, nome, codigo, local_pai_id, ativo",
+      produtos:
+        "id, projeto_id, nome, codigo, categoria_id, unidade_id, ativo",
+      movimentacoes:
+        "id, projeto_id, data, tipo, produto_id, funcionario_id, encarregado_id, empresa_id, local_id, equipe_id",
+      equipes: "id, projeto_id, nome, ativo",
+      equipe_membros:
+        "id, equipe_id, funcionario_id, [equipe_id+funcionario_id]",
+      arquivos: "id, projeto_id, criado_em, tipo, mime_type",
+      equipamentos:
+        "id, projeto_id, categoria_id, empresa_id, equipe_id, identificacao, serial, patrimonio, status",
+      apropriacoes:
+        "id, equipamento_id, funcionario_id, [equipamento_id+funcionario_id]",
+      movimentacoes_equipamentos:
+        "id, projeto_id, equipamento_id, tipo, data, tipo_origem, origem_id, tipo_destino, destino_id",
+    });
+
+    /**
+     * Versão 8
+     *
+     * Nova estrutura do módulo de equipamentos:
+     * - CategoriaEquipamento é isolada por projeto.
+     * - Equipamento representa o cadastro/modelo.
+     * - EstoqueEquipamento representa a unidade/lote físico em estoque.
+     * - Apropriações e movimentações passam a apontar para o estoque físico.
+     */
+    this.version(8).stores({
+      projetos: "id, codigo, nome, status",
+      categorias: "id, nome, ativo",
+      categorias_equipamentos: "id, projeto_id, nome, ativo",
+      unidades: "id, sigla, ativo",
+      empresas: "id, projeto_id, nome, tipo, ativo",
+      funcionarios:
+        "id, projeto_id, nome, matricula, empresa_id, encarregado_id, equipe_raiz_id, status",
+      locais:
+        "id, projeto_id, nome, codigo, local_pai_id, ativo",
+      produtos:
+        "id, projeto_id, nome, codigo, categoria_id, unidade_id, ativo",
+      movimentacoes:
+        "id, projeto_id, data, tipo, produto_id, funcionario_id, encarregado_id, empresa_id, local_id, equipe_id",
+      equipes: "id, projeto_id, nome, ativo",
+      equipe_membros:
+        "id, equipe_id, funcionario_id, [equipe_id+funcionario_id]",
+      arquivos: "id, projeto_id, criado_em, tipo, mime_type",
+
+      // Cadastro do equipamento/modelo.
+      equipamentos:
+        "id, projeto_id, categoria_id, nome, tipo_controle, ativo",
+
+      // Registro físico/lote efetivamente existente no estoque.
+      estoque_equipamentos:
+        "id, projeto_id, equipamento_id, empresa_id, equipe_id, identificacao, serial, patrimonio, status",
+
+      apropriacoes:
+        "id, estoque_equipamento_id, funcionario_id, [estoque_equipamento_id+funcionario_id]",
+
+      movimentacoes_equipamentos:
+        "id, projeto_id, estoque_equipamento_id, tipo, data, tipo_origem, origem_id, tipo_destino, destino_id",
     });
   }
 }

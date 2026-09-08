@@ -50,13 +50,60 @@ export const repo = {
     return getDB().projetos.get(id);
   },
 
+  // async saveProjeto(p: Omit<Projeto, "id"> & { id?: string }) {
+  //   const projeto: Projeto = {
+  //     ...p,
+  //     id: p.id ?? uid(),
+  //   };
+
+  //   await getDB().projetos.put(projeto);
+
+  //   return projeto;
+  // },
+
+
   async saveProjeto(p: Omit<Projeto, "id"> & { id?: string }) {
+    const db = getDB();
+
+    const novoProjeto = !p.id;
+
     const projeto: Projeto = {
       ...p,
       id: p.id ?? uid(),
     };
 
-    await getDB().projetos.put(projeto);
+    if (!novoProjeto) {
+      await db.projetos.put(projeto);
+      return projeto;
+    }
+
+    const equipesPadrao: Equipe[] = [
+      {
+        id: uid(),
+        projeto_id: projeto.id,
+        nome: "Almoxarifado",
+        descricao: null,
+        ativo: true,
+        estoque_segregado: true,
+      },
+      {
+        id: uid(),
+        projeto_id: projeto.id,
+        nome: "Manutenção",
+        descricao: null,
+        ativo: true,
+        estoque_segregado: true,
+      },
+    ];
+
+    await db.transaction(
+      "rw",
+      [db.projetos, db.equipes],
+      async () => {
+        await db.projetos.put(projeto);
+        await db.equipes.bulkPut(equipesPadrao);
+      },
+    );
 
     return projeto;
   },
@@ -294,23 +341,23 @@ export const repo = {
         mov.equipe_id,
       funcionario_id: mov.funcionario_id
         ? funcionarioIds.get(mov.funcionario_id) ??
-          mov.funcionario_id
+        mov.funcionario_id
         : null,
       encarregado_id: mov.encarregado_id
         ? funcionarioIds.get(mov.encarregado_id) ??
-          mov.encarregado_id
+        mov.encarregado_id
         : null,
       empresa_id: mov.empresa_id
         ? empresaIds.get(mov.empresa_id) ??
-          mov.empresa_id
+        mov.empresa_id
         : null,
       local_id: mov.local_id
         ? localIds.get(mov.local_id) ??
-          mov.local_id
+        mov.local_id
         : null,
       local_destino_id: mov.local_destino_id
         ? localIds.get(mov.local_destino_id) ??
-          mov.local_destino_id
+        mov.local_destino_id
         : null,
       movimentacao_origem_id: mov.movimentacao_origem_id
         ? undefined
