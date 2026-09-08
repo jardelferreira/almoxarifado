@@ -8,6 +8,7 @@ import {
   Plus,
   Search,
   Trash2,
+  ChevronDown,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -46,6 +47,8 @@ import type {
   EquipamentoTipoControle,
   EquipamentoVinculo,
   EstoqueEquipamento,
+  MovimentacaoEquipamento,
+  Funcionario,
 } from "@/types";
 
 export const Route = createFileRoute("/app/equipamentos")({
@@ -107,9 +110,11 @@ function EquipamentosPage() {
   const [projetoId] = useProjetoAtivoId();
   const [equipamentos, setEquipamentos] = useState<Equipamento[]>([]);
   const [estoques, setEstoques] = useState<EstoqueEquipamentoUI[]>([]);
+  const [movimentacoes, setMovimentacoes] = useState<MovimentacaoEquipamento[]>([]);
   const [categorias, setCategorias] = useState<CategoriaEquipamento[]>([]);
   const [empresas, setEmpresas] = useState<Empresa[]>([]);
   const [equipes, setEquipes] = useState<Equipe[]>([]);
+  const [funcionarios, setFuncionarios] = useState<Funcionario[]>([]);
   const [busca, setBusca] = useState("");
   const [formulario, setFormulario] = useState<Formulario>(formularioInicial);
   const [estoqueFormulario, setEstoqueFormulario] = useState<EstoqueFormulario>(estoqueFormularioInicial());
@@ -120,16 +125,27 @@ function EquipamentosPage() {
   const [dialogNovaCategoria, setDialogNovaCategoria] = useState(false);
   const [novaCategoria, setNovaCategoria] = useState("");
   const [salvando, setSalvando] = useState(false);
+  const [historicosAbertos, setHistoricosAbertos] = useState<Set<string>>(new Set());
 
   async function carregar() {
     if (!projetoId) return;
     const db = getDB();
-    const [equipamentosData, estoquesData, categoriasData, empresasData, equipesData] = await Promise.all([
+    const [
+      equipamentosData,
+      estoquesData,
+      movimentacoesData,
+      categoriasData,
+      empresasData,
+      equipesData,
+      funcionariosData,
+    ] = await Promise.all([
       db.equipamentos.where("projeto_id").equals(projetoId).toArray(),
       db.estoque_equipamentos.where("projeto_id").equals(projetoId).toArray(),
+      db.movimentacoes_equipamentos.where("projeto_id").equals(projetoId).toArray(),
       categoriasEquipamentosRepo.listar(projetoId),
       db.empresas.where("projeto_id").equals(projetoId).filter((e) => e.ativo).toArray(),
       db.equipes.where("projeto_id").equals(projetoId).filter((e) => e.ativo).toArray(),
+      db.funcionarios.where("projeto_id").equals(projetoId).toArray(),
     ]);
     const estoquesNormalizados = estoquesData.map((estoque) =>
       estoque.ativo === undefined ? { ...estoque, ativo: true } : estoque,
@@ -141,9 +157,11 @@ function EquipamentosPage() {
 
     setEquipamentos(equipamentosData);
     setEstoques(estoquesNormalizados);
+    setMovimentacoes(movimentacoesData);
     setCategorias(categoriasData.filter((c) => c.ativo));
     setEmpresas(empresasData);
     setEquipes(equipesData);
+    setFuncionarios(funcionariosData);
   }
 
   useEffect(() => { void carregar(); }, [projetoId]);
@@ -156,6 +174,99 @@ function EquipamentosPage() {
     for (const estoque of estoques) map.set(estoque.equipamento_id, [...(map.get(estoque.equipamento_id) ?? []), estoque]);
     return map;
   }, [estoques]);
+  type ResumoEstoque = {
+    quantidade: number;
+    saldo: number;
+    almoxarifado: number;
+    manutencao: number;
+    apropriado: number;
+    disponivel: number;
+  };
+
+  const resumoPorEstoque = useMemo(() => {
+    const resultado = new Map<string, ResumoEstoque>();
+
+    for (const estoque of estoques) {
+      if (estoque.ativo === false) continue;
+      const quantidade = Math.max(0, estoque.quantidade - (estoque.devolvido ?? 0));
+      resultado.set(estoque.id, {
+        quantidade,
+        saldo: quantidade,
+        almoxarifado: quantidade,
+        manutencao: 0,
+        apropriado: 0,
+        disponivel: quantidade,
+      });
+    }
+
+    const movimentos = [...movimentacoes].sort((a, b) =>
+      a.data.localeCompare(b.data) || a.criado_em.localeCompare(b.criado_em),
+    );
+
+    for (const movimento of movimentos) {
+      const estado = resultado.get(movimento.estoque_equipamento_id);
+      if (!estado) continue;
+      const q = Math.max(0, movimento.quantidade);
+
+      const retirarDaOrigem = (parte: MovimentacaoEquipamento["tipo_origem"], id: string) => {
+        if (parte === "EQUIPE") {
+          const equipe = equipes.find((item) => item.id === id);
+          const nome = equipe?.nome.trim().toLowerCase();
+          if (nome === "almoxarifado") estado.almoxarifado = Math.max(0, estado.almoxarifado - q);
+          if (nome === "manutenção") estado.manutencao = Math.max(0, estado.manutencao - q);
+        } else if (parte === "FUNCIONARIO") {
+          estado.apropriado = Math.max(0, estado.apropriado - q);
+        }
+      };
+
+      const adicionarAoDestino = (parte: MovimentacaoEquipamento["tipo_destino"], id: string) => {
+        if (parte === "EQUIPE") {
+          const equipe = equipes.find((item) => item.id === id);
+          const nome = equipe?.nome.trim().toLowerCase();
+          if (nome === "almoxarifado") estado.almoxarifado += q;
+          if (nome === "manutenção") estado.manutencao += q;
+        } else if (parte === "FUNCIONARIO") {
+          estado.apropriado += q;
+        }
+      };
+
+      if (movimento.tipo === "ENTRADA") continue;
+      if (movimento.tipo === "DEVOLUCAO_FORNECEDOR") {
+        // devolvido já está refletido em estoque.devolvido; não descontar novamente.
+        continue;
+      }
+
+      retirarDaOrigem(movimento.tipo_origem, movimento.origem_id);
+      adicionarAoDestino(movimento.tipo_destino, movimento.destino_id);
+    }
+
+    for (const estado of resultado.values()) {
+      estado.disponivel = Math.max(0, estado.almoxarifado);
+    }
+
+    return resultado;
+  }, [estoques, movimentacoes, equipes]);
+
+  const resumoPorEquipamento = useMemo(() => {
+    const mapa = new Map<string, ResumoEstoque>();
+    for (const estoque of estoques) {
+      if (estoque.ativo === false) continue;
+      const resumo = resumoPorEstoque.get(estoque.id);
+      if (!resumo) continue;
+      const atual = mapa.get(estoque.equipamento_id) ?? {
+        quantidade: 0, saldo: 0, almoxarifado: 0, manutencao: 0, apropriado: 0, disponivel: 0,
+      };
+      atual.quantidade += resumo.quantidade;
+      atual.saldo += resumo.saldo;
+      atual.almoxarifado += resumo.almoxarifado;
+      atual.manutencao += resumo.manutencao;
+      atual.apropriado += resumo.apropriado;
+      atual.disponivel += resumo.disponivel;
+      mapa.set(estoque.equipamento_id, atual);
+    }
+    return mapa;
+  }, [estoques, resumoPorEstoque]);
+
   const filtrados = useMemo(() => {
     const termo = busca.trim().toLowerCase();
     if (!termo) return equipamentos;
@@ -369,9 +480,84 @@ function EquipamentosPage() {
   }
 
   const estoqueSelecionado = equipamentoDetalhe ? estoquePorEquipamento.get(equipamentoDetalhe.id) ?? [] : [];
-  const saldoTotal = (id: string) => (estoquePorEquipamento.get(id) ?? []).reduce((s, e) => s + e.quantidade - e.devolvido, 0);
-  const quantidadeTotal = (id: string) => (estoquePorEquipamento.get(id) ?? []).reduce((s, e) => s + e.quantidade, 0);
+  const saldoTotal = (id: string) => resumoPorEquipamento.get(id)?.saldo ?? 0;
+  const quantidadeTotal = (id: string) => resumoPorEquipamento.get(id)?.quantidade ?? 0;
+  const almoxarifadoTotal = (id: string) => resumoPorEquipamento.get(id)?.almoxarifado ?? 0;
+  const apropriadoTotal = (id: string) => resumoPorEquipamento.get(id)?.apropriado ?? 0;
+  const manutencaoTotal = (id: string) => resumoPorEquipamento.get(id)?.manutencao ?? 0;
   const vinculoLabel = (v: EquipamentoVinculo) => v === "PROPRIO" ? "Próprio" : v === "ALUGADO" ? "Alugado" : "Empréstimo";
+  const funcionarioPorId = useMemo(() => new Map(funcionarios.map((f) => [f.id, f])), [funcionarios]);
+  const movimentosPorEstoque = useMemo(() => {
+    const mapa = new Map<string, MovimentacaoEquipamento[]>();
+    for (const movimento of movimentacoes) {
+      const lista = mapa.get(movimento.estoque_equipamento_id) ?? [];
+      lista.push(movimento);
+      mapa.set(movimento.estoque_equipamento_id, lista);
+    }
+    for (const lista of mapa.values()) {
+      lista.sort((a, b) => a.data.localeCompare(b.data) || a.criado_em.localeCompare(b.criado_em));
+    }
+    return mapa;
+  }, [movimentacoes]);
+
+  type AlocacaoAtual = {
+    tipo: "EQUIPE" | "FUNCIONARIO" | "EMPRESA";
+    id: string;
+    quantidade: number;
+  };
+
+  const alocacoesAtuais = useMemo(() => {
+    const resultado = new Map<string, AlocacaoAtual[]>();
+
+    for (const estoque of estoques) {
+      if (estoque.ativo === false) continue;
+      const locais = new Map<string, AlocacaoAtual>();
+      const almoxarifado = equipes.find((e) => e.nome.trim().toLowerCase() === "almoxarifado");
+      if (almoxarifado && estoque.quantidade > 0) {
+        locais.set(`EQUIPE:${almoxarifado.id}`, { tipo: "EQUIPE", id: almoxarifado.id, quantidade: estoque.quantidade });
+      }
+
+      for (const movimento of movimentosPorEstoque.get(estoque.id) ?? []) {
+        if (movimento.tipo === "ENTRADA") continue;
+        const origemKey = `${movimento.tipo_origem}:${movimento.origem_id}`;
+        const destinoKey = `${movimento.tipo_destino}:${movimento.destino_id}`;
+        const origem = locais.get(origemKey);
+        if (origem) {
+          origem.quantidade = Math.max(0, origem.quantidade - movimento.quantidade);
+          if (origem.quantidade === 0) locais.delete(origemKey);
+        }
+        const destino = locais.get(destinoKey);
+        if (destino) destino.quantidade += movimento.quantidade;
+        else locais.set(destinoKey, { tipo: movimento.tipo_destino, id: movimento.destino_id, quantidade: movimento.quantidade });
+      }
+
+      resultado.set(estoque.id, [...locais.values()].filter((item) => item.quantidade > 0));
+    }
+    return resultado;
+  }, [estoques, equipes, movimentosPorEstoque]);
+
+  const rotuloLocal = (alocacao: AlocacaoAtual) => {
+    if (alocacao.tipo === "FUNCIONARIO") {
+      const funcionario = funcionarioPorId.get(alocacao.id);
+      return funcionario ? `Funcionário: ${funcionario.nome}${funcionario.matricula ? ` — ${funcionario.matricula}` : ""}` : "Funcionário não localizado";
+    }
+    if (alocacao.tipo === "EMPRESA") return `Empresa: ${empresaPorId.get(alocacao.id) ?? "não localizada"}`;
+    return `Equipe: ${equipePorId.get(alocacao.id) ?? "não localizada"}`;
+  };
+
+  const rotuloParticipante = (tipo: MovimentacaoEquipamento["tipo_origem"], id: string) => {
+    if (tipo === "FUNCIONARIO") {
+      const funcionario = funcionarioPorId.get(id);
+      return funcionario ? funcionario.nome : "Funcionário não localizado";
+    }
+    if (tipo === "EMPRESA") return empresaPorId.get(id) ?? "Empresa não localizada";
+    return equipePorId.get(id) ?? "Equipe não localizada";
+  };
+
+  const dataMovimentacao = (data: string) => {
+    const [ano, mes, dia] = data.split("-");
+    return ano && mes && dia ? `${dia}/${mes}/${ano}` : data;
+  };
 
   if (!projetoId) return <Card><CardContent className="py-10 text-center text-sm text-muted-foreground">Nenhum projeto ativo selecionado.</CardContent></Card>;
 
@@ -381,18 +567,23 @@ function EquipamentosPage() {
         <div><h1 className="text-2xl font-semibold tracking-tight">Equipamentos</h1><p className="text-sm text-muted-foreground">Cadastros de equipamentos e registros físicos de estoque.</p></div>
         <div className="flex gap-2"><Button variant="outline" onClick={() => abrirNovoEstoque()}><ClipboardList className="mr-2 h-4 w-4" />Adicionar ao estoque</Button><Button onClick={abrirNovo}><Plus className="mr-2 h-4 w-4" />Novo equipamento</Button></div>
       </div>
-      <Card><CardHeader><div className="relative max-w-md"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Pesquisar equipamento..." className="pl-9" /></div></CardHeader><CardContent><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left"><th className="px-3 py-3 font-medium">Equipamento</th><th className="px-3 py-3 font-medium">Categoria</th><th className="px-3 py-3 font-medium">Controle</th><th className="px-3 py-3 font-medium">Qtd.</th><th className="px-3 py-3 font-medium">Saldo</th><th className="px-3 py-3 font-medium">Registros</th><th className="px-3 py-3 font-medium">Ativo</th><th className="px-3 py-3 text-right font-medium">Ações</th></tr></thead><tbody>
-      {filtrados.map((e) => { const registros = estoquePorEquipamento.get(e.id) ?? []; return <tr key={e.id} className="border-b last:border-0"><td className="px-3 py-3"><div className="flex items-center gap-3"><div className="flex h-9 w-9 items-center justify-center rounded-lg bg-muted"><Box className="h-4 w-4" /></div><div><div className="font-medium">{e.nome}</div>{(e.marca || e.modelo) && <div className="text-xs text-muted-foreground">{[e.marca, e.modelo].filter(Boolean).join(" • ")}</div>}</div></div></td><td className="px-3 py-3">{categoriaPorId.get(e.categoria_id) ?? "—"}</td><td className="px-3 py-3"><Badge variant="secondary">{e.tipo_controle === "INDIVIDUAL" ? "Individual" : "Quantitativo"}</Badge></td><td className="px-3 py-3">{quantidadeTotal(e.id)}</td><td className="px-3 py-3 font-medium">{saldoTotal(e.id)}</td><td className="px-3 py-3"><Badge variant="outline">{registros.length}</Badge></td><td className="px-3 py-3">
+      <Card><CardHeader><div className="relative max-w-md"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Pesquisar equipamento..." className="pl-9" /></div></CardHeader><CardContent><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left"><th className="px-3 py-3 font-medium">Equipamento</th><th className="px-3 py-3 font-medium">Categoria</th><th className="px-3 py-3 font-medium">Controle</th><th className="px-3 py-3 font-medium">Saldo</th><th className="px-3 py-3 font-medium">Almox.</th><th className="px-3 py-3 font-medium">Em uso</th><th className="px-3 py-3 font-medium">Manut.</th><th className="px-3 py-3 font-medium">Registros</th><th className="px-3 py-3 font-medium">Ativo</th><th className="px-3 py-3 text-right font-medium">Ações</th></tr></thead><tbody>
+      {filtrados.map((e) => { const registros = estoquePorEquipamento.get(e.id) ?? []; return <tr key={e.id} className="border-b last:border-0"><td className="px-3 py-3"><div className="flex items-center gap-3"><div className="flex h-9 w-9 items-center justify-center rounded-lg bg-muted"><Box className="h-4 w-4" /></div><div><div className="font-medium">{e.nome}</div>{(e.marca || e.modelo) && <div className="text-xs text-muted-foreground">{[e.marca, e.modelo].filter(Boolean).join(" • ")}</div>}</div></div></td><td className="px-3 py-3">{categoriaPorId.get(e.categoria_id) ?? "—"}</td><td className="px-3 py-3"><Badge variant="secondary">{e.tipo_controle === "INDIVIDUAL" ? "Individual" : "Quantitativo"}</Badge></td><td className="px-3 py-3 font-medium">{saldoTotal(e.id)}</td><td className="px-3 py-3">{almoxarifadoTotal(e.id)}</td><td className="px-3 py-3">{apropriadoTotal(e.id)}</td><td className="px-3 py-3">{manutencaoTotal(e.id)}</td><td className="px-3 py-3"><Badge variant="outline">{registros.length}</Badge></td><td className="px-3 py-3">
             <label className="inline-flex cursor-pointer items-center gap-2" title={e.ativo === false ? "Ativar equipamento" : "Desativar equipamento"}>
               <input type="checkbox" checked={e.ativo !== false} onChange={() => void alternarAtivo(e)} className="h-4 w-4 cursor-pointer rounded border-input accent-primary" />
               <span className="text-xs text-muted-foreground">{e.ativo === false ? "Inativo" : "Ativo"}</span>
             </label>
           </td><td className="px-3 py-3"><div className="flex justify-end gap-1"><Button variant="ghost" size="icon" title="Detalhes" onClick={() => void abrirDetalhes(e)}><Eye className="h-4 w-4" /></Button><Button variant="ghost" size="icon" title="Adicionar estoque" onClick={() => abrirNovoEstoque(e)}><Plus className="h-4 w-4" /></Button><Button variant="ghost" size="icon" title="Editar" onClick={() => abrirEdicao(e)}><Pencil className="h-4 w-4" /></Button><Button variant="ghost" size="icon" title="Excluir" onClick={() => void excluir(e)}><Trash2 className="h-4 w-4" /></Button></div></td></tr>; })}
-      {filtrados.length === 0 && <tr><td colSpan={8} className="py-12 text-center text-sm text-muted-foreground">{busca ? "Nenhum equipamento encontrado." : "Nenhum equipamento cadastrado."}</td></tr>}
+      {filtrados.length === 0 && <tr><td colSpan={10} className="py-12 text-center text-sm text-muted-foreground">{busca ? "Nenhum equipamento encontrado." : "Nenhum equipamento cadastrado."}</td></tr>}
       </tbody></table></div></CardContent></Card>
     </div>
 
-    <Dialog open={Boolean(equipamentoDetalhe)} onOpenChange={(open) => !open && setEquipamentoDetalhe(null)}><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-5xl"><DialogHeader><DialogTitle>Detalhes e registros de estoque</DialogTitle></DialogHeader>{equipamentoDetalhe && <div className="space-y-5"><div className="rounded-lg border bg-muted/30 p-4"><div className="flex items-start justify-between gap-4"><div><h2 className="text-xl font-semibold">{equipamentoDetalhe.nome}</h2><div className="mt-1 flex items-center gap-2"><p className="text-sm text-muted-foreground">{categoriaPorId.get(equipamentoDetalhe.categoria_id) ?? "Sem categoria"}</p><Badge variant={equipamentoDetalhe.ativo === false ? "outline" : "secondary"}>{equipamentoDetalhe.ativo === false ? "Inativo" : "Ativo"}</Badge></div></div><Button onClick={() => abrirNovoEstoque(equipamentoDetalhe)} disabled={equipamentoDetalhe.ativo === false}><Plus className="mr-2 h-4 w-4" />Adicionar estoque</Button></div></div><div className="grid gap-4 sm:grid-cols-3"><div className="rounded-lg border p-4"><p className="text-xs text-muted-foreground">Quantidade total</p><p className="mt-1 text-2xl font-semibold">{quantidadeTotal(equipamentoDetalhe.id)}</p></div><div className="rounded-lg border p-4"><p className="text-xs text-muted-foreground">Saldo total</p><p className="mt-1 text-2xl font-semibold">{saldoTotal(equipamentoDetalhe.id)}</p></div><div className="rounded-lg border p-4"><p className="text-xs text-muted-foreground">Registros de estoque</p><p className="mt-1 text-2xl font-semibold">{estoqueSelecionado.length}</p></div></div><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left"><th className="px-3 py-3">Proprietário</th><th className="px-3 py-3">Vínculo</th><th className="px-3 py-3">Equipe</th><th className="px-3 py-3">Identificação</th><th className="px-3 py-3">Serial</th><th className="px-3 py-3">Patrimônio</th><th className="px-3 py-3">Saldo</th><th className="px-3 py-3">Ativo</th><th className="px-3 py-3 text-right">Origem do registro</th></tr></thead><tbody>{estoqueSelecionado.map((e) => <tr key={e.id} className="border-b last:border-0"><td className="px-3 py-3">{empresaPorId.get(e.empresa_id) ?? "—"}</td><td className="px-3 py-3">{vinculoLabel(e.vinculo)}</td><td className="px-3 py-3">{e.equipe_id ? equipePorId.get(e.equipe_id) ?? "—" : "Projeto inteiro"}</td><td className="px-3 py-3">{e.identificacao ?? "—"}</td><td className="px-3 py-3">{e.serial ?? "—"}</td><td className="px-3 py-3">{e.patrimonio ?? "—"}</td><td className="px-3 py-3 font-medium">{e.quantidade - e.devolvido}</td><td className="px-3 py-3"><label className="inline-flex cursor-pointer items-center gap-2" title={e.ativo === false ? "Ativar registro" : "Desativar registro"}><input type="checkbox" checked={e.ativo !== false} onChange={() => void alternarEstoqueAtivo(e)} className="h-4 w-4 cursor-pointer rounded border-input accent-primary" /><span className="text-xs text-muted-foreground">{e.ativo === false ? "Inativo" : "Ativo"}</span></label></td><td className="px-3 py-3 text-right text-xs text-muted-foreground">Movimentação de entrada</td></tr>)}{estoqueSelecionado.length === 0 && <tr><td colSpan={9} className="py-8 text-center text-muted-foreground">Nenhum registro de estoque.</td></tr>}</tbody></table></div></div>}</DialogContent></Dialog>
+    <Dialog open={Boolean(equipamentoDetalhe)} onOpenChange={(open) => !open && setEquipamentoDetalhe(null)}><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-6xl"><DialogHeader><DialogTitle>Detalhes do equipamento</DialogTitle></DialogHeader>{equipamentoDetalhe && <div className="space-y-6">
+      <div className="rounded-lg border bg-muted/30 p-4"><div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"><div><h2 className="text-xl font-semibold">{equipamentoDetalhe.nome}</h2><div className="mt-2 flex flex-wrap items-center gap-2"><Badge variant="secondary">{categoriaPorId.get(equipamentoDetalhe.categoria_id) ?? "Sem categoria"}</Badge><Badge variant="outline">{equipamentoDetalhe.tipo_controle === "INDIVIDUAL" ? "Controle individual" : "Controle quantitativo"}</Badge><Badge variant={equipamentoDetalhe.ativo === false ? "outline" : "secondary"}>{equipamentoDetalhe.ativo === false ? "Inativo" : "Ativo"}</Badge></div><p className="mt-3 text-sm text-muted-foreground">{[equipamentoDetalhe.marca, equipamentoDetalhe.modelo].filter(Boolean).join(" • ") || "Marca/modelo não informados"}</p>{equipamentoDetalhe.descricao && <p className="mt-2 max-w-3xl text-sm">{equipamentoDetalhe.descricao}</p>}</div><Button onClick={() => abrirNovoEstoque(equipamentoDetalhe)} disabled={equipamentoDetalhe.ativo === false}><Plus className="mr-2 h-4 w-4" />Adicionar estoque</Button></div></div>
+      <div className="grid gap-3 sm:grid-cols-5"><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Saldo</p><p className="mt-1 text-xl font-semibold">{saldoTotal(equipamentoDetalhe.id)}</p></div><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Almoxarifado</p><p className="mt-1 text-xl font-semibold">{almoxarifadoTotal(equipamentoDetalhe.id)}</p></div><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Em uso</p><p className="mt-1 text-xl font-semibold">{apropriadoTotal(equipamentoDetalhe.id)}</p></div><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Manutenção</p><p className="mt-1 text-xl font-semibold">{manutencaoTotal(equipamentoDetalhe.id)}</p></div><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Registros físicos</p><p className="mt-1 text-xl font-semibold">{estoqueSelecionado.length}</p></div></div>
+      <div className="space-y-3"><div><h3 className="font-semibold">Estoque físico</h3><p className="text-sm text-muted-foreground">Cada linha representa um registro físico independente.</p></div><div className="overflow-x-auto rounded-lg border"><table className="w-full text-sm"><thead><tr className="border-b bg-muted/30 text-left"><th className="px-3 py-3">Proprietário</th><th className="px-3 py-3">Vínculo</th><th className="px-3 py-3">Localização atual</th><th className="px-3 py-3">Identificação</th><th className="px-3 py-3">Serial</th><th className="px-3 py-3">Patrimônio</th><th className="px-3 py-3">Saldo</th><th className="px-3 py-3">Ativo</th></tr></thead><tbody>{estoqueSelecionado.map((e) => <tr key={e.id} className="border-b last:border-0 align-top"><td className="px-3 py-3">{empresaPorId.get(e.empresa_id) ?? "—"}</td><td className="px-3 py-3">{vinculoLabel(e.vinculo)}</td><td className="px-3 py-3"><div className="space-y-1">{(alocacoesAtuais.get(e.id) ?? []).map((local) => <div key={`${local.tipo}:${local.id}`}><span>{rotuloLocal(local)}</span><span className="ml-2 text-xs text-muted-foreground">({local.quantidade})</span></div>)}{(alocacoesAtuais.get(e.id) ?? []).length === 0 && <span className="text-muted-foreground">Sem localização atual</span>}</div></td><td className="px-3 py-3">{e.identificacao ?? "—"}</td><td className="px-3 py-3">{e.serial ?? "—"}</td><td className="px-3 py-3">{e.patrimonio ?? "—"}</td><td className="px-3 py-3 font-medium">{e.quantidade - e.devolvido}</td><td className="px-3 py-3"><label className="inline-flex cursor-pointer items-center gap-2" title={e.ativo === false ? "Ativar registro" : "Desativar registro"}><input type="checkbox" checked={e.ativo !== false} onChange={() => void alternarEstoqueAtivo(e)} className="h-4 w-4 cursor-pointer rounded border-input accent-primary" /><span className="text-xs text-muted-foreground">{e.ativo === false ? "Inativo" : "Ativo"}</span></label></td></tr>)}{estoqueSelecionado.length === 0 && <tr><td colSpan={8} className="py-8 text-center text-muted-foreground">Nenhum registro de estoque.</td></tr>}</tbody></table></div></div>
+      <div className="space-y-3"><div><h3 className="font-semibold">Histórico de movimentações</h3><p className="text-sm text-muted-foreground">Histórico do equipamento, separado por registro físico.</p></div><div className="space-y-3">{estoqueSelecionado.map((e) => { const historico = movimentosPorEstoque.get(e.id) ?? []; const aberto = historicosAbertos.has(e.id); return <div key={e.id} className="rounded-lg border"><button type="button" className="flex w-full items-center justify-between gap-3 p-4 text-left hover:bg-muted/50" onClick={() => setHistoricosAbertos((atual) => { const proximo = new Set(atual); if (proximo.has(e.id)) proximo.delete(e.id); else proximo.add(e.id); return proximo; })}><div className="min-w-0"><div className="font-medium">{e.identificacao || e.patrimonio || e.serial || `Registro ${e.id.slice(0, 8)}`}</div><div className="mt-1 text-xs text-muted-foreground">{historico.length} {historico.length === 1 ? "movimentação registrada" : "movimentações registradas"}</div></div><div className="flex shrink-0 items-center gap-3"><Badge variant="outline">Saldo: {e.quantidade - e.devolvido}</Badge><ChevronDown className={`h-4 w-4 transition-transform ${aberto ? "rotate-180" : ""}`} /></div></button>{aberto && <div className="border-t px-4"><div className="divide-y">{historico.length === 0 ? <p className="py-4 text-sm text-muted-foreground">Nenhuma movimentação registrada.</p> : historico.map((movimento) => <div key={movimento.id} className="grid gap-2 py-3 sm:grid-cols-[110px_1fr_auto] sm:items-start"><div className="text-xs text-muted-foreground">{dataMovimentacao(movimento.data)}</div><div><div className="font-medium">{movimento.tipo}</div><div className="text-sm text-muted-foreground">{rotuloParticipante(movimento.tipo_origem, movimento.origem_id)} <span className="mx-1">→</span> {rotuloParticipante(movimento.tipo_destino, movimento.destino_id)}</div>{movimento.referencia_documento && <div className="mt-1 text-xs text-muted-foreground">Documento: {movimento.referencia_documento}</div>}{movimento.observacoes && <div className="mt-1 text-xs text-muted-foreground">{movimento.observacoes}</div>}</div><div className="text-sm font-medium sm:text-right">Qtd. {movimento.quantidade}</div></div>)}</div></div>}</div>; })}</div></div>
+    </div>}</DialogContent></Dialog>
 
     <Dialog open={dialogNovaCategoria} onOpenChange={setDialogNovaCategoria}><DialogContent className="sm:max-w-md"><DialogHeader><DialogTitle>Nova categoria de equipamento</DialogTitle></DialogHeader><div className="space-y-2 py-2"><Label>Nome da categoria</Label><Input value={novaCategoria} onChange={(e) => setNovaCategoria(e.target.value)} autoFocus onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void criarCategoria(); } }} /></div><DialogFooter><Button variant="outline" onClick={() => setDialogNovaCategoria(false)}>Cancelar</Button><Button onClick={() => void criarCategoria()} disabled={salvando}>{salvando ? "Criando..." : "Criar categoria"}</Button></DialogFooter></DialogContent></Dialog>
 
