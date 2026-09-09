@@ -13,6 +13,7 @@ export type EstadoEstoqueEquipamento = {
 
   quantidade: number;
   devolvido: number;
+  baixado: number;
   saldo: number;
 
   almoxarifado: number;
@@ -162,6 +163,7 @@ export const estadoEquipamentosRepo = {
     const funcionarios = new Map<string, number>();
 
     let devolvido = 0;
+    let baixado = 0;
 
     for (const movimentacao of ordenadas) {
       const quantidade = movimentacao.quantidade;
@@ -360,18 +362,16 @@ export const estadoEquipamentosRepo = {
             );
           }
 
-          if (
-            movimentacao.origem_id ===
-            equipes.manutencao.id
-          ) {
-            manutencao -= quantidade;
-
-            if (manutencao < 0) {
-              throw new Error(
-                "Quantidade insuficiente na Manutenção.",
-              );
-            }
+          if (movimentacao.origem_id === equipes.manutencao.id) {
+            // O equipamento já está contabilizado na Manutenção.
+            // Enviar para uma empresa externa muda apenas a informação
+            // da movimentação/localização externa; não altera a contagem
+            // de Manutenção. `empresa` é apenas um marcador interno para
+            // permitir identificar o retorno da manutenção externa.
+            empresa += quantidade;
           } else {
+            // Envio direto do Almoxarifado para manutenção externa:
+            // o equipamento passa a ser contabilizado em Manutenção.
             almoxarifado -= quantidade;
 
             if (almoxarifado < 0) {
@@ -379,20 +379,15 @@ export const estadoEquipamentosRepo = {
                 "Quantidade insuficiente no Almoxarifado.",
               );
             }
-          }
 
-          empresa += quantidade;
+            manutencao += quantidade;
+            empresa += quantidade;
+          }
 
           break;
         }
 
         case "RETORNO_MANUTENCAO": {
-          if (movimentacao.tipo_origem !== "EMPRESA") {
-            throw new Error(
-              "RETORNO_MANUTENCAO deve partir da empresa.",
-            );
-          }
-
           if (movimentacao.tipo_destino !== "EQUIPE") {
             throw new Error(
               "RETORNO_MANUTENCAO deve ter uma equipe como destino.",
@@ -408,6 +403,31 @@ export const estadoEquipamentosRepo = {
             );
           }
 
+          if (movimentacao.tipo_origem === "EQUIPE") {
+            if (movimentacao.origem_id !== equipes.manutencao.id) {
+              throw new Error(
+                "O retorno interno da manutenção deve partir da equipe Manutenção.",
+              );
+            }
+
+            manutencao -= quantidade;
+
+            if (manutencao < 0) {
+              throw new Error(
+                "Quantidade insuficiente na Manutenção para retorno ao Almoxarifado.",
+              );
+            }
+
+            almoxarifado += quantidade;
+            break;
+          }
+
+          if (movimentacao.tipo_origem !== "EMPRESA") {
+            throw new Error(
+              "RETORNO_MANUTENCAO deve partir da Manutenção ou da empresa de manutenção.",
+            );
+          }
+
           empresa -= quantidade;
 
           if (empresa < 0) {
@@ -416,8 +436,47 @@ export const estadoEquipamentosRepo = {
             );
           }
 
+          manutencao -= quantidade;
+
+          if (manutencao < 0) {
+            throw new Error(
+              "Quantidade insuficiente na Manutenção para retorno da manutenção externa.",
+            );
+          }
+
           almoxarifado += quantidade;
 
+          break;
+        }
+
+        case "BAIXA": {
+          if (movimentacao.tipo_origem !== "EQUIPE") {
+            throw new Error(
+              "BAIXA deve partir do Almoxarifado.",
+            );
+          }
+
+          if (movimentacao.origem_id !== equipes.almoxarifado.id) {
+            throw new Error(
+              "BAIXA somente pode ser realizada para equipamento que esteja no Almoxarifado.",
+            );
+          }
+
+          if (movimentacao.tipo_destino !== "EMPRESA") {
+            throw new Error(
+              "BAIXA deve registrar a empresa proprietária como destino administrativo.",
+            );
+          }
+
+          almoxarifado -= quantidade;
+
+          if (almoxarifado < 0) {
+            throw new Error(
+              "Quantidade insuficiente no Almoxarifado para baixa.",
+            );
+          }
+
+          baixado += quantidade;
           break;
         }
 
@@ -470,7 +529,6 @@ export const estadoEquipamentosRepo = {
             }
           }
 
-          empresa += quantidade;
           devolvido += quantidade;
 
           break;
@@ -489,11 +547,11 @@ export const estadoEquipamentosRepo = {
      * O saldo físico do projeto é tudo que ainda não foi
      * devolvido definitivamente ao fornecedor.
      */
-    const saldo = estoque.quantidade - devolvido;
+    const saldo = estoque.quantidade - devolvido - baixado;
 
     if (saldo < 0) {
       throw new Error(
-        "Estado inconsistente: devoluções ao fornecedor excedem a quantidade do estoque.",
+        "Estado inconsistente: devoluções e baixas excedem a quantidade do estoque.",
       );
     }
 
@@ -515,11 +573,15 @@ export const estadoEquipamentosRepo = {
      */
     const disponivel = almoxarifado;
 
+    // `empresa` é somente um marcador interno para os equipamentos
+    // enviados para manutenção externa. Ele nunca é somado como uma
+    // localização adicional e não altera a contagem de Manutenção.
     const totalDistribuido =
       almoxarifado +
       manutencao +
       apropriado +
-      empresa;
+      devolvido +
+      baixado;
 
     /*
      * Uma pequena proteção contra inconsistências no histórico.
@@ -538,6 +600,7 @@ export const estadoEquipamentosRepo = {
 
       quantidade: estoque.quantidade,
       devolvido,
+      baixado,
       saldo,
 
       almoxarifado,

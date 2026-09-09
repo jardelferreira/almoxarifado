@@ -50,6 +50,7 @@ export interface EstoqueEquipamento {
   serial?: string | null | undefined;
   quantidade: number;
   devolvido: number;
+  baixado?: number;
   status: EquipamentoStatus;
   ativo?: boolean;
   data_entrada: string;
@@ -76,7 +77,8 @@ export type MovimentacaoEquipamentoTipo =
   | "MANUTENCAO"
   | "RETIRADA_MANUTENCAO"
   | "RETORNO_MANUTENCAO"
-  | "DEVOLUCAO_FORNECEDOR";
+  | "DEVOLUCAO_FORNECEDOR"
+  | "BAIXA";
 
 export type MovimentacaoEquipamentoParte =
   | "EMPRESA"

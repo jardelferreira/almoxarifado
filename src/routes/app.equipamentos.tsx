@@ -236,12 +236,44 @@ function EquipamentosPage() {
         continue;
       }
 
+      if (movimento.tipo === "RETIRADA_MANUTENCAO") {
+        // A empresa externa é apenas o destino físico; o equipamento
+        // continua contabilizado no saldo de manutenção.
+        retirarDaOrigem(movimento.tipo_origem, movimento.origem_id);
+        estado.manutencao += q;
+        continue;
+      }
+
+      if (movimento.tipo === "RETORNO_MANUTENCAO") {
+        estado.manutencao = Math.max(0, estado.manutencao - q);
+        adicionarAoDestino(movimento.tipo_destino, movimento.destino_id);
+        continue;
+      }
+
+      if (movimento.tipo === "BAIXA") {
+        retirarDaOrigem(movimento.tipo_origem, movimento.origem_id);
+        continue;
+      }
+
       retirarDaOrigem(movimento.tipo_origem, movimento.origem_id);
       adicionarAoDestino(movimento.tipo_destino, movimento.destino_id);
     }
 
-    for (const estado of resultado.values()) {
-      estado.disponivel = Math.max(0, estado.almoxarifado);
+    for (const [id, estado] of resultado) {
+      const estoque = estoques.find((item) => item.id === id);
+      if (!estoque) continue;
+      const devolvido = movimentacoes
+        .filter((item) => item.estoque_equipamento_id === id && item.tipo === "DEVOLUCAO_FORNECEDOR")
+        .reduce((total, item) => total + item.quantidade, 0);
+      const baixado = movimentacoes
+        .filter((item) => item.estoque_equipamento_id === id && item.tipo === "BAIXA")
+        .reduce((total, item) => total + item.quantidade, 0);
+      estado.saldo = Math.max(0, estoque.quantidade - devolvido - baixado);
+      estado.quantidade = estoque.quantidade;
+      estado.almoxarifado = Math.max(0, estado.almoxarifado);
+      estado.manutencao = Math.max(0, estado.manutencao);
+      estado.apropriado = Math.max(0, estado.apropriado);
+      estado.disponivel = estado.almoxarifado;
     }
 
     return resultado;
@@ -517,8 +549,56 @@ function EquipamentosPage() {
         locais.set(`EQUIPE:${almoxarifado.id}`, { tipo: "EQUIPE", id: almoxarifado.id, quantidade: estoque.quantidade });
       }
 
+      const manutencao = equipes.find((e) => e.nome.trim().toLowerCase() === "manutenção" || e.nome.trim().toLowerCase() === "manutencao");
+
+      const removerLocal = (tipo: AlocacaoAtual["tipo"], id: string, quantidade: number) => {
+        const chave = `${tipo}:${id}`;
+        const local = locais.get(chave);
+        if (!local) return;
+        local.quantidade = Math.max(0, local.quantidade - quantidade);
+        if (local.quantidade === 0) locais.delete(chave);
+      };
+
+      const adicionarLocal = (tipo: AlocacaoAtual["tipo"], id: string, quantidade: number) => {
+        const chave = `${tipo}:${id}`;
+        const local = locais.get(chave);
+        if (local) local.quantidade += quantidade;
+        else locais.set(chave, { tipo, id, quantidade });
+      };
+
       for (const movimento of movimentosPorEstoque.get(estoque.id) ?? []) {
         if (movimento.tipo === "ENTRADA") continue;
+
+        if (movimento.tipo === "MANUTENCAO") {
+          removerLocal(movimento.tipo_origem, movimento.origem_id, movimento.quantidade);
+          if (manutencao) adicionarLocal("EQUIPE", manutencao.id, movimento.quantidade);
+          continue;
+        }
+
+        if (movimento.tipo === "RETIRADA_MANUTENCAO") {
+          // A ida para manutenção externa não cria uma localização "Empresa".
+          // O equipamento continua contabilizado em Manutenção; a informação
+          // de que ele foi enviado para fora fica registrada na movimentação.
+          if (movimento.origem_id === almoxarifado?.id) {
+            removerLocal("EQUIPE", movimento.origem_id, movimento.quantidade);
+            if (manutencao) adicionarLocal("EQUIPE", manutencao.id, movimento.quantidade);
+          }
+          continue;
+        }
+
+        if (movimento.tipo === "RETORNO_MANUTENCAO") {
+          // O retorno, seja de manutenção interna ou externa, traz o equipamento
+          // de volta da Manutenção para o Almoxarifado.
+          if (manutencao) removerLocal("EQUIPE", manutencao.id, movimento.quantidade);
+          if (almoxarifado) adicionarLocal("EQUIPE", almoxarifado.id, movimento.quantidade);
+          continue;
+        }
+
+        if (movimento.tipo === "BAIXA" || movimento.tipo === "DEVOLUCAO_FORNECEDOR") {
+          removerLocal(movimento.tipo_origem, movimento.origem_id, movimento.quantidade);
+          continue;
+        }
+
         const origemKey = `${movimento.tipo_origem}:${movimento.origem_id}`;
         const destinoKey = `${movimento.tipo_destino}:${movimento.destino_id}`;
         const origem = locais.get(origemKey);
@@ -581,8 +661,8 @@ function EquipamentosPage() {
     <Dialog open={Boolean(equipamentoDetalhe)} onOpenChange={(open) => !open && setEquipamentoDetalhe(null)}><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-6xl"><DialogHeader><DialogTitle>Detalhes do equipamento</DialogTitle></DialogHeader>{equipamentoDetalhe && <div className="space-y-6">
       <div className="rounded-lg border bg-muted/30 p-4"><div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"><div><h2 className="text-xl font-semibold">{equipamentoDetalhe.nome}</h2><div className="mt-2 flex flex-wrap items-center gap-2"><Badge variant="secondary">{categoriaPorId.get(equipamentoDetalhe.categoria_id) ?? "Sem categoria"}</Badge><Badge variant="outline">{equipamentoDetalhe.tipo_controle === "INDIVIDUAL" ? "Controle individual" : "Controle quantitativo"}</Badge><Badge variant={equipamentoDetalhe.ativo === false ? "outline" : "secondary"}>{equipamentoDetalhe.ativo === false ? "Inativo" : "Ativo"}</Badge></div><p className="mt-3 text-sm text-muted-foreground">{[equipamentoDetalhe.marca, equipamentoDetalhe.modelo].filter(Boolean).join(" • ") || "Marca/modelo não informados"}</p>{equipamentoDetalhe.descricao && <p className="mt-2 max-w-3xl text-sm">{equipamentoDetalhe.descricao}</p>}</div><Button onClick={() => abrirNovoEstoque(equipamentoDetalhe)} disabled={equipamentoDetalhe.ativo === false}><Plus className="mr-2 h-4 w-4" />Adicionar estoque</Button></div></div>
       <div className="grid gap-3 sm:grid-cols-5"><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Saldo</p><p className="mt-1 text-xl font-semibold">{saldoTotal(equipamentoDetalhe.id)}</p></div><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Almoxarifado</p><p className="mt-1 text-xl font-semibold">{almoxarifadoTotal(equipamentoDetalhe.id)}</p></div><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Em uso</p><p className="mt-1 text-xl font-semibold">{apropriadoTotal(equipamentoDetalhe.id)}</p></div><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Manutenção</p><p className="mt-1 text-xl font-semibold">{manutencaoTotal(equipamentoDetalhe.id)}</p></div><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Registros físicos</p><p className="mt-1 text-xl font-semibold">{estoqueSelecionado.length}</p></div></div>
-      <div className="space-y-3"><div><h3 className="font-semibold">Estoque físico</h3><p className="text-sm text-muted-foreground">Cada linha representa um registro físico independente.</p></div><div className="overflow-x-auto rounded-lg border"><table className="w-full text-sm"><thead><tr className="border-b bg-muted/30 text-left"><th className="px-3 py-3">Proprietário</th><th className="px-3 py-3">Vínculo</th><th className="px-3 py-3">Localização atual</th><th className="px-3 py-3">Identificação</th><th className="px-3 py-3">Serial</th><th className="px-3 py-3">Patrimônio</th><th className="px-3 py-3">Saldo</th><th className="px-3 py-3">Ativo</th></tr></thead><tbody>{estoqueSelecionado.map((e) => <tr key={e.id} className="border-b last:border-0 align-top"><td className="px-3 py-3">{empresaPorId.get(e.empresa_id) ?? "—"}</td><td className="px-3 py-3">{vinculoLabel(e.vinculo)}</td><td className="px-3 py-3"><div className="space-y-1">{(alocacoesAtuais.get(e.id) ?? []).map((local) => <div key={`${local.tipo}:${local.id}`}><span>{rotuloLocal(local)}</span><span className="ml-2 text-xs text-muted-foreground">({local.quantidade})</span></div>)}{(alocacoesAtuais.get(e.id) ?? []).length === 0 && <span className="text-muted-foreground">Sem localização atual</span>}</div></td><td className="px-3 py-3">{e.identificacao ?? "—"}</td><td className="px-3 py-3">{e.serial ?? "—"}</td><td className="px-3 py-3">{e.patrimonio ?? "—"}</td><td className="px-3 py-3 font-medium">{e.quantidade - e.devolvido}</td><td className="px-3 py-3"><label className="inline-flex cursor-pointer items-center gap-2" title={e.ativo === false ? "Ativar registro" : "Desativar registro"}><input type="checkbox" checked={e.ativo !== false} onChange={() => void alternarEstoqueAtivo(e)} className="h-4 w-4 cursor-pointer rounded border-input accent-primary" /><span className="text-xs text-muted-foreground">{e.ativo === false ? "Inativo" : "Ativo"}</span></label></td></tr>)}{estoqueSelecionado.length === 0 && <tr><td colSpan={8} className="py-8 text-center text-muted-foreground">Nenhum registro de estoque.</td></tr>}</tbody></table></div></div>
-      <div className="space-y-3"><div><h3 className="font-semibold">Histórico de movimentações</h3><p className="text-sm text-muted-foreground">Histórico do equipamento, separado por registro físico.</p></div><div className="space-y-3">{estoqueSelecionado.map((e) => { const historico = movimentosPorEstoque.get(e.id) ?? []; const aberto = historicosAbertos.has(e.id); return <div key={e.id} className="rounded-lg border"><button type="button" className="flex w-full items-center justify-between gap-3 p-4 text-left hover:bg-muted/50" onClick={() => setHistoricosAbertos((atual) => { const proximo = new Set(atual); if (proximo.has(e.id)) proximo.delete(e.id); else proximo.add(e.id); return proximo; })}><div className="min-w-0"><div className="font-medium">{e.identificacao || e.patrimonio || e.serial || `Registro ${e.id.slice(0, 8)}`}</div><div className="mt-1 text-xs text-muted-foreground">{historico.length} {historico.length === 1 ? "movimentação registrada" : "movimentações registradas"}</div></div><div className="flex shrink-0 items-center gap-3"><Badge variant="outline">Saldo: {e.quantidade - e.devolvido}</Badge><ChevronDown className={`h-4 w-4 transition-transform ${aberto ? "rotate-180" : ""}`} /></div></button>{aberto && <div className="border-t px-4"><div className="divide-y">{historico.length === 0 ? <p className="py-4 text-sm text-muted-foreground">Nenhuma movimentação registrada.</p> : historico.map((movimento) => <div key={movimento.id} className="grid gap-2 py-3 sm:grid-cols-[110px_1fr_auto] sm:items-start"><div className="text-xs text-muted-foreground">{dataMovimentacao(movimento.data)}</div><div><div className="font-medium">{movimento.tipo}</div><div className="text-sm text-muted-foreground">{rotuloParticipante(movimento.tipo_origem, movimento.origem_id)} <span className="mx-1">→</span> {rotuloParticipante(movimento.tipo_destino, movimento.destino_id)}</div>{movimento.referencia_documento && <div className="mt-1 text-xs text-muted-foreground">Documento: {movimento.referencia_documento}</div>}{movimento.observacoes && <div className="mt-1 text-xs text-muted-foreground">{movimento.observacoes}</div>}</div><div className="text-sm font-medium sm:text-right">Qtd. {movimento.quantidade}</div></div>)}</div></div>}</div>; })}</div></div>
+      <div className="space-y-3"><div><h3 className="font-semibold">Estoque físico</h3><p className="text-sm text-muted-foreground">Cada linha representa um registro físico independente.</p></div><div className="overflow-x-auto rounded-lg border"><table className="w-full text-sm"><thead><tr className="border-b bg-muted/30 text-left"><th className="px-3 py-3">Proprietário</th><th className="px-3 py-3">Vínculo</th><th className="px-3 py-3">Localização atual</th><th className="px-3 py-3">Identificação</th><th className="px-3 py-3">Serial</th><th className="px-3 py-3">Patrimônio</th><th className="px-3 py-3">Saldo</th><th className="px-3 py-3">Ativo</th></tr></thead><tbody>{estoqueSelecionado.map((e) => <tr key={e.id} className="border-b last:border-0 align-top"><td className="px-3 py-3">{empresaPorId.get(e.empresa_id) ?? "—"}</td><td className="px-3 py-3">{vinculoLabel(e.vinculo)}</td><td className="px-3 py-3"><div className="space-y-1">{(alocacoesAtuais.get(e.id) ?? []).map((local) => <div key={`${local.tipo}:${local.id}`}><span>{rotuloLocal(local)}</span><span className="ml-2 text-xs text-muted-foreground">({local.quantidade})</span></div>)}{(alocacoesAtuais.get(e.id) ?? []).length === 0 && <span className="text-muted-foreground">Sem localização atual</span>}</div></td><td className="px-3 py-3">{e.identificacao ?? "—"}</td><td className="px-3 py-3">{e.serial ?? "—"}</td><td className="px-3 py-3">{e.patrimonio ?? "—"}</td><td className="px-3 py-3 font-medium">{saldoTotal(e.id)}</td><td className="px-3 py-3"><label className="inline-flex cursor-pointer items-center gap-2" title={e.ativo === false ? "Ativar registro" : "Desativar registro"}><input type="checkbox" checked={e.ativo !== false} onChange={() => void alternarEstoqueAtivo(e)} className="h-4 w-4 cursor-pointer rounded border-input accent-primary" /><span className="text-xs text-muted-foreground">{e.ativo === false ? "Inativo" : "Ativo"}</span></label></td></tr>)}{estoqueSelecionado.length === 0 && <tr><td colSpan={8} className="py-8 text-center text-muted-foreground">Nenhum registro de estoque.</td></tr>}</tbody></table></div></div>
+      <div className="space-y-3"><div><h3 className="font-semibold">Histórico de movimentações</h3><p className="text-sm text-muted-foreground">Histórico do equipamento, separado por registro físico.</p></div><div className="space-y-3">{estoqueSelecionado.map((e) => { const historico = movimentosPorEstoque.get(e.id) ?? []; const aberto = historicosAbertos.has(e.id); return <div key={e.id} className="rounded-lg border"><button type="button" className="flex w-full items-center justify-between gap-3 p-4 text-left hover:bg-muted/50" onClick={() => setHistoricosAbertos((atual) => { const proximo = new Set(atual); if (proximo.has(e.id)) proximo.delete(e.id); else proximo.add(e.id); return proximo; })}><div className="min-w-0"><div className="font-medium">{e.identificacao || e.patrimonio || e.serial || `Registro ${e.id.slice(0, 8)}`}</div><div className="mt-1 text-xs text-muted-foreground">{historico.length} {historico.length === 1 ? "movimentação registrada" : "movimentações registradas"}</div></div><div className="flex shrink-0 items-center gap-3"><Badge variant="outline">Saldo: {saldoTotal(e.id)}</Badge><ChevronDown className={`h-4 w-4 transition-transform ${aberto ? "rotate-180" : ""}`} /></div></button>{aberto && <div className="border-t px-4"><div className="divide-y">{historico.length === 0 ? <p className="py-4 text-sm text-muted-foreground">Nenhuma movimentação registrada.</p> : historico.map((movimento) => <div key={movimento.id} className="grid gap-2 py-3 sm:grid-cols-[110px_1fr_auto] sm:items-start"><div className="text-xs text-muted-foreground">{dataMovimentacao(movimento.data)}</div><div><div className="font-medium">{movimento.tipo}</div><div className="text-sm text-muted-foreground">{rotuloParticipante(movimento.tipo_origem, movimento.origem_id)} <span className="mx-1">→</span> {rotuloParticipante(movimento.tipo_destino, movimento.destino_id)}</div>{movimento.referencia_documento && <div className="mt-1 text-xs text-muted-foreground">Documento: {movimento.referencia_documento}</div>}{movimento.observacoes && <div className="mt-1 text-xs text-muted-foreground">{movimento.observacoes}</div>}</div><div className="text-sm font-medium sm:text-right">Qtd. {movimento.quantidade}</div></div>)}</div></div>}</div>; })}</div></div>
     </div>}</DialogContent></Dialog>
 
     <Dialog open={dialogNovaCategoria} onOpenChange={setDialogNovaCategoria}><DialogContent className="sm:max-w-md"><DialogHeader><DialogTitle>Nova categoria de equipamento</DialogTitle></DialogHeader><div className="space-y-2 py-2"><Label>Nome da categoria</Label><Input value={novaCategoria} onChange={(e) => setNovaCategoria(e.target.value)} autoFocus onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void criarCategoria(); } }} /></div><DialogFooter><Button variant="outline" onClick={() => setDialogNovaCategoria(false)}>Cancelar</Button><Button onClick={() => void criarCategoria()} disabled={salvando}>{salvando ? "Criando..." : "Criar categoria"}</Button></DialogFooter></DialogContent></Dialog>

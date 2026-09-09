@@ -51,6 +51,7 @@ type EstadoUI = {
   empresa: number;
   funcionarios: Map<string, number>;
   devolvido: number;
+  baixado: number;
   saldo: number;
 };
 
@@ -68,6 +69,7 @@ type Formulario = {
   patrimonio: string;
   identificacao: string;
   serial: string;
+  motivoBaixa: string;
   data: string;
   referenciaDocumento: string;
   observacoes: string;
@@ -89,6 +91,7 @@ const formularioInicial: Formulario = {
   patrimonio: "",
   identificacao: "",
   serial: "",
+  motivoBaixa: "",
   data: hoje(),
   referenciaDocumento: "",
   observacoes: "",
@@ -99,10 +102,11 @@ const tipoLabels: Record<MovimentacaoEquipamentoTipo, string> = {
   SAIDA: "Saída para funcionário",
   DEVOLUCAO: "Devolução do funcionário",
   TRANSFERENCIA: "Transferência entre funcionários",
-  MANUTENCAO: "Envio para manutenção",
-  RETIRADA_MANUTENCAO: "Retirada da manutenção",
+  MANUTENCAO: "Sinalizar para manutenção",
+  RETIRADA_MANUTENCAO: "Enviar para manutenção",
   RETORNO_MANUTENCAO: "Retorno da manutenção",
   DEVOLUCAO_FORNECEDOR: "Devolução ao fornecedor",
+  BAIXA: "Baixa definitiva",
 };
 
 const parteLabels: Record<MovimentacaoEquipamentoParte, string> = {
@@ -218,6 +222,7 @@ function MovimentacoesEquipamentosPage() {
         empresa: 0,
         funcionarios: new Map(),
         devolvido: 0,
+        baixado: 0,
         saldo: stock.quantidade,
       });
     }
@@ -263,16 +268,29 @@ function MovimentacoesEquipamentosPage() {
         case "RETIRADA_MANUTENCAO":
           if (mov.tipo_origem === "EQUIPE") {
             if (mov.origem_id === equipesOperacionais.manutencao?.id) {
-              estado.manutencao -= mov.quantidade;
+              // Continua contado em Manutenção; apenas muda sua localização
+              // física para a empresa externa.
+              estado.empresa += mov.quantidade;
             } else {
+              // Envio direto do Almoxarifado para manutenção externa.
               estado.almoxarifado -= mov.quantidade;
+              estado.manutencao += mov.quantidade;
+              estado.empresa += mov.quantidade;
             }
           }
-          estado.empresa += mov.quantidade;
           break;
         case "RETORNO_MANUTENCAO":
-          estado.empresa -= mov.quantidade;
+          if (mov.tipo_origem === "EQUIPE") {
+            estado.manutencao -= mov.quantidade;
+          } else {
+            estado.empresa -= mov.quantidade;
+            estado.manutencao -= mov.quantidade;
+          }
           estado.almoxarifado += mov.quantidade;
+          break;
+        case "BAIXA":
+          estado.almoxarifado -= mov.quantidade;
+          estado.baixado += mov.quantidade;
           break;
         case "DEVOLUCAO_FORNECEDOR":
           if (mov.tipo_origem === "EQUIPE") {
@@ -286,7 +304,9 @@ function MovimentacoesEquipamentosPage() {
           break;
       }
 
-      estado.saldo = Math.max(0, stockSaldo(estado));
+      if (mov.tipo === "DEVOLUCAO_FORNECEDOR" || mov.tipo === "BAIXA") {
+        estado.saldo = Math.max(0, estado.saldo - mov.quantidade);
+      }
     }
 
     return resultado;
@@ -363,10 +383,16 @@ function MovimentacoesEquipamentosPage() {
     equipesOperacionais.almoxarifado?.id,
   ]);
 
-  const almoxarifadoTemEquipamentos = useMemo(
-    () => estoquesDaOrigemManutencao.length > 0 && formulario.origemParte === "EQUIPE",
-    [estoquesDaOrigemManutencao, formulario.origemParte],
-  );
+  const almoxarifadoTemEquipamentos = useMemo(() => {
+    const almoxarifadoId = equipesOperacionais.almoxarifado?.id;
+    if (!almoxarifadoId) return false;
+
+    return estoques.some((stock) => {
+      if (stock.ativo === false) return false;
+      if (equipamentoPorId.get(stock.equipamento_id)?.ativo === false) return false;
+      return (estados.get(stock.id)?.almoxarifado ?? 0) > 0;
+    });
+  }, [estoques, estados, equipamentoPorId, equipesOperacionais.almoxarifado?.id]);
 
   // Registros físicos disponíveis para retirada da manutenção.
   // A origem pode ser a equipe Manutenção ou, quando o equipamento estiver
@@ -402,6 +428,37 @@ function MovimentacoesEquipamentosPage() {
     estados,
   ]);
 
+  const estoquesParaRetornoManutencao = useMemo(() => {
+    if (formulario.tipo !== "RETORNO_MANUTENCAO") return [];
+
+    return estoques.filter((stock) => {
+      if (stock.ativo === false) return false;
+      if (equipamentoPorId.get(stock.equipamento_id)?.ativo === false) return false;
+      const estado = estados.get(stock.id);
+      if (!estado) return false;
+      return estado.manutencao > 0;
+    });
+  }, [
+    formulario.tipo,
+    formulario.origemId,
+    equipesOperacionais.manutencao?.id,
+    estoques,
+    estados,
+    equipamentoPorId,
+  ]);
+
+  const estoquesParaBaixa = useMemo(() => {
+    if (formulario.tipo !== "BAIXA") return [];
+
+    return estoques.filter((stock) => {
+      if (stock.ativo === false) return false;
+      if (equipamentoPorId.get(stock.equipamento_id)?.ativo === false) return false;
+      const estado = estados.get(stock.id);
+      if (!estado) return false;
+      return estado.saldo > 0 && estado.almoxarifado === estado.saldo;
+    });
+  }, [formulario.tipo, estoques, estados, equipamentoPorId]);
+
   const estoquesDisponiveis = useMemo(() => {
     return estoques.filter((stock) => {
       if (stock.ativo === false) return false;
@@ -431,7 +488,9 @@ function MovimentacoesEquipamentosPage() {
         case "RETIRADA_MANUTENCAO":
           return estado.almoxarifado > 0 || estado.manutencao > 0;
         case "RETORNO_MANUTENCAO":
-          return estado.empresa > 0;
+          return estado.manutencao > 0 || estado.empresa > 0;
+        case "BAIXA":
+          return estado.saldo > 0 && estado.almoxarifado === estado.saldo;
         case "DEVOLUCAO_FORNECEDOR":
           return estado.almoxarifado > 0 || estado.manutencao > 0;
         case "ENTRADA":
@@ -451,7 +510,11 @@ function MovimentacoesEquipamentosPage() {
         ? estoquesDaOrigemManutencao
         : formulario.tipo === "RETIRADA_MANUTENCAO"
           ? estoquesDaOrigemRetirada
-          : estoquesDisponiveis;
+          : formulario.tipo === "RETORNO_MANUTENCAO"
+            ? estoquesParaRetornoManutencao
+            : formulario.tipo === "BAIXA"
+              ? estoquesParaBaixa
+              : estoquesDisponiveis;
 
     const permitido = listaPermitida.some(
       (stock) => stock.id === formulario.estoqueEquipamentoId,
@@ -475,6 +538,8 @@ function MovimentacoesEquipamentosPage() {
     estoquesDoFuncionario,
     estoquesDaOrigemManutencao,
     estoquesDaOrigemRetirada,
+    estoquesParaRetornoManutencao,
+    estoquesParaBaixa,
     estoquesDisponiveis,
   ]);
 
@@ -495,6 +560,26 @@ function MovimentacoesEquipamentosPage() {
     }
     return mapa;
   }, [estoques]);
+
+  const empresaManutencaoPorEstoque = useMemo(() => {
+    const mapa = new Map<string, string>();
+    const ordenadas = [...movimentacoes].sort((a, b) => {
+      const chaveA = `${a.data}|${a.criado_em}`;
+      const chaveB = `${b.data}|${b.criado_em}`;
+      return chaveA.localeCompare(chaveB);
+    });
+
+    for (const movimentacao of ordenadas) {
+      if (movimentacao.tipo === "RETIRADA_MANUTENCAO" && movimentacao.tipo_destino === "EMPRESA") {
+        mapa.set(movimentacao.estoque_equipamento_id, movimentacao.destino_id);
+      }
+      if (movimentacao.tipo === "RETORNO_MANUTENCAO" && movimentacao.tipo_origem === "EMPRESA") {
+        mapa.delete(movimentacao.estoque_equipamento_id);
+      }
+    }
+
+    return mapa;
+  }, [movimentacoes]);
 
   const fluxo = useMemo(() => {
     const tipo = formulario.tipo;
@@ -529,14 +614,36 @@ function MovimentacoesEquipamentosPage() {
     }
     if (tipo === "RETIRADA_MANUTENCAO") {
       const origemId = formulario.origemId || manut?.id || almox?.id || "";
-      const origemParte = formulario.origemParte === "EQUIPE" ? "EQUIPE" as const : "EQUIPE" as const;
-      return { origemParte, origemId, destinoParte: "EMPRESA" as const, destinoId: estoqueSelecionado?.empresa_id ?? "", origemLabel: origemId === manut?.id ? "Manutenção" : "Almoxarifado", destinoLabel: "Empresa proprietária" };
+      const destinoId = formulario.destinoId || "";
+      const origemParte = "EQUIPE" as const;
+      return { origemParte, origemId, destinoParte: "EMPRESA" as const, destinoId, origemLabel: origemId === manut?.id ? "Manutenção" : "Almoxarifado", destinoLabel: "Empresa de manutenção" };
     }
     if (tipo === "RETORNO_MANUTENCAO") {
-      return { origemParte: "EMPRESA" as const, origemId: estoqueSelecionado?.empresa_id ?? "", destinoParte: "EQUIPE" as const, destinoId: almox?.id ?? "", origemLabel: "Empresa proprietária", destinoLabel: "Almoxarifado" };
+      const origemEmpresa = formulario.origemId === "__EMPRESA_MANUTENCAO__";
+      const empresaId = estoqueSelecionado
+        ? empresaManutencaoPorEstoque.get(estoqueSelecionado.id) ?? ""
+        : "";
+      return {
+        origemParte: origemEmpresa ? "EMPRESA" as const : "EQUIPE" as const,
+        origemId: origemEmpresa ? empresaId : formulario.origemId,
+        destinoParte: "EQUIPE" as const,
+        destinoId: almox?.id ?? "",
+        origemLabel: origemEmpresa ? "Empresa de manutenção" : "Manutenção",
+        destinoLabel: "Almoxarifado",
+      };
+    }
+    if (tipo === "BAIXA") {
+      return {
+        origemParte: "EQUIPE" as const,
+        origemId: almox?.id ?? "",
+        destinoParte: "EMPRESA" as const,
+        destinoId: estoqueSelecionado?.empresa_id ?? "",
+        origemLabel: "Almoxarifado",
+        destinoLabel: "Baixa definitiva",
+      };
     }
     return { origemParte: "EQUIPE" as const, origemId: formulario.origemId, destinoParte: "EMPRESA" as const, destinoId: estoqueSelecionado?.empresa_id ?? "", origemLabel: formulario.origemId === manut?.id ? "Manutenção" : "Almoxarifado", destinoLabel: "Empresa proprietária" };
-  }, [formulario, equipesOperacionais, estoqueSelecionado]);
+  }, [formulario, equipesOperacionais, estoqueSelecionado, empresaManutencaoPorEstoque]);
 
   const maxQuantidade = useMemo(() => {
     if (formulario.tipo === "ENTRADA") {
@@ -558,7 +665,13 @@ function MovimentacoesEquipamentosPage() {
           ? estadoSelecionado.manutencao
           : estadoSelecionado.almoxarifado;
       case "RETORNO_MANUTENCAO":
-        return estadoSelecionado.empresa;
+        return formulario.origemId === "__EMPRESA_MANUTENCAO__"
+          ? estadoSelecionado.empresa
+          : Math.max(0, estadoSelecionado.manutencao - estadoSelecionado.empresa);
+      case "BAIXA":
+        return estadoSelecionado.almoxarifado === estadoSelecionado.saldo
+          ? estadoSelecionado.almoxarifado
+          : 0;
       case "DEVOLUCAO_FORNECEDOR":
         return formulario.origemId === equipesOperacionais.manutencao?.id
           ? estadoSelecionado.manutencao
@@ -605,22 +718,29 @@ function MovimentacoesEquipamentosPage() {
       patrimonio: "",
       identificacao: "",
       serial: "",
+      motivoBaixa: "",
     }));
   }
 
   function selecionarEstoque(id: string) {
     const stock = estoquePorId.get(id);
+    const estado = stock ? estados.get(stock.id) : undefined;
     setFormulario((atual) => ({
       ...atual,
       estoqueEquipamentoId: id,
       // Na devolução, o funcionário é selecionado primeiro e deve permanecer
       // como origem quando o registro físico for escolhido.
-      origemId: (
+      origemId: atual.tipo === "RETORNO_MANUTENCAO"
+        ? (estado?.empresa ?? 0) > 0
+          ? "__EMPRESA_MANUTENCAO__"
+          : equipesOperacionais.manutencao?.id ?? ""
+        : (
         atual.tipo === "DEVOLUCAO" ||
         atual.tipo === "TRANSFERENCIA" ||
         atual.tipo === "MANUTENCAO" ||
-        atual.tipo === "RETIRADA_MANUTENCAO"
-      )
+        atual.tipo === "RETIRADA_MANUTENCAO" ||
+        atual.tipo === "BAIXA"
+        )
         ? atual.origemId
         : "",
       destinoId: "",
@@ -714,6 +834,12 @@ function MovimentacoesEquipamentosPage() {
       if (tipo === "DEVOLUCAO_FORNECEDOR" && stock.vinculo === "PROPRIO") {
         return toast.error("Equipamentos próprios não podem ser devolvidos ao fornecedor.");
       }
+      if (tipo === "BAIXA" && !formulario.motivoBaixa.trim()) {
+        return toast.error("Informe o motivo da baixa.");
+      }
+      if (tipo === "BAIXA" && (estado.almoxarifado !== estado.saldo || estado.saldo <= 0)) {
+        return toast.error("A baixa somente pode ser realizada quando o equipamento estiver exclusivamente no Almoxarifado.");
+      }
 
       if (tipo === "SAIDA" && estado.almoxarifado <= 0) {
         return toast.error("Este registro não possui quantidade disponível no Almoxarifado.");
@@ -751,10 +877,22 @@ function MovimentacoesEquipamentosPage() {
       if (tipo === "MANUTENCAO" && formulario.origemParte !== "FUNCIONARIO" && formulario.origemParte !== "EQUIPE") {
         return toast.error("Selecione a origem da manutenção.");
       }
+      if (tipo === "RETORNO_MANUTENCAO" && formulario.origemId !== equipesOperacionais.manutencao?.id && formulario.origemId !== "__EMPRESA_MANUTENCAO__") {
+        return toast.error("Selecione se o retorno é da Manutenção interna ou da empresa de manutenção.");
+      }
+      if (tipo === "BAIXA" && formulario.origemId && formulario.origemId !== equipesOperacionais.almoxarifado?.id) {
+        return toast.error("A baixa somente pode partir do Almoxarifado.");
+      }
       if (tipo === "RETIRADA_MANUTENCAO" || tipo === "DEVOLUCAO_FORNECEDOR") {
         if (tipo === "RETIRADA_MANUTENCAO") {
           if (formulario.origemId !== equipesOperacionais.manutencao?.id && formulario.origemId !== equipesOperacionais.almoxarifado?.id) {
             return toast.error("Selecione a origem.");
+          }
+          if (!formulario.destinoId) {
+            return toast.error("Selecione a empresa que fará a manutenção.");
+          }
+          if (formulario.destinoId && !empresas.some((empresa) => empresa.id === formulario.destinoId && empresa.ativo)) {
+            return toast.error("A empresa de manutenção selecionada é inválida.");
           }
         } else if (formulario.origemParte !== "EQUIPE") {
           return toast.error("Selecione a equipe de origem.");
@@ -774,7 +912,7 @@ function MovimentacoesEquipamentosPage() {
         destino_id: destinoId,
         data: formulario.data,
         referencia_documento: formulario.referenciaDocumento.trim() || null,
-        observacoes: formulario.observacoes.trim() || null,
+        observacoes: tipo === "BAIXA" ? formulario.motivoBaixa.trim() : formulario.observacoes.trim() || null,
       });
 
       await carregar();
@@ -1012,7 +1150,7 @@ function MovimentacoesEquipamentosPage() {
                   </div>
                 )}
 
-                {formulario.tipo !== "MANUTENCAO" && formulario.tipo !== "RETIRADA_MANUTENCAO" && renderEstoqueSelect()}
+                {!['MANUTENCAO', 'RETIRADA_MANUTENCAO', 'RETORNO_MANUTENCAO', 'BAIXA'].includes(formulario.tipo) && renderEstoqueSelect()}
 
                 {formulario.tipo === "RETIRADA_MANUTENCAO" && (
                   <>
@@ -1085,6 +1223,111 @@ function MovimentacoesEquipamentosPage() {
                           })}
                         </SelectContent>
                       </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Empresa de manutenção</Label>
+                      <Select
+                        value={formulario.destinoId}
+                        onValueChange={(value) => atualizar("destinoId", value)}
+                        disabled={!formulario.estoqueEquipamentoId}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione a empresa que fará a manutenção" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {empresas.length === 0 ? (
+                            <SelectItem value="__vazio__" disabled>Nenhuma empresa disponível</SelectItem>
+                          ) : empresas.map((empresa) => (
+                            <SelectItem key={empresa.id} value={empresa.id}>{empresa.nome}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">A empresa selecionada será registrada como destino da movimentação. O equipamento continuará contabilizado em Manutenção.</p>
+                    </div>
+                  </>
+                )}
+
+                {formulario.tipo === "RETORNO_MANUTENCAO" && (
+                  <>
+                    <div className="space-y-2">
+                      <Label>Origem do retorno</Label>
+                      <Select
+                        value={formulario.origemId}
+                        onValueChange={(value) => {
+                          atualizar("origemId", value);
+                          atualizar("estoqueEquipamentoId", "");
+                          atualizar("quantidade", "1");
+                        }}
+                      >
+                        <SelectTrigger><SelectValue placeholder="Selecione a origem do retorno" /></SelectTrigger>
+                        <SelectContent>
+                          {equipesOperacionais.manutencao && (
+                            <SelectItem value={equipesOperacionais.manutencao.id}>Manutenção</SelectItem>
+                          )}
+                          {estoques.some((stock) => (estados.get(stock.id)?.empresa ?? 0) > 0) && (
+                            <SelectItem value="__EMPRESA_MANUTENCAO__">Empresa de manutenção</SelectItem>
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Equipamento em manutenção</Label>
+                      <Select
+                        value={formulario.estoqueEquipamentoId}
+                        onValueChange={selecionarEstoque}
+                        disabled={!formulario.origemId}
+                      >
+                        <SelectTrigger><SelectValue placeholder={!formulario.origemId ? "Selecione primeiro a origem" : "Selecione o equipamento"} /></SelectTrigger>
+                        <SelectContent>
+                          {estoquesParaRetornoManutencao.length === 0 ? (
+                            <SelectItem value="__vazio__" disabled>Nenhum equipamento disponível para retorno</SelectItem>
+                          ) : estoquesParaRetornoManutencao.map((stock) => {
+                            const equipamento = equipamentoPorId.get(stock.equipamento_id);
+                            const estado = estados.get(stock.id);
+                            const quantidadeDisponivel = formulario.origemId === "__EMPRESA_MANUTENCAO__"
+                              ? Math.min(estado?.empresa ?? 0, estado?.manutencao ?? 0)
+                              : estado?.manutencao ?? 0;
+                            return (
+                              <SelectItem key={stock.id} value={stock.id}>
+                                {equipamento?.nome ?? "Equipamento"}{stock.identificacao ? ` — ${stock.identificacao}` : ""} · disponível: {quantidadeDisponivel}
+                              </SelectItem>
+                            );
+                          })}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </>
+                )}
+
+                {formulario.tipo === "BAIXA" && (
+                  <>
+                    <div className="rounded-lg border bg-muted/30 p-4 text-sm">
+                      <strong>Almoxarifado</strong> <ArrowRight className="mx-2 inline h-4 w-4" /> <strong>Baixa definitiva</strong>
+                      <p className="mt-1 text-xs text-muted-foreground">Somente equipamentos que estejam exclusivamente no Almoxarifado podem receber baixa.</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Equipamento em estoque</Label>
+                      <Select value={formulario.estoqueEquipamentoId} onValueChange={selecionarEstoque}>
+                        <SelectTrigger><SelectValue placeholder="Selecione o equipamento para baixa" /></SelectTrigger>
+                        <SelectContent>
+                          {estoquesParaBaixa.length === 0 ? (
+                            <SelectItem value="__vazio__" disabled>Nenhum equipamento disponível para baixa</SelectItem>
+                          ) : estoquesParaBaixa.map((stock) => {
+                            const equipamento = equipamentoPorId.get(stock.equipamento_id);
+                            const estado = estados.get(stock.id);
+                            return (
+                              <SelectItem key={stock.id} value={stock.id}>
+                                {equipamento?.nome ?? "Equipamento"}{stock.identificacao ? ` — ${stock.identificacao}` : ""} · disponível: {estado?.almoxarifado ?? 0}
+                              </SelectItem>
+                            );
+                          })}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Motivo da baixa *</Label>
+                      <textarea className="min-h-24 w-full rounded-md border bg-background px-3 py-2 text-sm" value={formulario.motivoBaixa} onChange={(event) => atualizar("motivoBaixa", event.target.value)} placeholder="Informe o motivo da baixa definitiva..." />
                     </div>
                   </>
                 )}
@@ -1185,18 +1428,15 @@ function MovimentacoesEquipamentosPage() {
                 )}
 
                 {estadoSelecionado && (
-                  <div className="grid grid-cols-2 gap-3 rounded-lg border p-4 text-sm sm:grid-cols-5">
+                  <div className="grid grid-cols-2 gap-3 rounded-lg border p-4 text-sm sm:grid-cols-4">
                     <div><div className="text-muted-foreground">Almoxarifado</div><strong>{estadoSelecionado.almoxarifado}</strong></div>
                     <div><div className="text-muted-foreground">Manutenção</div><strong>{estadoSelecionado.manutencao}</strong></div>
                     <div><div className="text-muted-foreground">Em uso</div><strong>{[...estadoSelecionado.funcionarios.values()].reduce((a, b) => a + b, 0)}</strong></div>
-                    <div><div className="text-muted-foreground">Empresa</div><strong>{estadoSelecionado.empresa}</strong></div>
                     <div><div className="text-muted-foreground">Saldo</div><strong>{estadoSelecionado.saldo}</strong></div>
                   </div>
                 )}
 
                 {formulario.tipo === "DEVOLUCAO_FORNECEDOR" && <div className="space-y-2"><Label>Equipe de origem</Label><Select value={formulario.origemId} onValueChange={(value) => atualizar("origemId", value)}><SelectTrigger><SelectValue placeholder="Selecione a origem" /></SelectTrigger><SelectContent>{(estadoSelecionado?.almoxarifado ?? 0) > 0 && <SelectItem value={equipesOperacionais.almoxarifado?.id ?? "almox"}>Almoxarifado · {estadoSelecionado?.almoxarifado}</SelectItem>}{(estadoSelecionado?.manutencao ?? 0) > 0 && <SelectItem value={equipesOperacionais.manutencao?.id ?? "manut"}>Manutenção · {estadoSelecionado?.manutencao}</SelectItem>}</SelectContent></Select></div>}
-
-                {formulario.tipo === "RETORNO_MANUTENCAO" && <div className="rounded-lg border bg-muted/30 p-4 text-sm"><strong>Empresa proprietária</strong> <ArrowRight className="mx-2 inline h-4 w-4" /> <strong>Almoxarifado</strong><p className="mt-1 text-xs text-muted-foreground">O retorno de manutenção sempre retorna ao Almoxarifado.</p></div>}
 
                 <div className="rounded-lg border bg-muted/20 p-3 text-sm"><span className="font-medium">Fluxo:</span> {fluxo.origemLabel} <ArrowRight className="mx-2 inline h-4 w-4" /> {fluxo.destinoLabel}</div>
 
@@ -1208,7 +1448,7 @@ function MovimentacoesEquipamentosPage() {
             )}
 
             <div className="space-y-2"><Label>Documento de referência</Label><Input value={formulario.referenciaDocumento} onChange={(event) => atualizar("referenciaDocumento", event.target.value)} placeholder="NF, OS, termo, romaneio..." /></div>
-            <div className="space-y-2"><Label>Observações</Label><textarea className="min-h-24 w-full rounded-md border bg-background px-3 py-2 text-sm" value={formulario.observacoes} onChange={(event) => atualizar("observacoes", event.target.value)} placeholder="Defeito, sintoma, serviço, advertências ou outras informações..." /></div>
+            {formulario.tipo !== "BAIXA" && <div className="space-y-2"><Label>Observações</Label><textarea className="min-h-24 w-full rounded-md border bg-background px-3 py-2 text-sm" value={formulario.observacoes} onChange={(event) => atualizar("observacoes", event.target.value)} placeholder="Defeito, sintoma, serviço, advertências ou outras informações..." /></div>}
           </div>
 
           <DialogFooter>
@@ -1233,5 +1473,7 @@ function MovimentacoesEquipamentosPage() {
 }
 
 function stockSaldo(estado: EstadoUI) {
-  return estado.almoxarifado + estado.manutencao + estado.empresa + [...estado.funcionarios.values()].reduce((total, quantidade) => total + quantidade, 0);
+  return estado.almoxarifado +
+    estado.manutencao +
+    [...estado.funcionarios.values()].reduce((total, quantidade) => total + quantidade, 0);
 }

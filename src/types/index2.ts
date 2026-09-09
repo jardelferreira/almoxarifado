@@ -243,7 +243,8 @@ export type MovimentacaoEquipamentoTipo =
   | "MANUTENCAO"
   | "RETIRADA_MANUTENCAO"
   | "RETORNO_MANUTENCAO"
-  | "DEVOLUCAO_FORNECEDOR";
+  | "DEVOLUCAO_FORNECEDOR"
+  | "BAIXA";
 
 export type MovimentacaoEquipamentoParte =
   | "EMPRESA"

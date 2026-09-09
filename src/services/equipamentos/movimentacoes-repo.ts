@@ -173,6 +173,7 @@ function validarTipo(
     "RETIRADA_MANUTENCAO",
     "RETORNO_MANUTENCAO",
     "DEVOLUCAO_FORNECEDOR",
+    "BAIXA",
   ];
 
   if (!tipos.includes(tipo)) {
@@ -483,10 +484,45 @@ function validarEstadoDaOrigem(
       );
 
     case "RETORNO_MANUTENCAO":
+      if (tipo_origem === "EQUIPE") {
+        exigirDisponibilidade(
+          estado.manutencao,
+          quantidade,
+          "Não há quantidade suficiente na Manutenção para retorno ao Almoxarifado.",
+        );
+        return;
+      }
+
       exigirDisponibilidade(
         estado.empresa,
         quantidade,
-        "Não há quantidade suficiente fora do projeto para retorno da manutenção.",
+        "Não há quantidade suficiente na empresa de manutenção para retorno.",
+      );
+
+      exigirDisponibilidade(
+        estado.manutencao,
+        quantidade,
+        "O equipamento em manutenção externa não possui saldo suficiente para retorno.",
+      );
+      return;
+
+    case "BAIXA":
+      if (tipo_origem !== "EQUIPE" || origem_id !== equipes.almoxarifado.id) {
+        throw new Error(
+          "A baixa somente pode ser realizada para equipamento que esteja no Almoxarifado.",
+        );
+      }
+
+      if (estado.almoxarifado !== estado.saldo) {
+        throw new Error(
+          "A baixa somente pode ser realizada quando o equipamento estiver exclusivamente no Almoxarifado.",
+        );
+      }
+
+      exigirDisponibilidade(
+        estado.almoxarifado,
+        quantidade,
+        "Quantidade insuficiente no Almoxarifado para baixa.",
       );
       return;
 
@@ -642,13 +678,30 @@ function validarRegraDoTipo(
 
     case "RETORNO_MANUTENCAO":
       if (
-        tipo_origem !== "EMPRESA" ||
         tipo_destino !== "EQUIPE" ||
-        destino_id !==
-          equipes.almoxarifado.id
+        destino_id !== equipes.almoxarifado.id ||
+        (tipo_origem !== "EMPRESA" && tipo_origem !== "EQUIPE")
       ) {
         throw new Error(
-          "RETORNO_MANUTENCAO deve ser Empresa → Almoxarifado.",
+          "RETORNO_MANUTENCAO deve ser Manutenção/Empresa de manutenção → Almoxarifado.",
+        );
+      }
+
+      if (tipo_origem === "EQUIPE" && origem_id !== equipes.manutencao.id) {
+        throw new Error(
+          "O retorno interno deve partir da equipe Manutenção.",
+        );
+      }
+      return;
+
+    case "BAIXA":
+      if (
+        tipo_origem !== "EQUIPE" ||
+        origem_id !== equipes.almoxarifado.id ||
+        tipo_destino !== "EMPRESA"
+      ) {
+        throw new Error(
+          "BAIXA deve ser Almoxarifado → Empresa proprietária.",
         );
       }
       return;
@@ -952,29 +1005,18 @@ export const movimentacoesEquipamentosRepo = {
          * DEVOLUCAO_FORNECEDOR é a única movimentação
          * que reduz permanentemente o saldo físico.
          */
-        if (
-          movimentacao.tipo ===
-          "DEVOLUCAO_FORNECEDOR"
-        ) {
+        if (movimentacao.tipo === "DEVOLUCAO_FORNECEDOR") {
           const estoqueAtual =
-            await db.estoque_equipamentos.get(
-              estoque.id,
-            );
+            await db.estoque_equipamentos.get(estoque.id);
 
           if (!estoqueAtual) {
-            throw new Error(
-              "Estoque de equipamento não encontrado.",
-            );
+            throw new Error("Estoque de equipamento não encontrado.");
           }
 
           const novoDevolvido =
-            estoqueAtual.devolvido +
-            movimentacao.quantidade;
+            estoqueAtual.devolvido + movimentacao.quantidade;
 
-          if (
-            novoDevolvido >
-            estoqueAtual.quantidade
-          ) {
+          if (novoDevolvido > estoqueAtual.quantidade) {
             throw new Error(
               "A quantidade devolvida não pode ultrapassar a quantidade total do estoque.",
             );
@@ -983,11 +1025,39 @@ export const movimentacoesEquipamentosRepo = {
           await db.estoque_equipamentos.put({
             ...estoqueAtual,
             devolvido: novoDevolvido,
-            status:
-              novoDevolvido <
-              estoqueAtual.quantidade
-                ? "ATIVO"
-                : "ENCERRADO",
+            status: novoDevolvido < estoqueAtual.quantidade ? "ATIVO" : "ENCERRADO",
+            atualizado_em: agora,
+          });
+        }
+
+        if (movimentacao.tipo === "BAIXA") {
+          const estoqueAtual = await db.estoque_equipamentos.get(estoque.id);
+
+          if (!estoqueAtual) {
+            throw new Error("Estoque de equipamento não encontrado.");
+          }
+
+          const estadoAtual = await estadoEquipamentosRepo.calcular(
+            dados.projeto_id,
+            estoque.id,
+          );
+          const novoBaixado =
+            (estoqueAtual.baixado ?? 0) + movimentacao.quantidade;
+
+          // A baixa é definitiva: o registro é encerrado quando toda a quantidade
+          // do registro físico foi baixada.
+          if (movimentacao.quantidade > estadoAtual.almoxarifado) {
+            throw new Error("Quantidade insuficiente no Almoxarifado para baixa.");
+          }
+
+          if (estoqueAtual.devolvido + novoBaixado > estoqueAtual.quantidade) {
+            throw new Error("A quantidade baixada não pode ultrapassar o saldo físico do estoque.");
+          }
+
+          await db.estoque_equipamentos.put({
+            ...estoqueAtual,
+            baixado: novoBaixado,
+            status: estoqueAtual.devolvido + novoBaixado < estoqueAtual.quantidade ? "ATIVO" : "ENCERRADO",
             atualizado_em: agora,
           });
         }

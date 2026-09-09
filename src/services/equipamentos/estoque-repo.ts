@@ -145,6 +145,52 @@ async function validarEquipe(
   }
 }
 
+async function validarIdentificadoresUnicos(
+  projetoId: string,
+  patrimonio: string | null,
+  serial: string | null,
+  estoqueId?: string,
+): Promise<void> {
+  const registros = await getDB()
+    .estoque_equipamentos
+    .where("projeto_id")
+    .equals(projetoId)
+    .toArray();
+
+  const normalizar = (valor: string | null | undefined) =>
+    valor?.trim().toLowerCase() ?? "";
+
+  const patrimonioNormalizado = normalizar(patrimonio);
+  if (patrimonioNormalizado) {
+    const duplicado = registros.some(
+      (registro) =>
+        registro.id !== estoqueId &&
+        normalizar(registro.patrimonio) === patrimonioNormalizado,
+    );
+
+    if (duplicado) {
+      throw new Error(
+        `Já existe um equipamento com o patrimônio "${patrimonio}" neste projeto.`,
+      );
+    }
+  }
+
+  const serialNormalizado = normalizar(serial);
+  if (serialNormalizado) {
+    const duplicado = registros.some(
+      (registro) =>
+        registro.id !== estoqueId &&
+        normalizar(registro.serial) === serialNormalizado,
+    );
+
+    if (duplicado) {
+      throw new Error(
+        `Já existe um equipamento com o serial "${serial}" neste projeto.`,
+      );
+    }
+  }
+}
+
 async function validarIdentificacao(
   projetoId: string,
   identificacao: string | null,
@@ -236,10 +282,19 @@ export const estoqueEquipamentosRepo = {
 
     const identificacao =
       normalizarTexto(dados.identificacao);
+    const patrimonio = normalizarTexto(dados.patrimonio);
+    const serial = normalizarTexto(dados.serial);
 
     await validarIdentificacao(
       projetoId,
       identificacao,
+      dados.id,
+    );
+
+    await validarIdentificadoresUnicos(
+      projetoId,
+      patrimonio,
+      serial,
       dados.id,
     );
 
@@ -293,9 +348,9 @@ export const estoqueEquipamentosRepo = {
       empresa_id: dados.empresa_id,
       vinculo: dados.vinculo,
       equipe_id: dados.equipe_id ?? null,
-      patrimonio: normalizarTexto(dados.patrimonio),
+      patrimonio,
       identificacao,
-      serial: normalizarTexto(dados.serial),
+      serial,
       quantidade,
       devolvido,
       status: calcularStatus(
