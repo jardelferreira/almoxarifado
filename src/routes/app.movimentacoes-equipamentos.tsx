@@ -1,6 +1,21 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, Eye, Plus, Search } from "lucide-react";
+import {
+  Activity,
+  ArrowDownToLine,
+  ArrowLeftRight,
+  ArrowRight,
+  ArrowUpFromLine,
+  Ban,
+  Eye,
+  PackageCheck,
+  Plus,
+  RotateCcw,
+  Search,
+  Truck,
+  UserRound,
+  Wrench,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -24,7 +39,6 @@ import {
 } from "@/components/ui/select";
 import { useProjetoAtivoId } from "@/hooks/useAppData";
 import { getDB } from "@/db/db";
-import { equipamentosRepo } from "@/services/equipamentos/repo";
 import { estoqueEquipamentosRepo } from "@/services/equipamentos/estoque-repo";
 import { movimentacoesEquipamentosRepo } from "@/services/equipamentos/movimentacoes-repo";
 import type {
@@ -102,12 +116,28 @@ const tipoLabels: Record<MovimentacaoEquipamentoTipo, string> = {
   SAIDA: "Saída para funcionário",
   DEVOLUCAO: "Devolução do funcionário",
   TRANSFERENCIA: "Transferência entre funcionários",
-  MANUTENCAO: "Sinalizar para manutenção",
-  RETIRADA_MANUTENCAO: "Enviar para manutenção",
+  SINALIZAR_MANUTENCAO: "Sinalizar para manutenção",
+  ENVIO: "Enviar para manutenção",
   RETORNO_MANUTENCAO: "Retorno da manutenção",
   DEVOLUCAO_FORNECEDOR: "Devolução ao fornecedor",
   BAIXA: "Baixa definitiva",
+  REENTRADA: "Reentrada no estoque",
+  MANUTENCAO: "Sinalizar para manutenção (histórico)",
+  RETIRADA_MANUTENCAO: "Enviar para manutenção (histórico)",
 };
+
+const tiposMovimentacaoVisiveis: MovimentacaoEquipamentoTipo[] = [
+  "ENTRADA",
+  "SAIDA",
+  "DEVOLUCAO",
+  "TRANSFERENCIA",
+  "SINALIZAR_MANUTENCAO",
+  "ENVIO",
+  "RETORNO_MANUTENCAO",
+  "DEVOLUCAO_FORNECEDOR",
+  "BAIXA",
+  "REENTRADA",
+];
 
 const parteLabels: Record<MovimentacaoEquipamentoParte, string> = {
   EMPRESA: "Empresa",
@@ -140,6 +170,36 @@ function nomeParte(
   if (tipo === "EMPRESA") return empresas.get(id)?.nome ?? "Empresa não encontrada";
   if (tipo === "EQUIPE") return equipes.get(id)?.nome ?? "Equipe não encontrada";
   return nomePessoa(funcionarios.get(id));
+}
+
+const movimentoVisual: Record<MovimentacaoEquipamentoTipo, {
+  icon: typeof Activity;
+  badge: string;
+  label: string;
+}> = {
+  ENTRADA: { icon: ArrowDownToLine, badge: "bg-emerald-50 text-emerald-700 border-emerald-200", label: "Entrada" },
+  SAIDA: { icon: ArrowUpFromLine, badge: "bg-blue-50 text-blue-700 border-blue-200", label: "Saída" },
+  DEVOLUCAO: { icon: RotateCcw, badge: "bg-sky-50 text-sky-700 border-sky-200", label: "Devolução" },
+  TRANSFERENCIA: { icon: ArrowLeftRight, badge: "bg-violet-50 text-violet-700 border-violet-200", label: "Transferência" },
+  SINALIZAR_MANUTENCAO: { icon: Wrench, badge: "bg-amber-50 text-amber-700 border-amber-200", label: "Manutenção" },
+  ENVIO: { icon: Truck, badge: "bg-orange-50 text-orange-700 border-orange-200", label: "Envio" },
+  RETORNO_MANUTENCAO: { icon: RotateCcw, badge: "bg-teal-50 text-teal-700 border-teal-200", label: "Retorno" },
+  DEVOLUCAO_FORNECEDOR: { icon: Truck, badge: "bg-rose-50 text-rose-700 border-rose-200", label: "Fornecedor" },
+  BAIXA: { icon: Ban, badge: "bg-red-50 text-red-700 border-red-200", label: "Baixa" },
+  REENTRADA: { icon: PackageCheck, badge: "bg-emerald-50 text-emerald-700 border-emerald-200", label: "Reentrada" },
+  MANUTENCAO: { icon: Wrench, badge: "bg-amber-50 text-amber-700 border-amber-200", label: "Manutenção" },
+  RETIRADA_MANUTENCAO: { icon: Truck, badge: "bg-orange-50 text-orange-700 border-orange-200", label: "Envio" },
+};
+
+function MovimentoBadge({ tipo }: { tipo: MovimentacaoEquipamentoTipo }) {
+  const visual = movimentoVisual[tipo];
+  const Icon = visual.icon;
+  return (
+    <Badge variant="outline" className={`inline-flex items-center gap-1.5 whitespace-nowrap ${visual.badge}`}>
+      <Icon className="size-3.5" />
+      <span>{visual.label}</span>
+    </Badge>
+  );
 }
 
 function MovimentacoesEquipamentosPage() {
@@ -178,6 +238,9 @@ function MovimentacoesEquipamentosPage() {
 
   useEffect(() => {
     void carregar();
+    // `carregar` is recreated on render, while its only relevant input here
+    // is the active project. The callback is also used by the save flow.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projetoId]);
 
   const equipamentoPorId = useMemo(
@@ -260,19 +323,34 @@ function MovimentacoesEquipamentosPage() {
           removerFuncionario(mov.origem_id, mov.quantidade);
           adicionarFuncionario(mov.destino_id, mov.quantidade);
           break;
+        case "SINALIZAR_MANUTENCAO":
+          // Sinalização é somente administrativa.
+          break;
         case "MANUTENCAO":
-          if (mov.tipo_origem === "EQUIPE") estado.almoxarifado -= mov.quantidade;
-          else removerFuncionario(mov.origem_id, mov.quantidade);
+          // Histórico antigo: preserva a semântica física anterior.
+          if (mov.tipo_origem === "EQUIPE") {
+            estado.almoxarifado -= mov.quantidade;
+            estado.manutencao += mov.quantidade;
+          } else if (mov.tipo_origem === "FUNCIONARIO") {
+            removerFuncionario(mov.origem_id, mov.quantidade);
+            estado.manutencao += mov.quantidade;
+          }
+          break;
+        case "ENVIO":
+          if (mov.tipo_origem === "EQUIPE") {
+            estado.almoxarifado -= mov.quantidade;
+          } else if (mov.tipo_origem === "FUNCIONARIO") {
+            removerFuncionario(mov.origem_id, mov.quantidade);
+          }
           estado.manutencao += mov.quantidade;
+          if (mov.tipo_destino === "EMPRESA") estado.empresa += mov.quantidade;
           break;
         case "RETIRADA_MANUTENCAO":
+          // Histórico antigo: preserva a semântica anterior.
           if (mov.tipo_origem === "EQUIPE") {
             if (mov.origem_id === equipesOperacionais.manutencao?.id) {
-              // Continua contado em Manutenção; apenas muda sua localização
-              // física para a empresa externa.
               estado.empresa += mov.quantidade;
             } else {
-              // Envio direto do Almoxarifado para manutenção externa.
               estado.almoxarifado -= mov.quantidade;
               estado.manutencao += mov.quantidade;
               estado.empresa += mov.quantidade;
@@ -346,11 +424,43 @@ function MovimentacoesEquipamentosPage() {
     });
   }, [estoques, estados, equipamentoPorId, formulario.origemId]);
 
-  // Registros físicos que podem ser enviados para manutenção a partir da origem
-  // atualmente selecionada. Para manutenção existem duas origens possíveis:
-  // Almoxarifado ou Funcionário.
+  // Sinalizações pendentes são administrativas e não mudam a localização.
+  // Uma sinalização pendente impede nova sinalização até o envio efetivo.
+  const sinalizacoesPendentes = useMemo(() => {
+    const resultado = new Map<string, number>();
+    const porEstoque = new Map<string, MovimentacaoEquipamento[]>();
+
+    for (const mov of movimentacoes) {
+      const lista = porEstoque.get(mov.estoque_equipamento_id) ?? [];
+      lista.push(mov);
+      porEstoque.set(mov.estoque_equipamento_id, lista);
+    }
+
+    for (const [estoqueId, lista] of porEstoque) {
+      let pendente = 0;
+      const ordenadas = [...lista].sort(
+        (a, b) => `${a.data}|${a.criado_em}|${a.id}`.localeCompare(`${b.data}|${b.criado_em}|${b.id}`),
+      );
+
+      for (const mov of ordenadas) {
+        if (mov.tipo === "SINALIZAR_MANUTENCAO" || mov.tipo === "MANUTENCAO") {
+          pendente += mov.quantidade;
+        } else if (mov.tipo === "ENVIO" || mov.tipo === "RETIRADA_MANUTENCAO") {
+          pendente = Math.max(0, pendente - mov.quantidade);
+        } else if (mov.tipo === "RETORNO_MANUTENCAO") {
+          pendente = 0;
+        }
+      }
+
+      if (pendente > 0) resultado.set(estoqueId, pendente);
+    }
+
+    return resultado;
+  }, [movimentacoes]);
+
+  // Registros físicos disponíveis para sinalização.
   const estoquesDaOrigemManutencao = useMemo(() => {
-    if (formulario.tipo !== "MANUTENCAO" || !formulario.origemParte || !formulario.origemId) {
+    if (formulario.tipo !== "SINALIZAR_MANUTENCAO" || !formulario.origemParte || !formulario.origemId) {
       return [];
     }
 
@@ -360,6 +470,10 @@ function MovimentacoesEquipamentosPage() {
 
       const estado = estados.get(stock.id);
       if (!estado) return false;
+
+      if ((sinalizacoesPendentes.get(stock.id) ?? 0) > 0) {
+        return false;
+      }
 
       if (formulario.origemParte === "EQUIPE") {
         // A manutenção só pode sair da equipe Almoxarifado.
@@ -381,6 +495,7 @@ function MovimentacoesEquipamentosPage() {
     formulario.origemParte,
     formulario.origemId,
     equipesOperacionais.almoxarifado?.id,
+    sinalizacoesPendentes,
   ]);
 
   const almoxarifadoTemEquipamentos = useMemo(() => {
@@ -394,18 +509,12 @@ function MovimentacoesEquipamentosPage() {
     });
   }, [estoques, estados, equipamentoPorId, equipesOperacionais.almoxarifado?.id]);
 
-  // Registros físicos disponíveis para retirada da manutenção.
-  // A origem pode ser a equipe Manutenção ou, quando o equipamento estiver
-  // no Almoxarifado, o próprio Almoxarifado.
-  const estoquesDaOrigemRetirada = useMemo(() => {
-    if (formulario.tipo !== "RETIRADA_MANUTENCAO" || !formulario.origemId) {
+  // Registros físicos disponíveis para envio à manutenção.
+  // Equipamento que já está em Manutenção não pode ser enviado novamente.
+  const estoquesDaOrigemEnvio = useMemo(() => {
+    if (formulario.tipo !== "ENVIO" || !formulario.origemParte || !formulario.origemId) {
       return [];
     }
-
-    const origemEhManutencao = formulario.origemId === equipesOperacionais.manutencao?.id;
-    const origemEhAlmoxarifado = formulario.origemId === equipesOperacionais.almoxarifado?.id;
-
-    if (!origemEhManutencao && !origemEhAlmoxarifado) return [];
 
     return estoques.filter((stock) => {
       if (stock.ativo === false) return false;
@@ -414,14 +523,16 @@ function MovimentacoesEquipamentosPage() {
       const estado = estados.get(stock.id);
       if (!estado) return false;
 
-      return origemEhManutencao
-        ? estado.manutencao > 0
-        : estado.almoxarifado > 0;
+      if (formulario.origemParte === "EQUIPE") {
+        return formulario.origemId === equipesOperacionais.almoxarifado?.id && estado.almoxarifado > 0;
+      }
+
+      return (estado.funcionarios.get(formulario.origemId) ?? 0) > 0;
     });
   }, [
     formulario.tipo,
+    formulario.origemParte,
     formulario.origemId,
-    equipesOperacionais.manutencao?.id,
     equipesOperacionais.almoxarifado?.id,
     estoques,
     equipamentoPorId,
@@ -440,12 +551,28 @@ function MovimentacoesEquipamentosPage() {
     });
   }, [
     formulario.tipo,
-    formulario.origemId,
-    equipesOperacionais.manutencao?.id,
     estoques,
     estados,
     equipamentoPorId,
   ]);
+
+  // Equipamentos de terceiros podem ser devolvidos ao fornecedor
+  // diretamente da Manutenção, sem passar novamente pelo Almoxarifado.
+  // A origem é determinada automaticamente pelo estado atual.
+  const estoquesParaDevolucaoFornecedor = useMemo(() => {
+    if (formulario.tipo !== "DEVOLUCAO_FORNECEDOR") return [];
+
+    return estoques.filter((stock) => {
+      if (stock.ativo === false) return false;
+      if (stock.vinculo === "PROPRIO") return false;
+      if (equipamentoPorId.get(stock.equipamento_id)?.ativo === false) return false;
+
+      const estado = estados.get(stock.id);
+      if (!estado) return false;
+
+      return estado.almoxarifado > 0 || estado.manutencao > 0;
+    });
+  }, [formulario.tipo, estoques, estados, equipamentoPorId]);
 
   const estoquesParaBaixa = useMemo(() => {
     if (formulario.tipo !== "BAIXA") return [];
@@ -458,6 +585,48 @@ function MovimentacoesEquipamentosPage() {
       return estado.saldo > 0 && estado.almoxarifado === estado.saldo;
     });
   }, [formulario.tipo, estoques, estados, equipamentoPorId]);
+
+  const pendenciasReentrada = useMemo(() => {
+    const resultado = new Map<string, { tipo: "DEVOLUCAO_FORNECEDOR" | "BAIXA"; restante: number; origemId: string }>();
+    const porEstoque = new Map<string, typeof movimentacoes>();
+
+    for (const mov of movimentacoes) {
+      const lista = porEstoque.get(mov.estoque_equipamento_id) ?? [];
+      lista.push(mov);
+      porEstoque.set(mov.estoque_equipamento_id, lista);
+    }
+
+    for (const [estoqueId, lista] of porEstoque) {
+      const pendentes: Array<{ tipo: "DEVOLUCAO_FORNECEDOR" | "BAIXA"; restante: number; origemId: string }> = [];
+      const ordenadas = [...lista].sort((a, b) => `${a.data}|${a.criado_em}|${a.id}`.localeCompare(`${b.data}|${b.criado_em}|${b.id}`));
+      for (const mov of ordenadas) {
+        if (mov.tipo === "DEVOLUCAO_FORNECEDOR" || mov.tipo === "BAIXA") {
+          pendentes.push({ tipo: mov.tipo, restante: mov.quantidade, origemId: mov.destino_id });
+        } else if (mov.tipo === "REENTRADA") {
+          let restante = mov.quantidade;
+          while (restante > 0 && pendentes.length) {
+            const pendencia = pendentes.at(-1);
+            if (!pendencia) break;
+            const aplicada = Math.min(restante, pendencia.restante);
+            pendencia.restante -= aplicada;
+            restante -= aplicada;
+          }
+        }
+      }
+      const ultima = pendentes.at(-1);
+      if (ultima && ultima.restante > 0) resultado.set(estoqueId, ultima);
+    }
+    return resultado;
+  }, [movimentacoes]);
+
+  const estoquesParaReentrada = useMemo(() => {
+    if (formulario.tipo !== "REENTRADA") return [];
+    return estoques.filter((stock) => {
+      if (equipamentoPorId.get(stock.equipamento_id)?.ativo === false) return false;
+      const pendencia = pendenciasReentrada.get(stock.id);
+      return !!pendencia && pendencia.restante > 0;
+    });
+  }, [formulario.tipo, estoques, equipamentoPorId, pendenciasReentrada]);
 
   const estoquesDisponiveis = useMemo(() => {
     return estoques.filter((stock) => {
@@ -482,10 +651,10 @@ function MovimentacoesEquipamentosPage() {
           return false;
         case "TRANSFERENCIA":
           return emUso > 0;
-        case "MANUTENCAO":
+        case "SINALIZAR_MANUTENCAO":
           // Pode sair do Almoxarifado ou diretamente de um funcionário.
           return estado.almoxarifado > 0 || emUso > 0;
-        case "RETIRADA_MANUTENCAO":
+        case "ENVIO":
           return estado.almoxarifado > 0 || estado.manutencao > 0;
         case "RETORNO_MANUTENCAO":
           return estado.manutencao > 0 || estado.empresa > 0;
@@ -493,7 +662,11 @@ function MovimentacoesEquipamentosPage() {
           return estado.saldo > 0 && estado.almoxarifado === estado.saldo;
         case "DEVOLUCAO_FORNECEDOR":
           return estado.almoxarifado > 0 || estado.manutencao > 0;
+        case "REENTRADA":
+          return false;
         case "ENTRADA":
+          return false;
+        default:
           return false;
       }
     });
@@ -506,15 +679,19 @@ function MovimentacoesEquipamentosPage() {
 
     const listaPermitida = (formulario.tipo === "DEVOLUCAO" || formulario.tipo === "TRANSFERENCIA")
       ? estoquesDoFuncionario
-      : formulario.tipo === "MANUTENCAO"
+      : formulario.tipo === "SINALIZAR_MANUTENCAO"
         ? estoquesDaOrigemManutencao
-        : formulario.tipo === "RETIRADA_MANUTENCAO"
-          ? estoquesDaOrigemRetirada
+        : formulario.tipo === "ENVIO"
+          ? estoquesDaOrigemEnvio
           : formulario.tipo === "RETORNO_MANUTENCAO"
             ? estoquesParaRetornoManutencao
             : formulario.tipo === "BAIXA"
               ? estoquesParaBaixa
-              : estoquesDisponiveis;
+              : formulario.tipo === "REENTRADA"
+                ? estoquesParaReentrada
+                : formulario.tipo === "DEVOLUCAO_FORNECEDOR"
+                  ? estoquesParaDevolucaoFornecedor
+                  : estoquesDisponiveis;
 
     const permitido = listaPermitida.some(
       (stock) => stock.id === formulario.estoqueEquipamentoId,
@@ -537,9 +714,11 @@ function MovimentacoesEquipamentosPage() {
     formulario.origemId,
     estoquesDoFuncionario,
     estoquesDaOrigemManutencao,
-    estoquesDaOrigemRetirada,
+    estoquesDaOrigemEnvio,
     estoquesParaRetornoManutencao,
     estoquesParaBaixa,
+    estoquesParaReentrada,
+    estoquesParaDevolucaoFornecedor,
     estoquesDisponiveis,
   ]);
 
@@ -570,7 +749,10 @@ function MovimentacoesEquipamentosPage() {
     });
 
     for (const movimentacao of ordenadas) {
-      if (movimentacao.tipo === "RETIRADA_MANUTENCAO" && movimentacao.tipo_destino === "EMPRESA") {
+      if (
+        (movimentacao.tipo === "ENVIO" || movimentacao.tipo === "RETIRADA_MANUTENCAO") &&
+        movimentacao.tipo_destino === "EMPRESA"
+      ) {
         mapa.set(movimentacao.estoque_equipamento_id, movimentacao.destino_id);
       }
       if (movimentacao.tipo === "RETORNO_MANUTENCAO" && movimentacao.tipo_origem === "EMPRESA") {
@@ -598,7 +780,7 @@ function MovimentacoesEquipamentosPage() {
     if (tipo === "TRANSFERENCIA") {
       return { origemParte: "FUNCIONARIO" as const, origemId: formulario.origemId, destinoParte: "FUNCIONARIO" as const, destinoId: formulario.destinoId, origemLabel: "Funcionário", destinoLabel: "Funcionário" };
     }
-    if (tipo === "MANUTENCAO") {
+    if (tipo === "SINALIZAR_MANUTENCAO") {
       return {
         origemParte: formulario.origemParte as "EQUIPE" | "FUNCIONARIO",
         origemId: formulario.origemId,
@@ -609,27 +791,53 @@ function MovimentacoesEquipamentosPage() {
           : formulario.origemId
             ? "Almoxarifado"
             : "Origem",
-        destinoLabel: "Manutenção",
+        destinoLabel: "Sinalização de manutenção",
       };
     }
-    if (tipo === "RETIRADA_MANUTENCAO") {
-      const origemId = formulario.origemId || manut?.id || almox?.id || "";
-      const destinoId = formulario.destinoId || "";
-      const origemParte = "EQUIPE" as const;
-      return { origemParte, origemId, destinoParte: "EMPRESA" as const, destinoId, origemLabel: origemId === manut?.id ? "Manutenção" : "Almoxarifado", destinoLabel: "Empresa de manutenção" };
+    if (tipo === "ENVIO") {
+      return {
+        origemParte: formulario.origemParte as "EQUIPE" | "FUNCIONARIO",
+        origemId: formulario.origemId,
+        destinoParte: "EMPRESA" as const,
+        destinoId: formulario.destinoId,
+        origemLabel: formulario.origemParte === "FUNCIONARIO"
+          ? "Funcionário"
+          : formulario.origemId
+            ? "Almoxarifado"
+            : "Origem",
+        destinoLabel: estoqueSelecionado?.vinculo === "PROPRIO"
+          ? "Empresa de manutenção"
+          : "Empresa do vínculo",
+      };
     }
     if (tipo === "RETORNO_MANUTENCAO") {
-      const origemEmpresa = formulario.origemId === "__EMPRESA_MANUTENCAO__";
+      const origemEmpresa = (estadoSelecionado?.empresa ?? 0) > 0;
       const empresaId = estoqueSelecionado
         ? empresaManutencaoPorEstoque.get(estoqueSelecionado.id) ?? ""
         : "";
       return {
         origemParte: origemEmpresa ? "EMPRESA" as const : "EQUIPE" as const,
-        origemId: origemEmpresa ? empresaId : formulario.origemId,
+        origemId: origemEmpresa ? empresaId : manut?.id ?? "",
         destinoParte: "EQUIPE" as const,
         destinoId: almox?.id ?? "",
         origemLabel: origemEmpresa ? "Empresa de manutenção" : "Manutenção",
         destinoLabel: "Almoxarifado",
+      };
+    }
+    if (tipo === "REENTRADA") {
+      const pendencia = estoqueSelecionado
+        ? pendenciasReentrada.get(estoqueSelecionado.id)
+        : undefined;
+      const equipeDestino = formulario.destinoId
+        ? equipes.find((equipe) => equipe.id === formulario.destinoId)
+        : undefined;
+      return {
+        origemParte: "EMPRESA" as const,
+        origemId: pendencia?.origemId ?? "",
+        destinoParte: "EQUIPE" as const,
+        destinoId: formulario.destinoId || almox?.id || "",
+        origemLabel: "Empresa",
+        destinoLabel: equipeDestino?.nome ?? "Todo o projeto (Almoxarifado)",
       };
     }
     if (tipo === "BAIXA") {
@@ -643,7 +851,7 @@ function MovimentacoesEquipamentosPage() {
       };
     }
     return { origemParte: "EQUIPE" as const, origemId: formulario.origemId, destinoParte: "EMPRESA" as const, destinoId: estoqueSelecionado?.empresa_id ?? "", origemLabel: formulario.origemId === manut?.id ? "Manutenção" : "Almoxarifado", destinoLabel: "Empresa proprietária" };
-  }, [formulario, equipesOperacionais, estoqueSelecionado, empresaManutencaoPorEstoque]);
+  }, [formulario, equipesOperacionais, equipes, estoqueSelecionado, empresaManutencaoPorEstoque, pendenciasReentrada]);
 
   const maxQuantidade = useMemo(() => {
     if (formulario.tipo === "ENTRADA") {
@@ -653,31 +861,35 @@ function MovimentacoesEquipamentosPage() {
 
     switch (formulario.tipo) {
       case "SAIDA":
-      case "MANUTENCAO":
-        return formulario.tipo === "MANUTENCAO" && formulario.origemParte === "FUNCIONARIO"
+      case "SINALIZAR_MANUTENCAO":
+        return formulario.tipo === "SINALIZAR_MANUTENCAO" && formulario.origemParte === "FUNCIONARIO"
           ? estadoSelecionado.funcionarios.get(formulario.origemId) ?? 0
           : estadoSelecionado.almoxarifado;
       case "DEVOLUCAO":
       case "TRANSFERENCIA":
         return estadoSelecionado.funcionarios.get(formulario.origemId) ?? 0;
-      case "RETIRADA_MANUTENCAO":
+      case "ENVIO":
         return formulario.origemId === equipesOperacionais.manutencao?.id
           ? estadoSelecionado.manutencao
           : estadoSelecionado.almoxarifado;
       case "RETORNO_MANUTENCAO":
-        return formulario.origemId === "__EMPRESA_MANUTENCAO__"
+        return estadoSelecionado.empresa > 0
           ? estadoSelecionado.empresa
-          : Math.max(0, estadoSelecionado.manutencao - estadoSelecionado.empresa);
+          : estadoSelecionado.manutencao;
+      case "REENTRADA":
+        return pendenciasReentrada.get(formulario.estoqueEquipamentoId)?.restante ?? 0;
       case "BAIXA":
         return estadoSelecionado.almoxarifado === estadoSelecionado.saldo
           ? estadoSelecionado.almoxarifado
           : 0;
       case "DEVOLUCAO_FORNECEDOR":
-        return formulario.origemId === equipesOperacionais.manutencao?.id
+        return estadoSelecionado.manutencao > 0
           ? estadoSelecionado.manutencao
           : estadoSelecionado.almoxarifado;
+      default:
+        return 0;
     }
-  }, [formulario, equipamentoSelecionado, estadoSelecionado, equipesOperacionais]);
+  }, [formulario, equipamentoSelecionado, estadoSelecionado, equipesOperacionais, pendenciasReentrada]);
 
   const movimentacoesFiltradas = useMemo(() => {
     const termo = busca.trim().toLowerCase();
@@ -725,25 +937,36 @@ function MovimentacoesEquipamentosPage() {
   function selecionarEstoque(id: string) {
     const stock = estoquePorId.get(id);
     const estado = stock ? estados.get(stock.id) : undefined;
-    setFormulario((atual) => ({
-      ...atual,
-      estoqueEquipamentoId: id,
-      // Na devolução, o funcionário é selecionado primeiro e deve permanecer
-      // como origem quando o registro físico for escolhido.
-      origemId: atual.tipo === "RETORNO_MANUTENCAO"
+
+    const origemAutomatica =
+      formulario.tipo === "RETORNO_MANUTENCAO"
         ? (estado?.empresa ?? 0) > 0
           ? "__EMPRESA_MANUTENCAO__"
           : equipesOperacionais.manutencao?.id ?? ""
-        : (
+        : formulario.tipo === "DEVOLUCAO_FORNECEDOR"
+          ? (estado?.manutencao ?? 0) > 0
+            ? equipesOperacionais.manutencao?.id ?? ""
+            : equipesOperacionais.almoxarifado?.id ?? ""
+          : undefined;
+
+    setFormulario((atual) => ({
+      ...atual,
+      estoqueEquipamentoId: id,
+      // Para retorno da manutenção e devolução ao fornecedor a origem é
+      // determinada pelo estado atual do registro físico.
+      origemId: origemAutomatica ?? (
         atual.tipo === "DEVOLUCAO" ||
         atual.tipo === "TRANSFERENCIA" ||
-        atual.tipo === "MANUTENCAO" ||
-        atual.tipo === "RETIRADA_MANUTENCAO" ||
+        atual.tipo === "SINALIZAR_MANUTENCAO" ||
+        atual.tipo === "ENVIO" ||
         atual.tipo === "BAIXA"
-        )
-        ? atual.origemId
-        : "",
-      destinoId: "",
+          ? atual.origemId
+          : ""
+      ),
+      origemParte: origemAutomatica
+        ? "EQUIPE"
+        : atual.origemParte,
+      destinoId: atual.tipo === "REENTRADA" ? atual.destinoId : "",
       quantidade: "1",
       empresaId: stock?.empresa_id ?? "",
     }));
@@ -760,8 +983,14 @@ function MovimentacoesEquipamentosPage() {
 
   async function salvar() {
     if (!projetoId) return;
-    if (!formulario.data) return toast.error("Informe a data da movimentação.");
-    if (!equipesOperacionais.almoxarifado) return toast.error("A equipe Almoxarifado não foi encontrada neste projeto.");
+    if (!formulario.data) {
+      toast.error("Informe a data da movimentação.");
+      return;
+    }
+    if (!equipesOperacionais.almoxarifado) {
+      toast.error("A equipe Almoxarifado não foi encontrada neste projeto.");
+      return;
+    }
 
     const tipo = formulario.tipo;
 
@@ -772,14 +1001,32 @@ function MovimentacoesEquipamentosPage() {
       // seleciona-se o cadastro/modelo e a operação cria um NOVO registro físico no estoque.
       if (tipo === "ENTRADA") {
         const equipamento = equipamentoPorId.get(formulario.equipamentoId);
-        if (!equipamento) return toast.error("Selecione o equipamento que será recebido.");
-        if (equipamento.ativo === false) return toast.error("Este equipamento está inativo e não pode receber uma entrada.");
-        if (!formulario.empresaId) return toast.error("Selecione a empresa proprietária.");
-        if (!formulario.vinculo) return toast.error("Selecione o vínculo do equipamento.");
+        if (!equipamento) {
+          toast.error("Selecione o equipamento que será recebido.");
+          return;
+        }
+        if (equipamento.ativo === false) {
+          toast.error("Este equipamento está inativo e não pode receber uma entrada.");
+          return;
+        }
+        if (!formulario.empresaId) {
+          toast.error("Selecione a empresa proprietária.");
+          return;
+        }
+        if (!formulario.vinculo) {
+          toast.error("Selecione o vínculo do equipamento.");
+          return;
+        }
 
         const quantidade = equipamento.tipo_controle === "INDIVIDUAL" ? 1 : Number(formulario.quantidade);
-        if (!Number.isFinite(quantidade) || quantidade <= 0) return toast.error("Informe uma quantidade válida.");
-        if (equipamento.tipo_controle === "QUANTITATIVO" && !Number.isInteger(quantidade)) return toast.error("A quantidade deve ser inteira.");
+        if (!Number.isFinite(quantidade) || quantidade <= 0) {
+          toast.error("Informe uma quantidade válida.");
+          return;
+        }
+        if (equipamento.tipo_controle === "QUANTITATIVO" && !Number.isInteger(quantidade)) {
+          toast.error("A quantidade deve ser inteira.");
+          return;
+        }
 
         const stock = await estoqueEquipamentosRepo.salvar(projetoId, {
           equipamento_id: equipamento.id,
@@ -824,48 +1071,98 @@ function MovimentacoesEquipamentosPage() {
         return;
       }
 
-      if (!formulario.estoqueEquipamentoId) return toast.error("Selecione o equipamento em estoque.");
+      if (!formulario.estoqueEquipamentoId) {
+        toast.error("Selecione o equipamento em estoque.");
+        return;
+      }
       const stock = estoquePorId.get(formulario.estoqueEquipamentoId);
       const equipamento = stock ? equipamentoPorId.get(stock.equipamento_id) : undefined;
       const estado = stock ? estados.get(stock.id) : undefined;
-      if (!stock || !equipamento || !estado) return toast.error("Não foi possível determinar o equipamento e seu estado atual.");
-      if (stock.ativo === false) return toast.error("Este registro de estoque está inativo e não pode receber movimentações.");
-      if (equipamento.ativo === false) return toast.error("Este equipamento está inativo e não pode receber movimentações.");
-      if (tipo === "DEVOLUCAO_FORNECEDOR" && stock.vinculo === "PROPRIO") {
-        return toast.error("Equipamentos próprios não podem ser devolvidos ao fornecedor.");
+      if (!stock || !equipamento || !estado) {
+        toast.error("Não foi possível determinar o equipamento e seu estado atual.");
+        return;
       }
+      if (tipo !== "REENTRADA" && stock.ativo === false) {
+        toast.error("Este registro de estoque está inativo e não pode receber movimentações.");
+        return;
+      }
+      if (tipo === "REENTRADA" && !pendenciasReentrada.has(stock.id)) {
+        toast.error("Este equipamento não possui quantidade disponível para reentrada.");
+        return;
+      }
+      if (equipamento.ativo === false) {
+        toast.error("Este equipamento está inativo e não pode receber movimentações.");
+        return;
+      }
+      if (tipo === "DEVOLUCAO_FORNECEDOR" && stock.vinculo === "PROPRIO") {
+        toast.error("Equipamentos próprios não podem ser devolvidos ao fornecedor.");
+        return;
+      }
+      if (tipo === "REENTRADA" && !pendenciasReentrada.has(stock.id)) {
+        toast.error("Este equipamento não possui uma devolução ou baixa pendente para reentrada.");
+        return;
+      }
+      if (tipo === "SINALIZAR_MANUTENCAO" && (sinalizacoesPendentes.get(stock.id) ?? 0) > 0) {
+        toast.error("Este equipamento já está sinalizado para manutenção.");
+        return;
+      }
+
       if (tipo === "BAIXA" && !formulario.motivoBaixa.trim()) {
-        return toast.error("Informe o motivo da baixa.");
+        toast.error("Informe o motivo da baixa.");
+        return;
       }
       if (tipo === "BAIXA" && (estado.almoxarifado !== estado.saldo || estado.saldo <= 0)) {
-        return toast.error("A baixa somente pode ser realizada quando o equipamento estiver exclusivamente no Almoxarifado.");
+        toast.error("A baixa somente pode ser realizada quando o equipamento estiver exclusivamente no Almoxarifado.");
+        return;
       }
 
       if (tipo === "SAIDA" && estado.almoxarifado <= 0) {
-        return toast.error("Este registro não possui quantidade disponível no Almoxarifado.");
+        toast.error("Este registro não possui quantidade disponível no Almoxarifado.");
+        return;
       }
-      if (estado.saldo <= 0) return toast.error("Este equipamento não possui saldo disponível.");
+      if (tipo !== "REENTRADA" && estado.saldo <= 0) {
+        toast.error("Este equipamento não possui saldo disponível.");
+        return;
+      }
 
       const quantidade = equipamento.tipo_controle === "INDIVIDUAL" ? 1 : Number(formulario.quantidade);
-      if (!Number.isFinite(quantidade) || quantidade <= 0) return toast.error("Informe uma quantidade válida.");
-      if (equipamento.tipo_controle === "QUANTITATIVO" && !Number.isInteger(quantidade)) return toast.error("A quantidade deve ser inteira.");
-      if (quantidade > maxQuantidade) return toast.error(`A quantidade máxima desta operação é ${maxQuantidade}.`);
+      if (!Number.isFinite(quantidade) || quantidade <= 0) {
+        toast.error("Informe uma quantidade válida.");
+        return;
+      }
+      if (equipamento.tipo_controle === "QUANTITATIVO" && !Number.isInteger(quantidade)) {
+        toast.error("A quantidade deve ser inteira.");
+        return;
+      }
+      if (maxQuantidade !== undefined && quantidade > maxQuantidade) {
+        toast.error(`A quantidade máxima desta operação é ${maxQuantidade}.`);
+        return;
+      }
 
-      if (tipo === "DEVOLUCAO" || (tipo === "MANUTENCAO" && formulario.origemParte === "FUNCIONARIO")) {
+      if (tipo === "DEVOLUCAO" || ((tipo === "SINALIZAR_MANUTENCAO" || tipo === "ENVIO") && formulario.origemParte === "FUNCIONARIO")) {
         const apropriadoAoFuncionario = estado.funcionarios.get(formulario.origemId) ?? 0;
-        if (!formulario.origemId) return toast.error("Selecione o funcionário de origem.");
-        if (apropriadoAoFuncionario <= 0) return toast.error("Este funcionário não possui este equipamento apropriado.");
+        if (!formulario.origemId) {
+          toast.error("Selecione o funcionário de origem.");
+          return;
+        }
+        if (apropriadoAoFuncionario <= 0) {
+          toast.error("Este funcionário não possui este equipamento apropriado.");
+          return;
+        }
         if (quantidade > apropriadoAoFuncionario) {
-          return toast.error(`O funcionário possui apenas ${apropriadoAoFuncionario} unidade(s) deste equipamento.`);
+          toast.error(`O funcionário possui apenas ${apropriadoAoFuncionario} unidade(s) deste equipamento.`);
+          return;
         }
       }
 
-      if (tipo === "MANUTENCAO") {
+      if (tipo === "SINALIZAR_MANUTENCAO") {
         if (formulario.origemParte !== "FUNCIONARIO" && formulario.origemParte !== "EQUIPE") {
-          return toast.error("Selecione a origem da manutenção.");
+          toast.error("Selecione a origem do equipamento.");
+          return;
         }
         if (formulario.origemParte === "EQUIPE" && formulario.origemId !== equipesOperacionais.almoxarifado?.id) {
-          return toast.error("A origem por equipe deve ser o Almoxarifado.");
+          toast.error("A origem por equipe deve ser o Almoxarifado.");
+          return;
         }
       }
 
@@ -874,34 +1171,81 @@ function MovimentacoesEquipamentosPage() {
       let destinoParte: MovimentacaoEquipamentoParte = fluxo.destinoParte;
       let destinoId = fluxo.destinoId;
 
-      if (tipo === "MANUTENCAO" && formulario.origemParte !== "FUNCIONARIO" && formulario.origemParte !== "EQUIPE") {
-        return toast.error("Selecione a origem da manutenção.");
+      if (tipo === "RETORNO_MANUTENCAO") {
+        if ((estado.empresa ?? 0) > 0) {
+          origemParte = "EMPRESA";
+          origemId = empresaManutencaoPorEstoque.get(stock.id) ?? "";
+        } else {
+          origemParte = "EQUIPE";
+          origemId = equipesOperacionais.manutencao?.id ?? "";
+        }
+        destinoParte = "EQUIPE";
+        destinoId = equipesOperacionais.almoxarifado.id;
       }
-      if (tipo === "RETORNO_MANUTENCAO" && formulario.origemId !== equipesOperacionais.manutencao?.id && formulario.origemId !== "__EMPRESA_MANUTENCAO__") {
-        return toast.error("Selecione se o retorno é da Manutenção interna ou da empresa de manutenção.");
+
+      if (tipo === "DEVOLUCAO_FORNECEDOR") {
+        origemParte = "EQUIPE";
+        origemId = estado.manutencao > 0
+          ? equipesOperacionais.manutencao?.id ?? ""
+          : equipesOperacionais.almoxarifado.id;
+        destinoParte = "EMPRESA";
+        destinoId = stock.empresa_id;
       }
-      if (tipo === "BAIXA" && formulario.origemId && formulario.origemId !== equipesOperacionais.almoxarifado?.id) {
-        return toast.error("A baixa somente pode partir do Almoxarifado.");
-      }
-      if (tipo === "RETIRADA_MANUTENCAO" || tipo === "DEVOLUCAO_FORNECEDOR") {
-        if (tipo === "RETIRADA_MANUTENCAO") {
-          if (formulario.origemId !== equipesOperacionais.manutencao?.id && formulario.origemId !== equipesOperacionais.almoxarifado?.id) {
-            return toast.error("Selecione a origem.");
+
+      if (tipo === "ENVIO") {
+        if (!destinoId) {
+          if (stock.vinculo === "PROPRIO") {
+            toast.error("Selecione a empresa que fará a manutenção.");
+            return;
           }
-          if (!formulario.destinoId) {
-            return toast.error("Selecione a empresa que fará a manutenção.");
-          }
-          if (formulario.destinoId && !empresas.some((empresa) => empresa.id === formulario.destinoId && empresa.ativo)) {
-            return toast.error("A empresa de manutenção selecionada é inválida.");
-          }
-        } else if (formulario.origemParte !== "EQUIPE") {
-          return toast.error("Selecione a equipe de origem.");
+          destinoId = stock.empresa_id;
+        }
+
+        if (stock.vinculo !== "PROPRIO" && destinoId !== stock.empresa_id) {
+          toast.error("Equipamentos alugados ou emprestados devem ser enviados para a empresa do vínculo.");
+          return;
+        }
+
+        if (estado.manutencao > 0) {
+          toast.error("Este equipamento já está em manutenção.");
+          return;
+        }
+
+        if (
+          formulario.origemParte === "EQUIPE" &&
+          formulario.origemId !== equipesOperacionais.almoxarifado?.id
+        ) {
+          toast.error("O envio por equipe deve partir do Almoxarifado.");
+          return;
         }
       }
-      if (!origemId || !destinoId) return toast.error("Não foi possível determinar origem e destino.");
-      if (tipo === "TRANSFERENCIA" && origemId === destinoId) return toast.error("O funcionário de origem e destino devem ser diferentes.");
 
-      await movimentacoesEquipamentosRepo.salvar({
+      if (
+        (tipo === "SINALIZAR_MANUTENCAO" || tipo === "ENVIO") &&
+        formulario.origemParte !== "FUNCIONARIO" &&
+        formulario.origemParte !== "EQUIPE"
+      ) {
+        toast.error("Selecione a origem do equipamento.");
+        return;
+      }
+      if (tipo === "BAIXA" && formulario.origemId && formulario.origemId !== equipesOperacionais.almoxarifado?.id) {
+        toast.error("A baixa somente pode partir do Almoxarifado.");
+        return;
+      }
+      if (!origemId || !destinoId) {
+        toast.error("Não foi possível determinar origem e destino.");
+        return;
+      }
+      if (tipo === "REENTRADA" && destinoParte !== "EQUIPE") {
+        toast.error("Não foi possível determinar o destino da reentrada.");
+        return;
+      }
+      if (tipo === "TRANSFERENCIA" && origemId === destinoId) {
+        toast.error("O funcionário de origem e destino devem ser diferentes.");
+        return;
+      }
+
+      const dadosMovimentacao = {
         projeto_id: projetoId,
         estoque_equipamento_id: stock.id,
         tipo,
@@ -913,12 +1257,33 @@ function MovimentacoesEquipamentosPage() {
         data: formulario.data,
         referencia_documento: formulario.referenciaDocumento.trim() || null,
         observacoes: tipo === "BAIXA" ? formulario.motivoBaixa.trim() : formulario.observacoes.trim() || null,
-      });
+      };
+
+      try {
+        await movimentacoesEquipamentosRepo.salvar(dadosMovimentacao);
+      } catch (error) {
+        // Bancos criados antes da inclusão da baixa podem não possuir a
+        // object store opcional usada pelo repositório para esse tipo. A
+        // baixa é apenas um lançamento de histórico, portanto pode ser
+        // persistida diretamente na store principal sem perder a operação.
+        const mensagem = error instanceof Error ? error.message : String(error);
+        if (tipo !== "BAIXA" || !/object.?store|objectStore/i.test(mensagem)) throw error;
+
+        const db = getDB() as any;
+        const tabela = db.movimentacoes_equipamentos;
+        if (!tabela) throw error;
+        await tabela.add({
+          id: crypto.randomUUID(),
+          criado_em: new Date().toISOString(),
+          ...dadosMovimentacao,
+        });
+      }
 
       await carregar();
       setDialogAberto(false);
       setFormulario({ ...formularioInicial, data: hoje() });
       toast.success("Movimentação registrada.");
+      return;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Não foi possível registrar a movimentação.");
     } finally {
@@ -933,10 +1298,8 @@ function MovimentacoesEquipamentosPage() {
   const renderEstoqueSelect = () => {
     const porFuncionario = formulario.tipo === "DEVOLUCAO" || formulario.tipo === "TRANSFERENCIA";
     const listaBase = porFuncionario ? estoquesDoFuncionario : estoquesDisponiveis;
-    // Equipamento próprio pertence à empresa e, portanto, não pode ser devolvido a fornecedor.
-    // Na devolução ao fornecedor exibimos somente registros alugados ou em empréstimo.
     const lista = formulario.tipo === "DEVOLUCAO_FORNECEDOR"
-      ? listaBase.filter((stock) => stock.vinculo !== "PROPRIO")
+      ? estoquesParaDevolucaoFornecedor
       : listaBase;
 
     return (
@@ -968,9 +1331,13 @@ function MovimentacoesEquipamentosPage() {
             ) : lista.map((stock) => {
               const equipamento = equipamentoPorId.get(stock.equipamento_id);
               const estado = estados.get(stock.id);
-              const quantidadeDisponivel = porFuncionario
-                ? estado?.funcionarios.get(formulario.origemId) ?? 0
-                : estado?.almoxarifado ?? 0;
+              const quantidadeDisponivel = formulario.tipo === "DEVOLUCAO_FORNECEDOR"
+                ? (estado?.manutencao ?? 0) > 0
+                  ? estado?.manutencao ?? 0
+                  : estado?.almoxarifado ?? 0
+                : porFuncionario
+                  ? estado?.funcionarios.get(formulario.origemId) ?? 0
+                  : estado?.almoxarifado ?? 0;
 
               return (
                 <SelectItem key={stock.id} value={stock.id}>
@@ -984,58 +1351,138 @@ function MovimentacoesEquipamentosPage() {
     );
   };
 
+  const totalMovimentacoes = movimentacoes.length;
+  const entradas = movimentacoes.filter((mov) => mov.tipo === "ENTRADA" || mov.tipo === "REENTRADA").length;
+  const saidas = movimentacoes.filter((mov) => ["SAIDA", "DEVOLUCAO_FORNECEDOR", "BAIXA"].includes(mov.tipo)).length;
+  const manutencoes = movimentacoes.filter((mov) => ["SINALIZAR_MANUTENCAO", "ENVIO", "RETORNO_MANUTENCAO"].includes(mov.tipo)).length;
+
   return (
     <>
-      <div className="space-y-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Movimentações de equipamentos</h1>
-            <p className="text-sm text-muted-foreground">Controle a entrada, saída, devolução, transferência e manutenção.</p>
+      <div className="mx-auto w-full max-w-[1400px] space-y-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="min-w-0">
+            <div className="mb-2 flex items-center gap-2 text-xs font-medium text-muted-foreground">
+              <Activity className="size-4" />
+              Equipamentos / Operação
+            </div>
+            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Movimentações</h1>
+            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Registre e acompanhe a movimentação física dos equipamentos do projeto.</p>
           </div>
-          <Button onClick={abrirNovo}><Plus className="mr-2 h-4 w-4" />Nova movimentação</Button>
+          <Button onClick={abrirNovo} className="w-full sm:w-auto">
+            <Plus className="mr-2 h-4 w-4" />
+            Nova movimentação
+          </Button>
         </div>
 
-        <Card>
-          <CardHeader>
-            <div className="relative max-w-md">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input value={busca} onChange={(event) => setBusca(event.target.value)} placeholder="Pesquisar movimentação..." className="pl-9" />
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {[
+            { label: "Movimentações", value: totalMovimentacoes, icon: Activity },
+            { label: "Entradas", value: entradas, icon: ArrowDownToLine },
+            { label: "Saídas", value: saidas, icon: ArrowUpFromLine },
+            { label: "Manutenção", value: manutencoes, icon: Wrench },
+          ].map((item) => {
+            const Icon = item.icon;
+            return (
+              <Card key={item.label} className="shadow-none">
+                <CardContent className="flex items-center gap-3 p-4">
+                  <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-muted">
+                    <Icon className="size-5 text-muted-foreground" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-xs font-medium text-muted-foreground">{item.label}</p>
+                    <p className="text-xl font-semibold leading-tight">{item.value}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+
+        <Card className="overflow-hidden shadow-sm">
+          <CardHeader className="border-b bg-muted/20 p-4 sm:p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="font-semibold">Histórico de movimentações</h2>
+                <p className="text-xs text-muted-foreground">Pesquise por equipamento, identificação, origem, destino ou documento.</p>
+              </div>
+              <div className="relative w-full sm:max-w-sm">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input value={busca} onChange={(event) => setBusca(event.target.value)} placeholder="Pesquisar movimentação..." className="pl-9" />
+              </div>
             </div>
           </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-left">
-                    <th className="px-3 py-3">Data</th>
-                    <th className="px-3 py-3">Movimentação</th>
-                    <th className="px-3 py-3">Equipamento</th>
-                    <th className="px-3 py-3">Fluxo</th>
-                    <th className="px-3 py-3">Qtd.</th>
-                    <th className="px-3 py-3 text-right">Ações</th>
-                  </tr>
-                </thead>
-                <tbody>
+          <CardContent className="p-0">
+            {movimentacoesFiltradas.length === 0 ? (
+              <div className="flex min-h-56 flex-col items-center justify-center px-6 text-center">
+                <div className="mb-3 flex size-12 items-center justify-center rounded-full bg-muted">
+                  <Search className="size-5 text-muted-foreground" />
+                </div>
+                <p className="font-medium">Nenhuma movimentação encontrada</p>
+                <p className="mt-1 max-w-sm text-sm text-muted-foreground">Tente outro termo de pesquisa ou registre uma nova movimentação.</p>
+              </div>
+            ) : (
+              <>
+                <div className="divide-y md:hidden">
                   {movimentacoesFiltradas.map((mov) => {
                     const stock = estoquePorId.get(mov.estoque_equipamento_id);
                     const equipamento = stock ? equipamentoPorId.get(stock.equipamento_id) : undefined;
                     const origem = nomeParte(mov.tipo_origem, mov.origem_id, empresaPorId, equipePorId, funcionarioPorId);
                     const destino = nomeParte(mov.tipo_destino, mov.destino_id, empresaPorId, equipePorId, funcionarioPorId);
                     return (
-                      <tr key={mov.id} className="border-b last:border-0">
-                        <td className="px-3 py-3 whitespace-nowrap">{new Date(`${mov.data}T00:00:00`).toLocaleDateString("pt-BR")}</td>
-                        <td className="px-3 py-3"><Badge variant="outline">{tipoLabels[mov.tipo]}</Badge></td>
-                        <td className="px-3 py-3 font-medium">{equipamento?.nome ?? "Equipamento removido"}</td>
-                        <td className="px-3 py-3"><div className="flex items-center gap-2"><span>{origem}</span><ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" /><span>{destino}</span></div></td>
-                        <td className="px-3 py-3">{mov.quantidade}</td>
-                        <td className="px-3 py-3 text-right"><Button variant="ghost" size="icon" onClick={() => setDetalhe(mov)}><Eye className="h-4 w-4" /></Button></td>
-                      </tr>
+                      <button key={mov.id} type="button" onClick={() => setDetalhe(mov)} className="w-full px-4 py-4 text-left transition-colors hover:bg-muted/40 active:bg-muted/60">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <MovimentoBadge tipo={mov.tipo} />
+                            <p className="mt-2 truncate font-medium">{equipamento?.nome ?? "Equipamento removido"}</p>
+                            {stock?.identificacao && <p className="truncate text-xs text-muted-foreground">{stock.identificacao}</p>}
+                          </div>
+                          <span className="shrink-0 text-xs text-muted-foreground">{new Date(`${mov.data}T00:00:00`).toLocaleDateString("pt-BR")}</span>
+                        </div>
+                        <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+                          <span className="max-w-[42%] truncate">{origem}</span>
+                          <ArrowRight className="size-3.5 shrink-0" />
+                          <span className="max-w-[42%] truncate">{destino}</span>
+                          <span className="ml-auto shrink-0 rounded-md bg-muted px-2 py-1 font-semibold text-foreground">{mov.quantidade}</span>
+                        </div>
+                      </button>
                     );
                   })}
-                  {movimentacoesFiltradas.length === 0 && <tr><td colSpan={6} className="py-10 text-center text-sm text-muted-foreground">Nenhuma movimentação encontrada.</td></tr>}
-                </tbody>
-              </table>
-            </div>
+                </div>
+
+                <div className="hidden overflow-x-auto md:block">
+                  <table className="w-full min-w-[760px] text-sm">
+                    <thead className="bg-muted/20">
+                      <tr className="border-b text-left">
+                        <th className="px-4 py-3 font-medium text-muted-foreground">Data</th>
+                        <th className="px-4 py-3 font-medium text-muted-foreground">Movimentação</th>
+                        <th className="px-4 py-3 font-medium text-muted-foreground">Equipamento</th>
+                        <th className="px-4 py-3 font-medium text-muted-foreground">Fluxo</th>
+                        <th className="px-4 py-3 font-medium text-muted-foreground">Qtd.</th>
+                        <th className="px-4 py-3 text-right font-medium text-muted-foreground">Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {movimentacoesFiltradas.map((mov) => {
+                        const stock = estoquePorId.get(mov.estoque_equipamento_id);
+                        const equipamento = stock ? equipamentoPorId.get(stock.equipamento_id) : undefined;
+                        const origem = nomeParte(mov.tipo_origem, mov.origem_id, empresaPorId, equipePorId, funcionarioPorId);
+                        const destino = nomeParte(mov.tipo_destino, mov.destino_id, empresaPorId, equipePorId, funcionarioPorId);
+                        return (
+                          <tr key={mov.id} className="border-b transition-colors last:border-0 hover:bg-muted/30">
+                            <td className="whitespace-nowrap px-4 py-3.5 text-muted-foreground">{new Date(`${mov.data}T00:00:00`).toLocaleDateString("pt-BR")}</td>
+                            <td className="px-4 py-3.5"><MovimentoBadge tipo={mov.tipo} /></td>
+                            <td className="max-w-[240px] px-4 py-3.5"><div className="truncate font-medium">{equipamento?.nome ?? "Equipamento removido"}</div>{stock?.identificacao && <div className="truncate text-xs text-muted-foreground">{stock.identificacao}</div>}</td>
+                            <td className="px-4 py-3.5"><div className="flex max-w-[320px] items-center gap-2"><span className="truncate">{origem}</span><ArrowRight className="size-4 shrink-0 text-muted-foreground" /><span className="truncate">{destino}</span></div></td>
+                            <td className="px-4 py-3.5 font-semibold">{mov.quantidade}</td>
+                            <td className="px-4 py-3.5 text-right"><Button variant="ghost" size="icon" aria-label="Ver detalhes" onClick={() => setDetalhe(mov)}><Eye className="h-4 w-4" /></Button></td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -1051,7 +1498,7 @@ function MovimentacoesEquipamentosPage() {
               <Label>Tipo de movimentação</Label>
               <Select value={formulario.tipo} onValueChange={(value) => alterarTipo(value as MovimentacaoEquipamentoTipo)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>{Object.entries(tipoLabels).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent>
+                <SelectContent>{tiposMovimentacaoVisiveis.map((value) => <SelectItem key={value} value={value}>{tipoLabels[value]}</SelectItem>)}</SelectContent>
               </Select>
             </div>
 
@@ -1150,16 +1597,22 @@ function MovimentacoesEquipamentosPage() {
                   </div>
                 )}
 
-                {!['MANUTENCAO', 'RETIRADA_MANUTENCAO', 'RETORNO_MANUTENCAO', 'BAIXA'].includes(formulario.tipo) && renderEstoqueSelect()}
+                {!['SINALIZAR_MANUTENCAO', 'ENVIO', 'RETORNO_MANUTENCAO', 'BAIXA', 'REENTRADA'].includes(formulario.tipo) && renderEstoqueSelect()}
 
-                {formulario.tipo === "RETIRADA_MANUTENCAO" && (
+                {formulario.tipo === "ENVIO" && (
                   <>
                     <div className="space-y-2">
                       <Label>Origem do equipamento</Label>
                       <Select
-                        value={formulario.origemId}
+                        value={formulario.origemParte === "FUNCIONARIO" ? `FUNCIONARIO:${formulario.origemId}` : formulario.origemId}
                         onValueChange={(value) => {
-                          atualizar("origemId", value);
+                          if (value.startsWith("FUNCIONARIO:")) {
+                            atualizar("origemParte", "FUNCIONARIO");
+                            atualizar("origemId", value.slice("FUNCIONARIO:".length));
+                          } else {
+                            atualizar("origemParte", "EQUIPE");
+                            atualizar("origemId", value);
+                          }
                           atualizar("estoqueEquipamentoId", "");
                           atualizar("quantidade", "1");
                         }}
@@ -1168,20 +1621,20 @@ function MovimentacoesEquipamentosPage() {
                           <SelectValue placeholder="Selecione a origem" />
                         </SelectTrigger>
                         <SelectContent>
-                          {equipesOperacionais.manutencao && (
-                            <SelectItem value={equipesOperacionais.manutencao.id}>
-                              Manutenção
-                            </SelectItem>
-                          )}
                           {equipesOperacionais.almoxarifado && (
                             <SelectItem value={equipesOperacionais.almoxarifado.id}>
                               Almoxarifado
                             </SelectItem>
                           )}
+                          {funcionariosComApropriacoes.map((funcionario) => (
+                            <SelectItem key={funcionario.id} value={`FUNCIONARIO:${funcionario.id}`}>
+                              {nomePessoa(funcionario)}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                       <p className="text-xs text-muted-foreground">
-                        Selecione primeiro de onde o equipamento será retirado: Almoxarifado ou Manutenção. Depois selecione o equipamento.
+                        Selecione a origem do equipamento: Almoxarifado ou Funcionário.
                       </p>
                     </div>
 
@@ -1202,17 +1655,17 @@ function MovimentacoesEquipamentosPage() {
                           />
                         </SelectTrigger>
                         <SelectContent>
-                          {estoquesDaOrigemRetirada.length === 0 ? (
+                          {estoquesDaOrigemEnvio.length === 0 ? (
                             <SelectItem value="__vazio__" disabled>
                               {formulario.origemId
                                 ? "Nenhum equipamento disponível nesta origem"
                                 : "Selecione primeiro a origem"}
                             </SelectItem>
-                          ) : estoquesDaOrigemRetirada.map((stock) => {
+                          ) : estoquesDaOrigemEnvio.map((stock) => {
                             const equipamento = equipamentoPorId.get(stock.equipamento_id);
                             const estado = estados.get(stock.id);
-                            const quantidadeDisponivel = formulario.origemId === equipesOperacionais.manutencao?.id
-                              ? estado?.manutencao ?? 0
+                            const quantidadeDisponivel = formulario.origemParte === "FUNCIONARIO"
+                              ? estado?.funcionarios.get(formulario.origemId) ?? 0
                               : estado?.almoxarifado ?? 0;
 
                             return (
@@ -1225,79 +1678,131 @@ function MovimentacoesEquipamentosPage() {
                       </Select>
                     </div>
 
-                    <div className="space-y-2">
-                      <Label>Empresa de manutenção</Label>
-                      <Select
-                        value={formulario.destinoId}
-                        onValueChange={(value) => atualizar("destinoId", value)}
-                        disabled={!formulario.estoqueEquipamentoId}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione a empresa que fará a manutenção" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {empresas.length === 0 ? (
-                            <SelectItem value="__vazio__" disabled>Nenhuma empresa disponível</SelectItem>
-                          ) : empresas.map((empresa) => (
-                            <SelectItem key={empresa.id} value={empresa.id}>{empresa.nome}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <p className="text-xs text-muted-foreground">A empresa selecionada será registrada como destino da movimentação. O equipamento continuará contabilizado em Manutenção.</p>
-                    </div>
+                    {estoqueSelecionado?.vinculo === "PROPRIO" ? (
+                      <div className="space-y-2">
+                        <Label>Empresa de manutenção</Label>
+                        <Select
+                          value={formulario.destinoId}
+                          onValueChange={(value) => atualizar("destinoId", value)}
+                          disabled={!formulario.estoqueEquipamentoId}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecione a empresa que fará a manutenção" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {empresas.length === 0 ? (
+                              <SelectItem value="__vazio__" disabled>Nenhuma empresa disponível</SelectItem>
+                            ) : empresas.map((empresa) => (
+                              <SelectItem key={empresa.id} value={empresa.id}>{empresa.nome}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    ) : (
+                      <div className="rounded-lg border bg-muted/20 p-3 text-sm">
+                        <span className="font-medium">Destino:</span>{" "}
+                        {empresaPorId.get(estoqueSelecionado?.empresa_id ?? "")?.nome ?? "Empresa do vínculo"}
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Equipamentos alugados ou emprestados usam automaticamente a empresa do vínculo.
+                        </p>
+                      </div>
+                    )}
                   </>
                 )}
 
                 {formulario.tipo === "RETORNO_MANUTENCAO" && (
-                  <>
-                    <div className="space-y-2">
-                      <Label>Origem do retorno</Label>
-                      <Select
-                        value={formulario.origemId}
-                        onValueChange={(value) => {
-                          atualizar("origemId", value);
-                          atualizar("estoqueEquipamentoId", "");
-                          atualizar("quantidade", "1");
-                        }}
-                      >
-                        <SelectTrigger><SelectValue placeholder="Selecione a origem do retorno" /></SelectTrigger>
-                        <SelectContent>
-                          {equipesOperacionais.manutencao && (
-                            <SelectItem value={equipesOperacionais.manutencao.id}>Manutenção</SelectItem>
-                          )}
-                          {estoques.some((stock) => (estados.get(stock.id)?.empresa ?? 0) > 0) && (
-                            <SelectItem value="__EMPRESA_MANUTENCAO__">Empresa de manutenção</SelectItem>
-                          )}
-                        </SelectContent>
-                      </Select>
+                  <div className="space-y-3">
+                    <div className="rounded-lg border bg-muted/30 p-4 text-sm">
+                      <strong>{(estadoSelecionado?.empresa ?? 0) > 0 ? "Empresa de manutenção" : "Manutenção"}</strong>
+                      <ArrowRight className="mx-2 inline h-4 w-4" />
+                      <strong>Almoxarifado</strong>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        A origem e o destino são determinados automaticamente pelo histórico do equipamento.
+                      </p>
                     </div>
                     <div className="space-y-2">
                       <Label>Equipamento em manutenção</Label>
                       <Select
                         value={formulario.estoqueEquipamentoId}
                         onValueChange={selecionarEstoque}
-                        disabled={!formulario.origemId}
                       >
-                        <SelectTrigger><SelectValue placeholder={!formulario.origemId ? "Selecione primeiro a origem" : "Selecione o equipamento"} /></SelectTrigger>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione o equipamento" />
+                        </SelectTrigger>
                         <SelectContent>
                           {estoquesParaRetornoManutencao.length === 0 ? (
                             <SelectItem value="__vazio__" disabled>Nenhum equipamento disponível para retorno</SelectItem>
                           ) : estoquesParaRetornoManutencao.map((stock) => {
                             const equipamento = equipamentoPorId.get(stock.equipamento_id);
                             const estado = estados.get(stock.id);
-                            const quantidadeDisponivel = formulario.origemId === "__EMPRESA_MANUTENCAO__"
-                              ? Math.min(estado?.empresa ?? 0, estado?.manutencao ?? 0)
+                            const externo = (estado?.empresa ?? 0) > 0;
+                            const quantidadeDisponivel = externo
+                              ? estado?.empresa ?? 0
                               : estado?.manutencao ?? 0;
                             return (
                               <SelectItem key={stock.id} value={stock.id}>
-                                {equipamento?.nome ?? "Equipamento"}{stock.identificacao ? ` — ${stock.identificacao}` : ""} · disponível: {quantidadeDisponivel}
+                                {equipamento?.nome ?? "Equipamento"}{stock.identificacao ? ` — ${stock.identificacao}` : ""} · {externo ? "Empresa de manutenção" : "Manutenção"} · disponível: {quantidadeDisponivel}
                               </SelectItem>
                             );
                           })}
                         </SelectContent>
                       </Select>
                     </div>
-                  </>
+                  </div>
+                )}
+                {formulario.tipo === "REENTRADA" && (
+                  <div className="space-y-3">
+                    <div className="rounded-lg border bg-muted/30 p-4 text-sm">
+                      <strong>Empresa</strong> <ArrowRight className="mx-2 inline h-4 w-4" /> <strong>Equipe</strong>
+                      <p className="mt-1 text-xs text-muted-foreground">A empresa de origem é determinada automaticamente pelo histórico. Selecione apenas o equipamento e a equipe que receberá a reentrada.</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Equipamento para reentrada</Label>
+                      <Select value={formulario.estoqueEquipamentoId} onValueChange={selecionarEstoque}>
+                        <SelectTrigger><SelectValue placeholder="Selecione o equipamento que retornou ao projeto" /></SelectTrigger>
+                        <SelectContent>
+                          {estoquesParaReentrada.length === 0 ? (
+                            <SelectItem value="__vazio__" disabled>Nenhum equipamento disponível para reentrada</SelectItem>
+                          ) : estoquesParaReentrada.map((stock) => {
+                            const equipamento = equipamentoPorId.get(stock.equipamento_id);
+                            const pendencia = pendenciasReentrada.get(stock.id);
+                            const origem = pendencia?.tipo === "BAIXA" ? "Baixa" : "Devolução ao fornecedor";
+                            return (
+                              <SelectItem key={stock.id} value={stock.id}>
+                                {equipamento?.nome ?? "Equipamento"}{stock.identificacao ? ` — ${stock.identificacao}` : ""} · {origem} · disponível: {pendencia?.restante ?? 0}
+                              </SelectItem>
+                            );
+                          })}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Equipe de destino (opcional)</Label>
+                      <Select
+                        value={formulario.destinoId || "__todo_projeto__"}
+                        onValueChange={(value) =>
+                          atualizar("destinoId", value === "__todo_projeto__" ? "" : value)
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Todo o projeto" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__todo_projeto__">Todo o projeto</SelectItem>
+                          {equipes
+                            .filter((equipe) => equipe.ativo !== false)
+                            .map((equipe) => (
+                              <SelectItem key={equipe.id} value={equipe.id}>
+                                {equipe.nome}
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        Sem equipe específica, o equipamento retorna ao Almoxarifado e fica disponível para todo o projeto.
+                      </p>
+                    </div>
+                  </div>
                 )}
 
                 {formulario.tipo === "BAIXA" && (
@@ -1332,7 +1837,7 @@ function MovimentacoesEquipamentosPage() {
                   </>
                 )}
 
-                {formulario.tipo === "MANUTENCAO" && (
+                {formulario.tipo === "SINALIZAR_MANUTENCAO" && (
                   <>
                     <div className="space-y-2">
                       <Label>Origem da manutenção</Label>
@@ -1379,7 +1884,7 @@ function MovimentacoesEquipamentosPage() {
                             placeholder={
                               !formulario.origemId
                                 ? "Selecione primeiro a origem"
-                                : "Selecione o equipamento que será enviado para manutenção"
+                                : "Selecione o equipamento que será sinalizado para manutenção"
                             }
                           />
                         </SelectTrigger>
@@ -1436,8 +1941,6 @@ function MovimentacoesEquipamentosPage() {
                   </div>
                 )}
 
-                {formulario.tipo === "DEVOLUCAO_FORNECEDOR" && <div className="space-y-2"><Label>Equipe de origem</Label><Select value={formulario.origemId} onValueChange={(value) => atualizar("origemId", value)}><SelectTrigger><SelectValue placeholder="Selecione a origem" /></SelectTrigger><SelectContent>{(estadoSelecionado?.almoxarifado ?? 0) > 0 && <SelectItem value={equipesOperacionais.almoxarifado?.id ?? "almox"}>Almoxarifado · {estadoSelecionado?.almoxarifado}</SelectItem>}{(estadoSelecionado?.manutencao ?? 0) > 0 && <SelectItem value={equipesOperacionais.manutencao?.id ?? "manut"}>Manutenção · {estadoSelecionado?.manutencao}</SelectItem>}</SelectContent></Select></div>}
-
                 <div className="rounded-lg border bg-muted/20 p-3 text-sm"><span className="font-medium">Fluxo:</span> {fluxo.origemLabel} <ArrowRight className="mx-2 inline h-4 w-4" /> {fluxo.destinoLabel}</div>
 
                 <div className="grid gap-4 sm:grid-cols-2">
@@ -1472,8 +1975,3 @@ function MovimentacoesEquipamentosPage() {
   );
 }
 
-function stockSaldo(estado: EstadoUI) {
-  return estado.almoxarifado +
-    estado.manutencao +
-    [...estado.funcionarios.values()].reduce((total, quantidade) => total + quantidade, 0);
-}

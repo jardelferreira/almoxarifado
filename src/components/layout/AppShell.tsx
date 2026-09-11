@@ -1,24 +1,27 @@
-import { Link, useNavigate } from "@tanstack/react-router";
 import {
+  Activity,
   ArrowLeftRight,
   Boxes,
   ChevronLeft,
   ChevronRight,
+  ClipboardList,
   Database,
   HardHat,
   LayoutDashboard,
   ListChecks,
   Menu,
+  PackagePlus,
   PackageSearch,
   Settings2,
-  X,
+  Warehouse,
   Wifi,
   WifiOff,
   Wrench,
-  ClipboardList,
+  X,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useState, useEffect } from "react";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useOnline, useProjetoAtivoId } from "@/hooks/useAppData";
 import { inicializarProjeto } from "@/services/projeto-inicializacao";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -44,10 +47,10 @@ const navGroups: NavGroup[] = [
     icon: Boxes,
     items: [
       { to: "/app", label: "Dashboard", icon: LayoutDashboard, exact: true },
-      { to: "/app/lancar", label: "Lançar", icon: ArrowLeftRight },
+      { to: "/app/lancar", label: "Lançar", icon: PackagePlus },
       { to: "/app/movimentacoes", label: "Movimentações", icon: ListChecks },
-      { to: "/app/estoque", label: "Estoque", icon: PackageSearch },
-      { to: "/app/cadastros", label: "Cadastros", icon: Boxes },
+      { to: "/app/estoque", label: "Estoque", icon: Warehouse },
+      { to: "/app/cadastros", label: "Cadastros", icon: Settings2 },
       { to: "/app/dados", label: "Dados", icon: Database },
     ],
   },
@@ -55,92 +58,107 @@ const navGroups: NavGroup[] = [
     label: "Equipamentos",
     icon: Wrench,
     items: [
-      { to: "/app/equipamentos", label: "Equipamentos", icon: ClipboardList },
-      { to: "/app/movimentacoes-equipamentos", label: "Movimentações", icon: ArrowLeftRight },
+      { to: "/app/equipamentos", label: "Equipamentos", icon: HardHat },
+      { to: "/app/movimentacoes-equipamentos", label: "Movimentações", icon: Activity },
     ],
   },
 ];
 
 function Navigation({
   expanded,
-  mobile = false,
   onNavigate,
 }: {
   expanded: boolean;
-  mobile?: boolean;
   onNavigate?: () => void;
 }) {
   return (
-    <nav className="flex-1 overflow-y-auto space-y-5 p-3">
-      {navGroups.map((group) => {
-        const GroupIcon = group.icon;
+    <nav aria-label="Navegação principal" className="flex-1 overflow-y-auto px-2 py-3">
+      <div className="space-y-4">
+        {navGroups.map((group) => {
+          const GroupIcon = group.icon;
 
-        return (
-          <div key={group.label}>
-            {expanded ? (
-              <div className="mb-2 flex items-center gap-2 px-3 text-[14px] font-semibold uppercase tracking-wider
-              border-b border-yellow-600 shadow-md  text-sidebar-primary text-lg">
-                <GroupIcon className="size-3.5 shrink-0" />
-                <span>{group.label}</span>
-              </div>
-            ) : (
+          return (
+            <section key={group.label} aria-label={group.label}>
               <div
-                className="mb-2 flex justify-center text-sidebar-foreground/40"
-                title={group.label}
-                aria-label={group.label}
+                className={[
+                  "mb-2 flex items-center border-b border-sidebar-border pb-2",
+                  expanded ? "gap-2 px-2" : "justify-center px-1",
+                ].join(" ")}
               >
-                <GroupIcon className="size-3.5" />
+                <GroupIcon
+                  className={expanded ? "size-4 shrink-0 text-sidebar-primary" : "size-4 text-sidebar-foreground/45"}
+                  aria-hidden="true"
+                />
+                {expanded && (
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-sidebar-primary">
+                    {group.label}
+                  </span>
+                )}
               </div>
-            )}
 
-            <div className="space-y-1">
-              {group.items.map((item) => (
-                <Link
-                  key={item.to}
-                  to={item.to}
-                  activeOptions={{ exact: item.exact ?? false }}
-                  onClick={onNavigate}
-                  title={!expanded ? item.label : undefined}
-                  aria-label={!expanded ? item.label : undefined}
-                  className={`flex items-center rounded-md py-2 text-sm font-medium text-sidebar-foreground/85 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${expanded ? "gap-3 px-3" : "justify-center px-2"
-                    }`}
-                  activeProps={{
-                    className: `bg-sidebar-accent text-sidebar-accent-foreground border-l-2 border-sidebar-primary ${expanded ? "gap-3 px-3" : "justify-center px-2"
-                      }`,
-                  }}
-                >
-                  <item.icon className="size-4 shrink-0" />
-                  {expanded && <span>{item.label}</span>}
-                </Link>
-              ))}
-            </div>
-          </div>
-        );
-      })}
+              <div className="space-y-1">
+                {group.items.map((item) => (
+                  <Link
+                    key={item.to}
+                    to={item.to}
+                    activeOptions={{ exact: item.exact ?? false }}
+                    onClick={onNavigate}
+                    title={!expanded ? item.label : undefined}
+                    aria-label={!expanded ? item.label : undefined}
+                    className={[
+                      "group relative flex min-h-10 items-center rounded-md text-sm font-medium",
+                      "text-sidebar-foreground/80 transition-colors duration-150",
+                      "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                      expanded ? "gap-3 px-3" : "justify-center px-2",
+                    ].join(" ")}
+                    activeProps={{
+                      className: [
+                        "group relative flex min-h-10 items-center rounded-md text-sm font-medium",
+                        "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm",
+                        "before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-sidebar-primary",
+                        expanded ? "gap-3 px-3" : "justify-center px-2",
+                      ].join(" "),
+                    }}
+                  >
+                    <item.icon
+                      className="size-[18px] shrink-0"
+                      aria-hidden="true"
+                    />
+                    {expanded && <span className="truncate">{item.label}</span>}
+                  </Link>
+                ))}
+              </div>
+            </section>
+          );
+        })}
 
-      <div>
-        {expanded ? (
-          <>
-            <div className="mb-2 flex items-center gap-2 px-3 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/45">
-              <Settings2 className="size-3.5 shrink-0" />
-              <span>Outro módulo</span>
-            </div>
-            <div
-              className="flex cursor-default items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground/35"
-              title="Módulo futuro"
-            >
-              <Settings2 className="size-4 shrink-0" />
-              <span>Em breve</span>
-            </div>
-          </>
-        ) : (
+        <section aria-label="Outros módulos">
           <div
-            className="flex cursor-default justify-center rounded-md px-2 py-2 text-sidebar-foreground/35"
-            title="Outro módulo — em breve"
+            className={[
+              "mb-2 flex items-center border-b border-sidebar-border pb-2",
+              expanded ? "gap-2 px-2" : "justify-center px-1",
+            ].join(" ")}
           >
-            <Settings2 className="size-4" />
+            <Settings2 className="size-4 text-sidebar-foreground/35" aria-hidden="true" />
+            {expanded && (
+              <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-sidebar-foreground/35">
+                Outro módulo
+              </span>
+            )}
           </div>
-        )}
+
+          <div
+            className={[
+              "flex min-h-10 items-center rounded-md text-sm font-medium text-sidebar-foreground/30",
+              expanded ? "gap-3 px-3" : "justify-center px-2",
+            ].join(" ")}
+            title="Módulo futuro"
+            aria-label="Módulo futuro"
+          >
+            <Settings2 className="size-[18px] shrink-0" aria-hidden="true" />
+            {expanded && <span>Em breve</span>}
+          </div>
+        </section>
       </div>
     </nav>
   );
@@ -166,9 +184,10 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Sidebar desktop: fechada por padrão para maximizar a área útil. */}
+      {/* Navegação desktop: recolhível para preservar a área útil. */}
       <aside
-        className={`fixed inset-y-0 left-0 z-30 hidden flex-col bg-sidebar text-sidebar-foreground transition-[width] duration-200 md:flex ${sidebarAberta ? "w-60" : "w-16"
+        className={`fixed inset-y-0 left-0 z-30 hidden flex-col bg-sidebar text-sidebar-foreground shadow-sm transition-[width] duration-200 ease-out md:flex ${
+            sidebarAberta ? "w-60" : "w-16"
           }`}
       >
         <div
@@ -272,7 +291,6 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         <Navigation
           expanded
-          mobile
           onNavigate={() => setMobileMenuAberto(false)}
         />
 
@@ -295,7 +313,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </aside>
 
       <div className={sidebarAberta ? "md:pl-60" : "md:pl-16"}>
-        <header className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 border-b border-border bg-card/95 px-4 py-3 backdrop-blur md:px-6">
+        <header className="sticky top-0 z-20 flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-border bg-card/95 px-3 py-2.5 backdrop-blur sm:px-4 md:px-6">
           <div className="flex min-w-0 items-center gap-3">
             <Button
               variant="outline"
@@ -309,10 +327,10 @@ export function AppShell({ children }: { children: ReactNode }) {
             </Button>
 
             <div className="min-w-0">
-              <p className="text-xs uppercase tracking-wider text-muted-foreground">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground sm:text-xs">
                 Projeto ativo
               </p>
-              <p className="truncate font-display text-lg font-semibold leading-tight">
+              <p className="truncate font-display text-base font-semibold leading-tight sm:text-lg">
                 {projeto ? `${projeto.codigo} · ${projeto.nome}` : "Nenhum projeto"}
               </p>
             </div>
@@ -321,13 +339,14 @@ export function AppShell({ children }: { children: ReactNode }) {
           <Button
             variant="outline"
             size="sm"
+            className="shrink-0"
             onClick={() => navigate({ to: "/" })}
           >
             Trocar projeto
           </Button>
         </header>
 
-        <main className="p-4 md:p-6">{children}</main>
+        <main className="p-3 sm:p-4 md:p-6">{children}</main>
       </div>
     </div>
   );

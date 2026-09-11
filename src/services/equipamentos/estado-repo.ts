@@ -24,6 +24,7 @@ export type EstadoEstoqueEquipamento = {
   disponivel: number;
 
   funcionarios: Map<string, number>;
+  equipes: Map<string, number>;
 
   encerrado: boolean;
 };
@@ -161,9 +162,28 @@ export const estadoEquipamentosRepo = {
     let empresa = 0;
 
     const funcionarios = new Map<string, number>();
+    const equipesAtuais = new Map<string, number>([[equipes.almoxarifado.id, estoque.quantidade]]);
+
+    const adicionarEquipe = (equipeId: string, quantidade: number) => {
+      equipesAtuais.set(equipeId, (equipesAtuais.get(equipeId) ?? 0) + quantidade);
+    };
+
+    const removerEquipe = (equipeId: string, quantidade: number) => {
+      const atual = equipesAtuais.get(equipeId) ?? 0;
+      const novo = atual - quantidade;
+      if (novo < 0) {
+        throw new Error("Quantidade insuficiente na equipe para esta movimentação.");
+      }
+      if (novo === 0) equipesAtuais.delete(equipeId);
+      else equipesAtuais.set(equipeId, novo);
+    };
 
     let devolvido = 0;
     let baixado = 0;
+
+    // Devoluções ao fornecedor e baixas encerram quantidade física.
+    // REENTRADA reverte a última pendência encerrada, preservando o histórico.
+    const pendenciasReentrada: Array<{ tipo: "DEVOLUCAO_FORNECEDOR" | "BAIXA"; restante: number }> = [];
 
     for (const movimentacao of ordenadas) {
       const quantidade = movimentacao.quantidade;
@@ -205,6 +225,7 @@ export const estadoEquipamentosRepo = {
           }
 
           almoxarifado -= quantidade;
+          removerEquipe(movimentacao.origem_id, quantidade);
 
           if (almoxarifado < 0) {
             throw new Error(
@@ -247,6 +268,7 @@ export const estadoEquipamentosRepo = {
           }
 
           almoxarifado += quantidade;
+          adicionarEquipe(movimentacao.destino_id, quantidade);
 
           break;
         }
@@ -288,30 +310,13 @@ export const estadoEquipamentosRepo = {
           break;
         }
 
+        case "SINALIZAR_MANUTENCAO": {
+          // Sinalização é somente administrativa.
+          break;
+        }
+
         case "MANUTENCAO": {
-          if (
-            movimentacao.tipo_origem !== "EQUIPE" &&
-            movimentacao.tipo_origem !== "FUNCIONARIO"
-          ) {
-            throw new Error(
-              "MANUTENCAO deve partir de equipe ou funcionário.",
-            );
-          }
-
-          if (movimentacao.tipo_destino !== "EQUIPE") {
-            throw new Error(
-              "MANUTENCAO deve ter uma equipe como destino.",
-            );
-          }
-
-          if (
-            movimentacao.destino_id !== equipes.manutencao.id
-          ) {
-            throw new Error(
-              "MANUTENCAO deve ter como destino a equipe Manutenção.",
-            );
-          }
-
+          // Histórico antigo: MANUTENCAO representava envio efetivo.
           if (movimentacao.tipo_origem === "FUNCIONARIO") {
             remover(
               funcionarios,
@@ -319,11 +324,11 @@ export const estadoEquipamentosRepo = {
               quantidade,
             );
           } else if (
-            movimentacao.origem_id ===
-            equipes.almoxarifado.id
+            movimentacao.tipo_origem === "EQUIPE" &&
+            movimentacao.origem_id === equipes.almoxarifado.id
           ) {
             almoxarifado -= quantidade;
-
+            removerEquipe(movimentacao.origem_id, quantidade);
             if (almoxarifado < 0) {
               throw new Error(
                 "Quantidade insuficiente no Almoxarifado para manutenção.",
@@ -336,6 +341,44 @@ export const estadoEquipamentosRepo = {
           }
 
           manutencao += quantidade;
+          adicionarEquipe(equipes.manutencao.id, quantidade);
+          break;
+        }
+
+        case "ENVIO": {
+          if (movimentacao.tipo_origem === "EQUIPE") {
+            if (movimentacao.origem_id !== equipes.almoxarifado.id) {
+              throw new Error(
+                "ENVIO por equipe deve partir do Almoxarifado.",
+              );
+            }
+
+            almoxarifado -= quantidade;
+            removerEquipe(movimentacao.origem_id, quantidade);
+
+            if (almoxarifado < 0) {
+              throw new Error(
+                "Quantidade insuficiente no Almoxarifado para envio à manutenção.",
+              );
+            }
+          } else if (movimentacao.tipo_origem === "FUNCIONARIO") {
+            remover(
+              funcionarios,
+              movimentacao.origem_id,
+              quantidade,
+            );
+          } else {
+            throw new Error(
+              "ENVIO deve partir do Almoxarifado ou de um funcionário.",
+            );
+          }
+
+          manutencao += quantidade;
+          adicionarEquipe(equipes.manutencao.id, quantidade);
+
+          if (movimentacao.tipo_destino === "EMPRESA") {
+            empresa += quantidade;
+          }
 
           break;
         }
@@ -373,6 +416,7 @@ export const estadoEquipamentosRepo = {
             // Envio direto do Almoxarifado para manutenção externa:
             // o equipamento passa a ser contabilizado em Manutenção.
             almoxarifado -= quantidade;
+            removerEquipe(movimentacao.origem_id, quantidade);
 
             if (almoxarifado < 0) {
               throw new Error(
@@ -381,6 +425,7 @@ export const estadoEquipamentosRepo = {
             }
 
             manutencao += quantidade;
+            adicionarEquipe(equipes.manutencao.id, quantidade);
             empresa += quantidade;
           }
 
@@ -411,6 +456,7 @@ export const estadoEquipamentosRepo = {
             }
 
             manutencao -= quantidade;
+            removerEquipe(movimentacao.origem_id, quantidade);
 
             if (manutencao < 0) {
               throw new Error(
@@ -419,6 +465,7 @@ export const estadoEquipamentosRepo = {
             }
 
             almoxarifado += quantidade;
+            adicionarEquipe(movimentacao.destino_id, quantidade);
             break;
           }
 
@@ -437,6 +484,7 @@ export const estadoEquipamentosRepo = {
           }
 
           manutencao -= quantidade;
+          removerEquipe(equipes.manutencao.id, quantidade);
 
           if (manutencao < 0) {
             throw new Error(
@@ -445,6 +493,45 @@ export const estadoEquipamentosRepo = {
           }
 
           almoxarifado += quantidade;
+          adicionarEquipe(equipes.almoxarifado.id, quantidade);
+
+          break;
+        }
+
+        case "REENTRADA": {
+          const restante = movimentacao.quantidade;
+          let quantidadeReentrada = restante;
+
+          while (quantidadeReentrada > 0 && pendenciasReentrada.length > 0) {
+            const pendencia = pendenciasReentrada[pendenciasReentrada.length - 1];
+            if (!pendencia) break;
+            const aplicada = Math.min(quantidadeReentrada, pendencia.restante);
+            pendencia.restante -= aplicada;
+            quantidadeReentrada -= aplicada;
+
+            if (pendencia.tipo === "DEVOLUCAO_FORNECEDOR") {
+              devolvido -= aplicada;
+            } else {
+              baixado -= aplicada;
+            }
+
+            adicionarEquipe(movimentacao.destino_id, aplicada);
+            if (movimentacao.destino_id === equipes.almoxarifado.id) {
+              almoxarifado += aplicada;
+            } else if (movimentacao.destino_id === equipes.manutencao.id) {
+              manutencao += aplicada;
+            }
+
+            if (pendencia.restante === 0) {
+              pendenciasReentrada.pop();
+            }
+          }
+
+          if (quantidadeReentrada > 0) {
+            throw new Error(
+              "REENTRADA excede a quantidade de equipamento disponível para restauração.",
+            );
+          }
 
           break;
         }
@@ -469,6 +556,7 @@ export const estadoEquipamentosRepo = {
           }
 
           almoxarifado -= quantidade;
+          removerEquipe(movimentacao.origem_id, quantidade);
 
           if (almoxarifado < 0) {
             throw new Error(
@@ -477,6 +565,10 @@ export const estadoEquipamentosRepo = {
           }
 
           baixado += quantidade;
+          pendenciasReentrada.push({
+            tipo: "BAIXA",
+            restante: quantidade,
+          });
           break;
         }
 
@@ -513,6 +605,7 @@ export const estadoEquipamentosRepo = {
             equipes.almoxarifado.id
           ) {
             almoxarifado -= quantidade;
+            removerEquipe(movimentacao.origem_id, quantidade);
 
             if (almoxarifado < 0) {
               throw new Error(
@@ -521,6 +614,7 @@ export const estadoEquipamentosRepo = {
             }
           } else {
             manutencao -= quantidade;
+            removerEquipe(movimentacao.origem_id, quantidade);
 
             if (manutencao < 0) {
               throw new Error(
@@ -530,6 +624,10 @@ export const estadoEquipamentosRepo = {
           }
 
           devolvido += quantidade;
+          pendenciasReentrada.push({
+            tipo: "DEVOLUCAO_FORNECEDOR",
+            restante: quantidade,
+          });
 
           break;
         }
@@ -576,9 +674,12 @@ export const estadoEquipamentosRepo = {
     // `empresa` é somente um marcador interno para os equipamentos
     // enviados para manutenção externa. Ele nunca é somado como uma
     // localização adicional e não altera a contagem de Manutenção.
+    const quantidadeEmEquipes = [...equipesAtuais.values()].reduce(
+      (total, quantidade) => total + quantidade,
+      0,
+    );
     const totalDistribuido =
-      almoxarifado +
-      manutencao +
+      quantidadeEmEquipes +
       apropriado +
       devolvido +
       baixado;
@@ -611,6 +712,7 @@ export const estadoEquipamentosRepo = {
       disponivel,
 
       funcionarios,
+      equipes: equipesAtuais,
 
       encerrado: saldo === 0,
     };

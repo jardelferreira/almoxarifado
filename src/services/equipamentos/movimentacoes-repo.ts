@@ -169,11 +169,14 @@ function validarTipo(
     "SAIDA",
     "DEVOLUCAO",
     "TRANSFERENCIA",
+    "SINALIZAR_MANUTENCAO",
+    "ENVIO",
+    "RETORNO_MANUTENCAO",
     "MANUTENCAO",
     "RETIRADA_MANUTENCAO",
-    "RETORNO_MANUTENCAO",
     "DEVOLUCAO_FORNECEDOR",
     "BAIXA",
+    "REENTRADA",
   ];
 
   if (!tipos.includes(tipo)) {
@@ -342,6 +345,9 @@ async function atualizarApropriacoes(
 
       return;
 
+    case "SINALIZAR_MANUTENCAO":
+      return;
+
     case "MANUTENCAO":
       if (tipo_origem === "FUNCIONARIO") {
         await removerApropriacao(
@@ -351,7 +357,20 @@ async function atualizarApropriacoes(
           agora,
         );
       }
+      return;
 
+    case "ENVIO":
+      if (tipo_origem === "FUNCIONARIO") {
+        await removerApropriacao(
+          estoque_equipamento_id,
+          origem_id,
+          quantidade,
+          agora,
+        );
+      }
+      return;
+
+    case "RETIRADA_MANUTENCAO":
       return;
 
     default:
@@ -359,19 +378,71 @@ async function atualizarApropriacoes(
   }
 }
 
-function validarEstadoDaOrigem(
+async function obterPendenciaReentrada(
+  projetoId: string,
+  estoqueEquipamentoId: string,
+): Promise<{ tipo: "DEVOLUCAO_FORNECEDOR" | "BAIXA"; restante: number; origemId: string }> {
+  const movimentacoes = await getDB()
+    .movimentacoes_equipamentos
+    .where("estoque_equipamento_id")
+    .equals(estoqueEquipamentoId)
+    .toArray();
+
+  const ordenadas = [...movimentacoes].sort((a, b) => {
+    const dataA = `${a.data}|${a.criado_em}|${a.id}`;
+    const dataB = `${b.data}|${b.criado_em}|${b.id}`;
+    return dataA.localeCompare(dataB);
+  });
+
+  const pendentes: Array<{ tipo: "DEVOLUCAO_FORNECEDOR" | "BAIXA"; restante: number; origemId: string }> = [];
+
+  for (const movimentacao of ordenadas) {
+    if (movimentacao.tipo === "DEVOLUCAO_FORNECEDOR" || movimentacao.tipo === "BAIXA") {
+      pendentes.push({
+        tipo: movimentacao.tipo,
+        restante: movimentacao.quantidade,
+        origemId: movimentacao.destino_id,
+      });
+      continue;
+    }
+
+    if (movimentacao.tipo === "REENTRADA") {
+      let restante = movimentacao.quantidade;
+      while (restante > 0) {
+        const pendencia = pendentes.at(-1);
+        if (!pendencia) {
+          throw new Error("Histórico inconsistente: REENTRADA sem devolução ou baixa pendente.");
+        }
+        const aplicada = Math.min(restante, pendencia.restante);
+        pendencia.restante -= aplicada;
+        restante -= aplicada;
+      }
+    }
+  }
+
+  const pendencia = pendentes.at(-1);
+  if (!pendencia || pendencia.restante <= 0) {
+    throw new Error("Este registro não possui quantidade devolvida ou baixada disponível para reentrada.");
+  }
+
+  return pendencia;
+}
+
+async function validarEstadoDaOrigem(
   movimentacao: MovimentacaoEquipamentoInput,
   estado: EstadoEstoqueEquipamento,
   equipes: {
     almoxarifado: Equipe;
     manutencao: Equipe;
   },
-): void {
+): Promise<void> {
   const {
     tipo,
     quantidade,
     tipo_origem,
     origem_id,
+    tipo_destino,
+    destino_id,
   } = movimentacao;
 
   switch (tipo) {
@@ -413,75 +484,81 @@ function validarEstadoDaOrigem(
       return;
     }
 
-    case "MANUTENCAO":
-      if (tipo_origem === "EQUIPE") {
-        if (
-          origem_id ===
-          equipes.almoxarifado.id
-        ) {
-          exigirDisponibilidade(
-            estado.almoxarifado,
-            quantidade,
-            "Quantidade insuficiente no Almoxarifado para envio à manutenção.",
-          );
-
-          return;
-        }
-
-        throw new Error(
-          "A única equipe permitida como origem de MANUTENCAO é o Almoxarifado.",
+    case "SINALIZAR_MANUTENCAO":
+      if (tipo_origem === "EQUIPE" && origem_id === equipes.almoxarifado.id) {
+        exigirDisponibilidade(
+          estado.almoxarifado,
+          quantidade,
+          "Quantidade insuficiente no Almoxarifado para sinalização.",
         );
+        return;
       }
 
       if (tipo_origem === "FUNCIONARIO") {
-        const disponivel =
-          estado.funcionarios.get(
-            origem_id,
-          ) ?? 0;
-
         exigirDisponibilidade(
-          disponivel,
+          estado.funcionarios.get(origem_id) ?? 0,
           quantidade,
-          "O funcionário não possui quantidade suficiente para enviar à manutenção.",
+          "O funcionário não possui quantidade suficiente para sinalização.",
         );
-
         return;
       }
 
-      throw new Error(
-        "Origem inválida para MANUTENCAO.",
-      );
+      throw new Error("A sinalização deve partir do Almoxarifado ou de um funcionário.");
 
-    case "RETIRADA_MANUTENCAO":
-      if (
-        origem_id ===
-        equipes.manutencao.id
-      ) {
-        exigirDisponibilidade(
-          estado.manutencao,
-          quantidade,
-          "Quantidade insuficiente na Manutenção.",
-        );
-
-        return;
-      }
-
-      if (
-        origem_id ===
-        equipes.almoxarifado.id
-      ) {
+    case "MANUTENCAO":
+      // Histórico antigo: MANUTENCAO representava o envio efetivo.
+      if (tipo_origem === "EQUIPE" && origem_id === equipes.almoxarifado.id) {
         exigirDisponibilidade(
           estado.almoxarifado,
           quantidade,
           "Quantidade insuficiente no Almoxarifado.",
         );
+        return;
+      }
+      if (tipo_origem === "FUNCIONARIO") {
+        exigirDisponibilidade(
+          estado.funcionarios.get(origem_id) ?? 0,
+          quantidade,
+          "O funcionário não possui quantidade suficiente.",
+        );
+        return;
+      }
+      throw new Error("Origem inválida para MANUTENCAO.");
 
+    case "ENVIO":
+      if (tipo_origem === "EQUIPE") {
+        if (origem_id !== equipes.almoxarifado.id) {
+          throw new Error("O envio por equipe deve partir do Almoxarifado.");
+        }
+        exigirDisponibilidade(
+          estado.almoxarifado,
+          quantidade,
+          "Quantidade insuficiente no Almoxarifado para envio à manutenção.",
+        );
         return;
       }
 
-      throw new Error(
-        "Origem inválida para retirada de manutenção.",
-      );
+      if (tipo_origem === "FUNCIONARIO") {
+        exigirDisponibilidade(
+          estado.funcionarios.get(origem_id) ?? 0,
+          quantidade,
+          "O funcionário não possui quantidade suficiente para envio à manutenção.",
+        );
+        return;
+      }
+
+      throw new Error("O envio deve partir do Almoxarifado ou de um funcionário.");
+
+    case "RETIRADA_MANUTENCAO":
+      if (origem_id === equipes.manutencao.id) {
+        exigirDisponibilidade(estado.manutencao, quantidade, "Quantidade insuficiente na Manutenção.");
+        return;
+      }
+      if (origem_id === equipes.almoxarifado.id) {
+        exigirDisponibilidade(estado.almoxarifado, quantidade, "Quantidade insuficiente no Almoxarifado.");
+        return;
+      }
+      throw new Error("Origem inválida para retirada de manutenção.");
 
     case "RETORNO_MANUTENCAO":
       if (tipo_origem === "EQUIPE") {
@@ -505,6 +582,25 @@ function validarEstadoDaOrigem(
         "O equipamento em manutenção externa não possui saldo suficiente para retorno.",
       );
       return;
+
+    case "REENTRADA": {
+      if (tipo_origem !== "EMPRESA" || tipo_destino !== "EQUIPE") {
+        throw new Error("REENTRADA deve ser Empresa → Equipe.");
+      }
+      const pendencia = await obterPendenciaReentrada(
+        movimentacao.projeto_id,
+        movimentacao.estoque_equipamento_id,
+      );
+      if (origem_id !== pendencia.origemId) {
+        throw new Error("A empresa de origem da reentrada deve ser a mesma da última devolução ou baixa pendente.");
+      }
+      exigirDisponibilidade(
+        pendencia.restante,
+        quantidade,
+        "A quantidade informada excede o equipamento disponível para reentrada.",
+      );
+      return;
+    }
 
     case "BAIXA":
       if (tipo_origem !== "EQUIPE" || origem_id !== equipes.almoxarifado.id) {
@@ -640,39 +736,49 @@ function validarRegraDoTipo(
 
       return;
 
-    case "MANUTENCAO":
+    case "SINALIZAR_MANUTENCAO":
       if (
+        (tipo_origem !== "EQUIPE" && tipo_origem !== "FUNCIONARIO") ||
         tipo_destino !== "EQUIPE" ||
         destino_id !== equipes.manutencao.id
       ) {
         throw new Error(
-          "MANUTENCAO deve ter a equipe Manutenção como destino.",
+          "SINALIZAR_MANUTENCAO deve registrar a sinalização para Manutenção.",
         );
       }
+      return;
 
+    case "MANUTENCAO":
       if (
-        tipo_origem !== "EQUIPE" &&
-        tipo_origem !== "FUNCIONARIO"
+        (tipo_origem !== "EQUIPE" && tipo_origem !== "FUNCIONARIO") ||
+        tipo_destino !== "EQUIPE" ||
+        destino_id !== equipes.manutencao.id
+      ) {
+        throw new Error("MANUTENCAO (histórico) possui origem ou destino inválido.");
+      }
+      return;
+
+    case "ENVIO":
+      if (
+        (tipo_origem !== "EQUIPE" && tipo_origem !== "FUNCIONARIO") ||
+        tipo_destino !== "EMPRESA"
       ) {
         throw new Error(
-          "MANUTENCAO deve partir do Almoxarifado ou de um funcionário.",
+          "ENVIO deve ser Almoxarifado ou Funcionário → Empresa de manutenção.",
         );
       }
-
+      if (tipo_origem === "EQUIPE" && origem_id !== equipes.almoxarifado.id) {
+        throw new Error("O envio por equipe deve partir do Almoxarifado.");
+      }
       return;
 
     case "RETIRADA_MANUTENCAO":
       if (
         tipo_origem !== "EQUIPE" ||
-        (origem_id !==
-          equipes.almoxarifado.id &&
-          origem_id !==
-            equipes.manutencao.id) ||
+        (origem_id !== equipes.almoxarifado.id && origem_id !== equipes.manutencao.id) ||
         tipo_destino !== "EMPRESA"
       ) {
-        throw new Error(
-          "RETIRADA_MANUTENCAO deve ser Almoxarifado/Manutenção → Empresa.",
-        );
+        throw new Error("RETIRADA_MANUTENCAO (histórico) possui origem ou destino inválido.");
       }
       return;
 
@@ -702,6 +808,14 @@ function validarRegraDoTipo(
       ) {
         throw new Error(
           "BAIXA deve ser Almoxarifado → Empresa proprietária.",
+        );
+      }
+      return;
+
+    case "REENTRADA":
+      if (tipo_origem !== "EMPRESA" || tipo_destino !== "EQUIPE") {
+        throw new Error(
+          "REENTRADA deve ser Empresa → Equipe.",
         );
       }
       return;
@@ -825,6 +939,42 @@ async function validarEntradaUnica(
   }
 }
 
+async function obterSinalizacaoPendente(
+  estoqueEquipamentoId: string,
+): Promise<number> {
+  const movimentacoes = await getDB()
+    .movimentacoes_equipamentos
+    .where("estoque_equipamento_id")
+    .equals(estoqueEquipamentoId)
+    .toArray();
+
+  const ordenadas = [...movimentacoes].sort((a, b) =>
+    `${a.data}|${a.criado_em}|${a.id}`.localeCompare(
+      `${b.data}|${b.criado_em}|${b.id}`,
+    ),
+  );
+
+  let pendente = 0;
+
+  for (const movimentacao of ordenadas) {
+    if (
+      movimentacao.tipo === "SINALIZAR_MANUTENCAO" ||
+      movimentacao.tipo === "MANUTENCAO"
+    ) {
+      pendente += movimentacao.quantidade;
+    } else if (
+      movimentacao.tipo === "ENVIO" ||
+      movimentacao.tipo === "RETIRADA_MANUTENCAO"
+    ) {
+      pendente = Math.max(0, pendente - movimentacao.quantidade);
+    } else if (movimentacao.tipo === "RETORNO_MANUTENCAO") {
+      pendente = 0;
+    }
+  }
+
+  return pendente;
+}
+
 export const movimentacoesEquipamentosRepo = {
   async listar(
     projetoId: string,
@@ -918,6 +1068,41 @@ export const movimentacoesEquipamentosRepo = {
       dados.projeto_id,
     );
 
+    if (
+      dados.tipo === "ENVIO" &&
+      estoque.vinculo !== "PROPRIO" &&
+      dados.destino_id !== estoque.empresa_id
+    ) {
+      throw new Error(
+        "Equipamentos alugados ou emprestados devem ser enviados para a empresa do vínculo.",
+      );
+    }
+
+    if (dados.tipo === "REENTRADA" && estoque.ativo !== false) {
+      const pendencia = await obterPendenciaReentrada(
+        dados.projeto_id,
+        estoque.id,
+      );
+      if (pendencia.restante <= 0) {
+        throw new Error("Este registro de estoque não possui quantidade pendente para reentrada.");
+      }
+    }
+
+    if (dados.tipo !== "REENTRADA" && estoque.ativo === false) {
+      throw new Error("Este registro de estoque está inativo e não pode receber movimentações.");
+    }
+
+    if (dados.tipo === "SINALIZAR_MANUTENCAO") {
+      const sinalizacaoPendente = await obterSinalizacaoPendente(
+        dados.estoque_equipamento_id,
+      );
+      if (sinalizacaoPendente > 0) {
+        throw new Error(
+          "Este equipamento já está sinalizado para manutenção.",
+        );
+      }
+    }
+
     validarRegraDoTipo(
       dados,
       equipes,
@@ -946,7 +1131,7 @@ export const movimentacoesEquipamentosRepo = {
           dados.estoque_equipamento_id,
         );
 
-      validarEstadoDaOrigem(
+      await validarEstadoDaOrigem(
         dados,
         estado,
         equipes,
@@ -1025,7 +1210,42 @@ export const movimentacoesEquipamentosRepo = {
           await db.estoque_equipamentos.put({
             ...estoqueAtual,
             devolvido: novoDevolvido,
-            status: novoDevolvido < estoqueAtual.quantidade ? "ATIVO" : "ENCERRADO",
+            status: novoDevolvido + (estoqueAtual.baixado ?? 0) < estoqueAtual.quantidade ? "ATIVO" : "ENCERRADO",
+            ativo: novoDevolvido + (estoqueAtual.baixado ?? 0) < estoqueAtual.quantidade,
+            atualizado_em: agora,
+          });
+        }
+
+        if (movimentacao.tipo === "REENTRADA") {
+          const estoqueAtual = await db.estoque_equipamentos.get(estoque.id);
+          if (!estoqueAtual) throw new Error("Estoque de equipamento não encontrado.");
+
+          const pendencia = await obterPendenciaReentrada(
+            dados.projeto_id,
+            estoque.id,
+          );
+          if (movimentacao.origem_id !== pendencia.origemId) {
+            throw new Error("A empresa de origem da reentrada não corresponde ao histórico pendente.");
+          }
+          if (movimentacao.quantidade > pendencia.restante) {
+            throw new Error("A quantidade da reentrada excede a quantidade disponível para restauração.");
+          }
+
+          const novoDevolvido = Math.max(
+            0,
+            estoqueAtual.devolvido - (pendencia.tipo === "DEVOLUCAO_FORNECEDOR" ? movimentacao.quantidade : 0),
+          );
+          const novoBaixado = Math.max(
+            0,
+            (estoqueAtual.baixado ?? 0) - (pendencia.tipo === "BAIXA" ? movimentacao.quantidade : 0),
+          );
+
+          await db.estoque_equipamentos.put({
+            ...estoqueAtual,
+            devolvido: novoDevolvido,
+            baixado: novoBaixado,
+            ativo: true,
+            status: "ATIVO",
             atualizado_em: agora,
           });
         }
@@ -1058,6 +1278,7 @@ export const movimentacoesEquipamentosRepo = {
             ...estoqueAtual,
             baixado: novoBaixado,
             status: estoqueAtual.devolvido + novoBaixado < estoqueAtual.quantidade ? "ATIVO" : "ENCERRADO",
+            ativo: estoqueAtual.devolvido + novoBaixado < estoqueAtual.quantidade,
             atualizado_em: agora,
           });
         }

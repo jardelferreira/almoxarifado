@@ -74,11 +74,15 @@ export type MovimentacaoEquipamentoTipo =
   | "SAIDA"
   | "DEVOLUCAO"
   | "TRANSFERENCIA"
-  | "MANUTENCAO"
-  | "RETIRADA_MANUTENCAO"
+  | "SINALIZAR_MANUTENCAO"
+  | "ENVIO"
   | "RETORNO_MANUTENCAO"
   | "DEVOLUCAO_FORNECEDOR"
-  | "BAIXA";
+  | "BAIXA"
+  | "REENTRADA"
+  // Valores legados mantidos apenas para leitura de históricos antigos.
+  | "MANUTENCAO"
+  | "RETIRADA_MANUTENCAO";
 
 export type MovimentacaoEquipamentoParte =
   | "EMPRESA"

@@ -147,6 +147,7 @@ async function validarEquipe(
 
 async function validarIdentificadoresUnicos(
   projetoId: string,
+  empresaId: string,
   patrimonio: string | null,
   serial: string | null,
   estoqueId?: string,
@@ -165,12 +166,13 @@ async function validarIdentificadoresUnicos(
     const duplicado = registros.some(
       (registro) =>
         registro.id !== estoqueId &&
+        registro.empresa_id === empresaId &&
         normalizar(registro.patrimonio) === patrimonioNormalizado,
     );
 
     if (duplicado) {
       throw new Error(
-        `Já existe um equipamento com o patrimônio "${patrimonio}" neste projeto.`,
+        `Já existe um equipamento com o patrimônio "${patrimonio}" para este proprietário neste projeto.`,
       );
     }
   }
@@ -180,12 +182,13 @@ async function validarIdentificadoresUnicos(
     const duplicado = registros.some(
       (registro) =>
         registro.id !== estoqueId &&
+        registro.empresa_id === empresaId &&
         normalizar(registro.serial) === serialNormalizado,
     );
 
     if (duplicado) {
       throw new Error(
-        `Já existe um equipamento com o serial "${serial}" neste projeto.`,
+        `Já existe um equipamento com o serial "${serial}" para este proprietário neste projeto.`,
       );
     }
   }
@@ -193,6 +196,7 @@ async function validarIdentificadoresUnicos(
 
 async function validarIdentificacao(
   projetoId: string,
+  empresaId: string,
   identificacao: string | null,
   estoqueId?: string,
 ): Promise<void> {
@@ -209,13 +213,14 @@ async function validarIdentificacao(
   const duplicado = registros.some(
     (registro) =>
       registro.id !== estoqueId &&
+      registro.empresa_id === empresaId &&
       registro.identificacao?.trim().toLowerCase() ===
         identificacao.toLowerCase(),
   );
 
   if (duplicado) {
     throw new Error(
-      `Já existe um equipamento com a identificação "${identificacao}" neste projeto.`,
+      `Já existe um equipamento com a identificação "${identificacao}" para este proprietário neste projeto.`,
     );
   }
 }
@@ -287,12 +292,14 @@ export const estoqueEquipamentosRepo = {
 
     await validarIdentificacao(
       projetoId,
+      dados.empresa_id,
       identificacao,
       dados.id,
     );
 
     await validarIdentificadoresUnicos(
       projetoId,
+      dados.empresa_id,
       patrimonio,
       serial,
       dados.id,
