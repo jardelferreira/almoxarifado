@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteImport } from './routes/app'
 import { Route as AppIndexRouteImport } from './routes/app.index'
+import { Route as AppApropriacoesRouteImport } from './routes/app.apropriacoes'
 import { Route as AppCadastrosRouteImport } from './routes/app.cadastros'
 import { Route as AppDadosRouteImport } from './routes/app.dados'
 import { Route as AppEquipamentosRouteImport } from './routes/app.equipamentos'
@@ -33,6 +34,11 @@ const AppRoute = AppRouteImport.update({
 const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppApropriacoesRoute = AppApropriacoesRouteImport.update({
+  id: '/apropriacoes',
+  path: '/apropriacoes',
   getParentRoute: () => AppRoute,
 } as any)
 const AppCadastrosRoute = AppCadastrosRouteImport.update({
@@ -75,6 +81,7 @@ const AppMovimentacoesEquipamentosRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
+  '/app/apropriacoes': typeof AppApropriacoesRoute
   '/app/cadastros': typeof AppCadastrosRoute
   '/app/dados': typeof AppDadosRoute
   '/app/equipamentos': typeof AppEquipamentosRoute
@@ -86,6 +93,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/app/apropriacoes': typeof AppApropriacoesRoute
   '/app/cadastros': typeof AppCadastrosRoute
   '/app/dados': typeof AppDadosRoute
   '/app/equipamentos': typeof AppEquipamentosRoute
@@ -99,6 +107,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
+  '/app/apropriacoes': typeof AppApropriacoesRoute
   '/app/cadastros': typeof AppCadastrosRoute
   '/app/dados': typeof AppDadosRoute
   '/app/equipamentos': typeof AppEquipamentosRoute
@@ -113,6 +122,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/app'
+    | '/app/apropriacoes'
     | '/app/cadastros'
     | '/app/dados'
     | '/app/equipamentos'
@@ -124,6 +134,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/app/apropriacoes'
     | '/app/cadastros'
     | '/app/dados'
     | '/app/equipamentos'
@@ -136,6 +147,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/app'
+    | '/app/apropriacoes'
     | '/app/cadastros'
     | '/app/dados'
     | '/app/equipamentos'
@@ -172,6 +184,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/app/'
       preLoaderRoute: typeof AppIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/apropriacoes': {
+      id: '/app/apropriacoes'
+      path: '/apropriacoes'
+      fullPath: '/app/apropriacoes'
+      preLoaderRoute: typeof AppApropriacoesRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/cadastros': {
@@ -227,6 +246,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface AppRouteChildren {
+  AppApropriacoesRoute: typeof AppApropriacoesRoute
   AppCadastrosRoute: typeof AppCadastrosRoute
   AppDadosRoute: typeof AppDadosRoute
   AppEquipamentosRoute: typeof AppEquipamentosRoute
@@ -238,6 +258,7 @@ interface AppRouteChildren {
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppApropriacoesRoute: AppApropriacoesRoute,
   AppCadastrosRoute: AppCadastrosRoute,
   AppDadosRoute: AppDadosRoute,
   AppEquipamentosRoute: AppEquipamentosRoute,

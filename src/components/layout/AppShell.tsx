@@ -17,6 +17,7 @@ import {
   Wifi,
   WifiOff,
   Wrench,
+  UserCheck,
   X,
 } from "lucide-react";
 import type { ReactNode } from "react";
@@ -59,6 +60,7 @@ const navGroups: NavGroup[] = [
     icon: Wrench,
     items: [
       { to: "/app/equipamentos", label: "Equipamentos", icon: HardHat },
+      { to: "/app/apropriacoes", label: "Apropriações", icon: UserCheck },
       { to: "/app/movimentacoes-equipamentos", label: "Movimentações", icon: Activity },
     ],
   },
