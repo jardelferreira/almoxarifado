@@ -43,12 +43,19 @@ export function RelatorioEquipamentosManutencao({
     );
   }, [busca, dados.linhas]);
 
+  const relatorioFiltrado = useMemo<RelatorioEquipamentosManutencao>(() => ({
+    ...dados,
+    linhas,
+    totalRegistros: linhas.length,
+    quantidade: linhas.reduce((total, linha) => total + linha.quantidade, 0),
+  }), [dados, linhas]);
+
   return (
     <div className="space-y-4">
       <Card>
         <CardContent className="grid gap-3 p-4 sm:grid-cols-2">
-          <Resumo label="Registros em manutenção" value={dados.totalRegistros} />
-          <Resumo label="Quantidade" value={dados.quantidade} />
+          <Resumo label="Registros em manutenção" value={relatorioFiltrado.totalRegistros} />
+          <Resumo label="Quantidade" value={relatorioFiltrado.quantidade} />
         </CardContent>
       </Card>
 
@@ -67,7 +74,7 @@ export function RelatorioEquipamentosManutencao({
                 variant="outline"
                 size="sm"
                 onClick={() =>
-                  exportarRelatorioEquipamentosManutencao(dados, "xlsx")
+                  exportarRelatorioEquipamentosManutencao(relatorioFiltrado, "xlsx")
                 }
               >
                 <FileSpreadsheet className="mr-2 size-4" />
@@ -77,7 +84,7 @@ export function RelatorioEquipamentosManutencao({
                 variant="default"
                 size="sm"
                 onClick={() =>
-                  imprimirRelatorioEquipamentosManutencao(dados, projetoNome)
+                  imprimirRelatorioEquipamentosManutencao(relatorioFiltrado, projetoNome)
                 }
               >
                 <Printer className="mr-2 size-4" />
@@ -87,7 +94,7 @@ export function RelatorioEquipamentosManutencao({
                 variant="outline"
                 size="sm"
                 onClick={() =>
-                  exportarRelatorioEquipamentosManutencao(dados, "csv")
+                  exportarRelatorioEquipamentosManutencao(relatorioFiltrado, "csv")
                 }
               >
                 <Download className="mr-2 size-4" />

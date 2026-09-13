@@ -4,9 +4,14 @@ import {
   ArrowDownToLine,
   ArrowRight,
   ArrowRightLeft,
+  Check,
+  ChevronsUpDown,
   ArrowUpFromLine,
   Building2,
   Eye,
+  Download,
+  FileSpreadsheet,
+  Printer,
   PackageCheck,
   PackageOpen,
   PackageX,
@@ -21,6 +26,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
+import * as XLSX from "xlsx";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -34,6 +40,11 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -280,6 +291,136 @@ function detalhesRegistroFisico(
   ].join(" · ");
 }
 
+
+type FiltroOpcao = {
+  value: string;
+  label: string;
+};
+
+function MultiSelectFiltro({
+  label,
+  placeholder,
+  options,
+  selected,
+  onChange,
+}: {
+  label: string;
+  placeholder: string;
+  options: FiltroOpcao[];
+  selected: string[];
+  onChange: (values: string[]) => void;
+}) {
+  const todosSelecionados =
+    options.length > 0 && selected.length === options.length;
+
+  const alternar = (value: string) => {
+    onChange(
+      selected.includes(value)
+        ? selected.filter((item) => item !== value)
+        : [...selected, value],
+    );
+  };
+
+  const selecionarTodos = () => {
+    onChange(options.map((option) => option.value));
+  };
+
+  const limpar = () => onChange([]);
+
+  const resumo =
+    selected.length === 0
+      ? placeholder
+      : selected.length === 1
+        ? options.find((option) => option.value === selected[0])?.label ?? "1 selecionado"
+        : `${selected.length} selecionados`;
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-9 min-w-[150px] justify-between gap-2"
+        >
+          <span className="truncate">{label}: {resumo}</span>
+          {selected.length > 0 ? (
+            <Badge variant="secondary" className="shrink-0 px-1.5">
+              {selected.length}
+            </Badge>
+          ) : (
+            <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground" />
+          )}
+        </Button>
+      </PopoverTrigger>
+
+      <PopoverContent align="start" className="w-[280px] p-2">
+        <div className="flex items-center justify-between border-b px-2 pb-2">
+          <div>
+            <p className="text-sm font-semibold">{label}</p>
+            <p className="text-xs text-muted-foreground">
+              Selecione uma ou mais opções.
+            </p>
+          </div>
+          <div className="flex gap-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs"
+              onClick={selecionarTodos}
+              disabled={todosSelecionados}
+            >
+              Todos
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs"
+              onClick={limpar}
+              disabled={selected.length === 0}
+            >
+              Limpar
+            </Button>
+          </div>
+        </div>
+
+        <div className="mt-2 max-h-64 space-y-1 overflow-y-auto">
+          {options.length === 0 ? (
+            <p className="px-2 py-4 text-center text-xs text-muted-foreground">
+              Nenhuma opção disponível.
+            </p>
+          ) : (
+            options.map((option) => {
+              const checked = selected.includes(option.value);
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm hover:bg-muted"
+                  onClick={() => alternar(option.value)}
+                >
+                  <span
+                    className={`flex size-4 shrink-0 items-center justify-center rounded-sm border ${
+                      checked
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-input bg-background"
+                    }`}
+                  >
+                    {checked && <Check className="size-3" />}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                </button>
+              );
+            })
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function MovimentacoesEquipamentosPage() {
   const [projetoId] = useProjetoAtivoId();
   const [movimentacoes, setMovimentacoes] = useState<MovimentacaoEquipamento[]>([]);
@@ -289,6 +430,9 @@ function MovimentacoesEquipamentosPage() {
   const [equipes, setEquipes] = useState<Equipe[]>([]);
   const [funcionarios, setFuncionarios] = useState<Funcionario[]>([]);
   const [busca, setBusca] = useState("");
+  const [filtroTipos, setFiltroTipos] = useState<MovimentacaoEquipamentoTipo[]>([]);
+  const [filtroOrigens, setFiltroOrigens] = useState<string[]>([]);
+  const [filtroDestinos, setFiltroDestinos] = useState<string[]>([]);
   const [dialogAberto, setDialogAberto] = useState(false);
   const [detalhe, setDetalhe] = useState<MovimentacaoEquipamento | null>(null);
   const [formulario, setFormulario] = useState<Formulario>(formularioInicial);
@@ -352,7 +496,9 @@ function MovimentacoesEquipamentosPage() {
     return { almoxarifado, manutencao };
   }, [equipes]);
 
-  // Estado operacional é reconstruído a partir do histórico.
+  // Estado operacional é reconstruído a partir do histórico. Esta projeção
+  // precisa seguir as mesmas regras do repositório para que os seletores
+  // nunca ofereçam uma quantidade diferente daquela que será validada ao salvar.
   const estados = useMemo(() => {
     const resultado = new Map<string, EstadoUI>();
 
@@ -372,13 +518,25 @@ function MovimentacoesEquipamentosPage() {
       (a, b) => `${a.criado_em}|${a.id}`.localeCompare(`${b.criado_em}|${b.id}`),
     );
 
+    const pendenciasPorEstoque = new Map<
+      string,
+      Array<{
+        tipo: "DEVOLUCAO_FORNECEDOR" | "BAIXA";
+        restante: number;
+      }>
+    >();
+
     for (const mov of ordenadas) {
       const estado = resultado.get(mov.estoque_equipamento_id);
       if (!estado) continue;
 
       const adicionarFuncionario = (id: string, quantidade: number) => {
-        estado.funcionarios.set(id, (estado.funcionarios.get(id) ?? 0) + quantidade);
+        estado.funcionarios.set(
+          id,
+          (estado.funcionarios.get(id) ?? 0) + quantidade,
+        );
       };
+
       const removerFuncionario = (id: string, quantidade: number) => {
         const atual = estado.funcionarios.get(id) ?? 0;
         const novo = atual - quantidade;
@@ -386,21 +544,29 @@ function MovimentacoesEquipamentosPage() {
         else estado.funcionarios.set(id, novo);
       };
 
+      const pendencias =
+        pendenciasPorEstoque.get(mov.estoque_equipamento_id) ?? [];
+      pendenciasPorEstoque.set(mov.estoque_equipamento_id, pendencias);
+
       switch (mov.tipo) {
         case "ENTRADA":
           break;
+
         case "SAIDA":
           estado.almoxarifado -= mov.quantidade;
           adicionarFuncionario(mov.destino_id, mov.quantidade);
           break;
+
         case "DEVOLUCAO":
           removerFuncionario(mov.origem_id, mov.quantidade);
           estado.almoxarifado += mov.quantidade;
           break;
+
         case "TRANSFERENCIA":
           removerFuncionario(mov.origem_id, mov.quantidade);
           adicionarFuncionario(mov.destino_id, mov.quantidade);
           break;
+
         case "SINALIZAR_MANUTENCAO":
           if (mov.tipo_origem === "EQUIPE") {
             estado.almoxarifado -= mov.quantidade;
@@ -409,8 +575,8 @@ function MovimentacoesEquipamentosPage() {
           }
           estado.manutencao += mov.quantidade;
           break;
+
         case "MANUTENCAO":
-          // Histórico antigo: preserva a semântica física anterior.
           if (mov.tipo_origem === "EQUIPE") {
             estado.almoxarifado -= mov.quantidade;
             estado.manutencao += mov.quantidade;
@@ -419,32 +585,35 @@ function MovimentacoesEquipamentosPage() {
             estado.manutencao += mov.quantidade;
           }
           break;
+
         case "ENVIO":
           if (mov.tipo_origem === "EQUIPE") {
             if (mov.origem_id === equipesOperacionais.almoxarifado?.id) {
               estado.almoxarifado -= mov.quantidade;
               estado.manutencao += mov.quantidade;
             }
-            // Já em Manutenção: o envio externo não altera a contagem do domínio.
+            // Se já estava em Manutenção, o envio externo não reduz a
+            // quantidade contabilizada no domínio Manutenção.
           } else if (mov.tipo_origem === "FUNCIONARIO") {
             // Compatibilidade com históricos antigos.
             removerFuncionario(mov.origem_id, mov.quantidade);
             estado.manutencao += mov.quantidade;
           }
-          if (mov.tipo_destino === "EMPRESA") estado.empresa += mov.quantidade;
-          break;
-        case "RETIRADA_MANUTENCAO":
-          // Histórico antigo: preserva a semântica anterior.
-          if (mov.tipo_origem === "EQUIPE") {
-            if (mov.origem_id === equipesOperacionais.manutencao?.id) {
-              estado.empresa += mov.quantidade;
-            } else {
-              estado.almoxarifado -= mov.quantidade;
-              estado.manutencao += mov.quantidade;
-              estado.empresa += mov.quantidade;
-            }
+          if (mov.tipo_destino === "EMPRESA") {
+            estado.empresa += mov.quantidade;
           }
           break;
+
+        case "RETIRADA_MANUTENCAO":
+          if (mov.origem_id === equipesOperacionais.manutencao?.id) {
+            estado.empresa += mov.quantidade;
+          } else if (mov.origem_id === equipesOperacionais.almoxarifado?.id) {
+            estado.almoxarifado -= mov.quantidade;
+            estado.manutencao += mov.quantidade;
+            estado.empresa += mov.quantidade;
+          }
+          break;
+
         case "RETORNO_MANUTENCAO":
           if (mov.tipo_origem === "EQUIPE") {
             estado.manutencao -= mov.quantidade;
@@ -454,25 +623,89 @@ function MovimentacoesEquipamentosPage() {
           }
           estado.almoxarifado += mov.quantidade;
           break;
+
         case "BAIXA":
-          estado.almoxarifado -= mov.quantidade;
+          if (mov.tipo_origem === "EQUIPE" &&
+              mov.origem_id === equipesOperacionais.manutencao?.id) {
+            estado.manutencao -= mov.quantidade;
+          } else {
+            estado.almoxarifado -= mov.quantidade;
+          }
           estado.baixado += mov.quantidade;
+          pendencias.push({
+            tipo: "BAIXA",
+            restante: mov.quantidade,
+          });
           break;
+
         case "DEVOLUCAO_FORNECEDOR":
-          if (mov.tipo_origem === "EQUIPE") {
-            if (mov.origem_id === equipesOperacionais.manutencao?.id) {
-              estado.manutencao -= mov.quantidade;
-            } else {
-              estado.almoxarifado -= mov.quantidade;
-            }
+          if (mov.origem_id === equipesOperacionais.manutencao?.id) {
+            estado.manutencao -= mov.quantidade;
+          } else {
+            estado.almoxarifado -= mov.quantidade;
           }
           estado.devolvido += mov.quantidade;
+          pendencias.push({
+            tipo: "DEVOLUCAO_FORNECEDOR",
+            restante: mov.quantidade,
+          });
           break;
+
+        case "REENTRADA": {
+          let restante = mov.quantidade;
+
+          while (restante > 0 && pendencias.length > 0) {
+            const pendencia = pendencias.at(-1);
+            if (!pendencia) break;
+
+            const aplicada = Math.min(restante, pendencia.restante);
+            pendencia.restante -= aplicada;
+            restante -= aplicada;
+
+            if (pendencia.tipo === "BAIXA") {
+              estado.baixado -= aplicada;
+            } else {
+              estado.devolvido -= aplicada;
+            }
+
+            if (mov.destino_id === equipesOperacionais.almoxarifado?.id) {
+              estado.almoxarifado += aplicada;
+            } else if (mov.destino_id === equipesOperacionais.manutencao?.id) {
+              estado.manutencao += aplicada;
+            }
+
+            if (pendencia.restante <= 0) {
+              pendencias.pop();
+            }
+          }
+
+          break;
+        }
       }
 
-      if (mov.tipo === "DEVOLUCAO_FORNECEDOR" || mov.tipo === "BAIXA") {
-        estado.saldo = Math.max(0, estado.saldo - mov.quantidade);
+      estado.almoxarifado = Math.max(0, estado.almoxarifado);
+      estado.manutencao = Math.max(0, estado.manutencao);
+      estado.empresa = Math.max(0, estado.empresa);
+      estado.baixado = Math.max(0, estado.baixado);
+      estado.devolvido = Math.max(0, estado.devolvido);
+      const estoqueAtual = estoques.find(
+        (item) => item.id === mov.estoque_equipamento_id,
+      );
+      if (estoqueAtual) {
+        estado.saldo = Math.max(
+          0,
+          estoqueAtual.quantidade - estado.devolvido - estado.baixado,
+        );
       }
+    }
+
+    for (const [stockId, estado] of resultado) {
+      const stock = estoques.find((item) => item.id === stockId);
+      if (!stock) continue;
+      estado.saldo = Math.max(
+        0,
+        stock.quantidade - estado.devolvido - estado.baixado,
+      );
     }
 
     return resultado;
@@ -1023,20 +1256,287 @@ function MovimentacoesEquipamentosPage() {
     }
   }, [formulario, equipamentoSelecionado, estadoSelecionado, equipesOperacionais, pendenciasReentrada]);
 
+  const opcoesFiltros = useMemo(() => {
+    const tipos = tiposMovimentacaoVisiveis
+      .filter((tipo) => movimentacoes.some((mov) => mov.tipo === tipo))
+      .map((tipo) => ({ value: tipo, label: tipoLabels[tipo] }));
+
+    const participantes = (
+      tipo: MovimentacaoEquipamentoParte,
+      id: string,
+    ) => `${tipo}:${id}`;
+
+    const origens = new Map<string, string>();
+    const destinos = new Map<string, string>();
+
+    for (const mov of movimentacoes) {
+      origens.set(
+        participantes(mov.tipo_origem, mov.origem_id),
+        nomeParte(
+          mov.tipo_origem,
+          mov.origem_id,
+          empresaPorId,
+          equipePorId,
+          funcionarioPorId,
+        ),
+      );
+      destinos.set(
+        participantes(mov.tipo_destino, mov.destino_id),
+        nomeParte(
+          mov.tipo_destino,
+          mov.destino_id,
+          empresaPorId,
+          equipePorId,
+          funcionarioPorId,
+        ),
+      );
+    }
+
+    const ordenar = (a: FiltroOpcao, b: FiltroOpcao) =>
+      a.label.localeCompare(b.label, "pt-BR");
+
+    return {
+      tipos,
+      origens: [...origens.entries()]
+        .map(([value, label]) => ({ value, label }))
+        .sort(ordenar),
+      destinos: [...destinos.entries()]
+        .map(([value, label]) => ({ value, label }))
+        .sort(ordenar),
+    };
+  }, [
+    movimentacoes,
+    empresaPorId,
+    equipePorId,
+    funcionarioPorId,
+  ]);
+
   const movimentacoesFiltradas = useMemo(() => {
     const termo = busca.trim().toLowerCase();
-    if (!termo) return movimentacoes;
+
     return movimentacoes.filter((mov) => {
+      if (filtroTipos.length > 0 && !filtroTipos.includes(mov.tipo)) {
+        return false;
+      }
+
+      const origemKey = `${mov.tipo_origem}:${mov.origem_id}`;
+      if (filtroOrigens.length > 0 && !filtroOrigens.includes(origemKey)) {
+        return false;
+      }
+
+      const destinoKey = `${mov.tipo_destino}:${mov.destino_id}`;
+      if (filtroDestinos.length > 0 && !filtroDestinos.includes(destinoKey)) {
+        return false;
+      }
+
+      if (!termo) return true;
+
       const stock = estoquePorId.get(mov.estoque_equipamento_id);
-      const equipamento = stock ? equipamentoPorId.get(stock.equipamento_id) : undefined;
-      const origem = nomeParte(mov.tipo_origem, mov.origem_id, empresaPorId, equipePorId, funcionarioPorId);
-      const destino = nomeParte(mov.tipo_destino, mov.destino_id, empresaPorId, equipePorId, funcionarioPorId);
+      const equipamento = stock
+        ? equipamentoPorId.get(stock.equipamento_id)
+        : undefined;
+      const origem = nomeParte(
+        mov.tipo_origem,
+        mov.origem_id,
+        empresaPorId,
+        equipePorId,
+        funcionarioPorId,
+      );
+      const destino = nomeParte(
+        mov.tipo_destino,
+        mov.destino_id,
+        empresaPorId,
+        equipePorId,
+        funcionarioPorId,
+      );
+
       return [
-        tipoLabels[mov.tipo], equipamento?.nome, stock?.identificacao, stock?.patrimonio,
-        stock?.serial, origem, destino, mov.referencia_documento, mov.observacoes,
-      ].some((valor) => String(valor ?? "").toLowerCase().includes(termo));
+        tipoLabels[mov.tipo],
+        equipamento?.nome,
+        stock?.identificacao,
+        stock?.patrimonio,
+        stock?.serial,
+        origem,
+        destino,
+        mov.referencia_documento,
+        mov.observacoes,
+      ].some((valor) =>
+        String(valor ?? "").toLowerCase().includes(termo),
+      );
     });
-  }, [busca, movimentacoes, estoquePorId, equipamentoPorId, empresaPorId, equipePorId, funcionarioPorId]);
+  }, [
+    busca,
+    movimentacoes,
+    filtroTipos,
+    filtroOrigens,
+    filtroDestinos,
+    estoquePorId,
+    equipamentoPorId,
+    empresaPorId,
+    equipePorId,
+    funcionarioPorId,
+  ]);
+
+  const filtrosAtivos =
+    filtroTipos.length + filtroOrigens.length + filtroDestinos.length;
+
+  const linhasExportacao = useMemo(() => {
+    return movimentacoesFiltradas.map((mov) => {
+      const stock = estoquePorId.get(mov.estoque_equipamento_id);
+      const equipamento = stock
+        ? equipamentoPorId.get(stock.equipamento_id)
+        : undefined;
+
+      return {
+        "Data / hora": new Intl.DateTimeFormat("pt-BR", {
+          dateStyle: "short",
+          timeStyle: "short",
+        }).format(new Date(mov.criado_em)),
+        "Movimentação": tipoLabels[mov.tipo],
+        "Equipamento": equipamento?.nome ?? "Equipamento removido",
+        "Identificação": stock
+          ? detalhesRegistroFisico(stock, equipamento, empresaPorId)
+          : "—",
+        "Origem": nomeParte(
+          mov.tipo_origem,
+          mov.origem_id,
+          empresaPorId,
+          equipePorId,
+          funcionarioPorId,
+        ),
+        "Destino": nomeParte(
+          mov.tipo_destino,
+          mov.destino_id,
+          empresaPorId,
+          equipePorId,
+          funcionarioPorId,
+        ),
+        "Quantidade": mov.quantidade,
+        "Documento": mov.referencia_documento ?? "",
+        "Observações": mov.observacoes ?? "",
+      };
+    });
+  }, [
+    movimentacoesFiltradas,
+    estoquePorId,
+    equipamentoPorId,
+    empresaPorId,
+    equipePorId,
+    funcionarioPorId,
+  ]);
+
+  const exportarMovimentacoes = () => {
+    if (linhasExportacao.length === 0) {
+      toast.info("Não há movimentações para exportar com os filtros atuais.");
+      return;
+    }
+
+    const worksheet = XLSX.utils.json_to_sheet(linhasExportacao);
+    worksheet["!cols"] = [
+      { wch: 19 },
+      { wch: 28 },
+      { wch: 28 },
+      { wch: 48 },
+      { wch: 28 },
+      { wch: 28 },
+      { wch: 12 },
+      { wch: 24 },
+      { wch: 50 },
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Movimentações");
+    XLSX.writeFile(
+      workbook,
+      `movimentacoes-equipamentos-${new Date().toISOString().slice(0, 10)}.xlsx`,
+    );
+  };
+
+  const imprimirMovimentacoes = () => {
+    if (linhasExportacao.length === 0) {
+      toast.info("Não há movimentações para imprimir com os filtros atuais.");
+      return;
+    }
+
+    const escapeHtml = (valor: unknown) =>
+      String(valor ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+
+    const linhas = linhasExportacao
+      .map(
+        (linha) => `
+          <tr>
+            <td>${escapeHtml(linha["Data / hora"])}</td>
+            <td>${escapeHtml(linha["Movimentação"])}</td>
+            <td>${escapeHtml(linha["Equipamento"])}</td>
+            <td>${escapeHtml(linha["Identificação"])}</td>
+            <td>${escapeHtml(linha["Origem"])}</td>
+            <td>${escapeHtml(linha["Destino"])}</td>
+            <td class="num">${escapeHtml(linha["Quantidade"])}</td>
+            <td>${escapeHtml(linha["Documento"])}</td>
+          </tr>`,
+      )
+      .join("");
+
+    const janela = window.open("", "_blank", "width=1200,height=800");
+    if (!janela) {
+      toast.error("Não foi possível abrir a janela de impressão. Verifique o bloqueador de pop-ups.");
+      return;
+    }
+
+    janela.document.write(`
+      <!doctype html>
+      <html lang="pt-BR">
+        <head>
+          <meta charset="utf-8" />
+          <title>Movimentações de equipamentos</title>
+          <style>
+            @page { size: landscape; margin: 12mm; }
+            body { font-family: Arial, sans-serif; color: #111; margin: 0; }
+            h1 { font-size: 20px; margin: 0 0 4px; }
+            p { font-size: 12px; color: #555; margin: 0 0 14px; }
+            table { width: 100%; border-collapse: collapse; font-size: 10px; }
+            th, td { border: 1px solid #ccc; padding: 6px; text-align: left; vertical-align: top; }
+            th { background: #f3f4f6; font-weight: 700; }
+            .num { text-align: right; }
+            @media print { button { display: none; } }
+          </style>
+        </head>
+        <body>
+          <h1>Movimentações de equipamentos</h1>
+          <p>Registros exibidos: ${linhasExportacao.length} · Gerado em ${escapeHtml(new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date()))}</p>
+          <table>
+            <thead>
+              <tr>
+                <th>Data / hora</th>
+                <th>Movimentação</th>
+                <th>Equipamento</th>
+                <th>Identificação</th>
+                <th>Origem</th>
+                <th>Destino</th>
+                <th>Qtd.</th>
+                <th>Documento</th>
+              </tr>
+            </thead>
+            <tbody>${linhas}</tbody>
+          </table>
+          <script>window.onload = function () { window.focus(); window.print(); };</script>
+        </body>
+      </html>
+    `);
+    janela.document.close();
+  };
+
+  const limparFiltros = () => {
+    setBusca("");
+    setFiltroTipos([]);
+    setFiltroOrigens([]);
+    setFiltroDestinos([]);
+  };
 
   function atualizar<K extends keyof Formulario>(campo: K, valor: Formulario[K]) {
     setFormulario((atual) => ({ ...atual, [campo]: valor }));
@@ -1514,9 +2014,84 @@ function MovimentacoesEquipamentosPage() {
 
         <Card className="overflow-hidden">
           <CardHeader className="border-b bg-muted/20">
-            <div className="relative max-w-md">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input value={busca} onChange={(event) => setBusca(event.target.value)} placeholder="Pesquisar movimentação..." className="pl-9" />
+            <div className="flex flex-col gap-3">
+              <div className="relative max-w-md">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={busca}
+                  onChange={(event) => setBusca(event.target.value)}
+                  placeholder="Pesquisar movimentação..."
+                  className="pl-9"
+                />
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <MultiSelectFiltro
+                  label="Movimentação"
+                  placeholder="Todas"
+                  options={opcoesFiltros.tipos}
+                  selected={filtroTipos}
+                  onChange={(values) =>
+                    setFiltroTipos(values as MovimentacaoEquipamentoTipo[])
+                  }
+                />
+                <MultiSelectFiltro
+                  label="Origem"
+                  placeholder="Todas"
+                  options={opcoesFiltros.origens}
+                  selected={filtroOrigens}
+                  onChange={setFiltroOrigens}
+                />
+                <MultiSelectFiltro
+                  label="Destino"
+                  placeholder="Todos"
+                  options={opcoesFiltros.destinos}
+                  selected={filtroDestinos}
+                  onChange={setFiltroDestinos}
+                />
+
+                {filtrosAtivos > 0 && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={limparFiltros}
+                    className="h-9 gap-2"
+                  >
+                    <RotateCcw className="size-3.5" />
+                    Limpar ({filtrosAtivos})
+                  </Button>
+                )}
+
+                <div className="ml-auto flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">
+                    Exibindo {movimentacoesFiltradas.length} de {movimentacoes.length}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-9 gap-2"
+                    onClick={exportarMovimentacoes}
+                    title="Exportar movimentações exibidas para Excel"
+                  >
+                    <FileSpreadsheet className="h-4 w-4" />
+                    <span className="hidden sm:inline">Excel</span>
+                    <Download className="hidden h-3.5 w-3.5 sm:inline" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-9 gap-2"
+                    onClick={imprimirMovimentacoes}
+                    title="Imprimir movimentações exibidas"
+                  >
+                    <Printer className="h-4 w-4" />
+                    <span className="hidden sm:inline">Imprimir</span>
+                  </Button>
+                </div>
+              </div>
             </div>
           </CardHeader>
           <CardContent>

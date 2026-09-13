@@ -35,27 +35,67 @@ export function RelatorioEquipamentosResponsavel({
 
     if (!termo) return dados.linhas;
 
-    return dados.linhas.filter((linha) => {
-      const camposResponsavel = [
-        linha.funcionario.nome,
-        linha.equipe?.nome,
-      ];
+    return dados.linhas
+      .map((linha) => {
+        const responsavelOuEquipe =
+          [linha.funcionario.nome, linha.equipe?.nome]
+            .filter(Boolean)
+            .some((valor) =>
+              String(valor)
+                .toLocaleLowerCase("pt-BR")
+                .includes(termo),
+            );
 
-      const camposEquipamentos = linha.equipamentos.flatMap((item) => [
-        item.equipamento.nome,
-        item.categoria?.nome,
-        item.identificacao,
-        item.estoque.patrimonio,
-        item.estoque.serial,
-      ]);
+        if (responsavelOuEquipe) {
+          return linha;
+        }
 
-      return [...camposResponsavel, ...camposEquipamentos]
-        .filter(Boolean)
-        .some((valor) =>
-          String(valor).toLocaleLowerCase("pt-BR").includes(termo),
+        const equipamentos = linha.equipamentos.filter((item) =>
+          [
+            item.equipamento.nome,
+            item.categoria?.nome,
+            item.identificacao,
+            item.estoque.patrimonio,
+            item.estoque.serial,
+          ]
+            .filter(Boolean)
+            .some((valor) =>
+              String(valor)
+                .toLocaleLowerCase("pt-BR")
+                .includes(termo),
+            ),
         );
-    });
+
+        if (!equipamentos.length) return null;
+
+        return {
+          ...linha,
+          registros: equipamentos.length,
+          quantidade: equipamentos.reduce(
+            (total, item) => total + item.quantidade,
+            0,
+          ),
+          equipamentos,
+        };
+      })
+      .filter(
+        (linha): linha is RelatorioResponsavelLinha => Boolean(linha),
+      );
   }, [busca, dados.linhas]);
+
+  const relatorioFiltrado = useMemo<RelatorioEquipamentosPorResponsavel>(() => ({
+    ...dados,
+    linhas: linhasFiltradas,
+    totalResponsaveis: linhasFiltradas.length,
+    totalRegistros: linhasFiltradas.reduce(
+      (total, linha) => total + linha.registros,
+      0,
+    ),
+    quantidade: linhasFiltradas.reduce(
+      (total, linha) => total + linha.quantidade,
+      0,
+    ),
+  }), [dados, linhasFiltradas]);
 
   const alternar = (funcionarioId: string) => {
     setAbertos((atual) => {
@@ -77,17 +117,17 @@ export function RelatorioEquipamentosResponsavel({
         <CardContent className="grid gap-3 p-4 sm:grid-cols-3">
           <ResumoCard
             label="Responsáveis"
-            value={dados.totalResponsaveis}
+            value={relatorioFiltrado.totalResponsaveis}
             icon={<UserRound className="size-4" />}
           />
           <ResumoCard
             label="Registros"
-            value={dados.totalRegistros}
+            value={relatorioFiltrado.totalRegistros}
             icon={<FileSpreadsheet className="size-4" />}
           />
           <ResumoCard
             label="Quantidade em uso"
-            value={dados.quantidade}
+            value={relatorioFiltrado.quantidade}
             icon={<UserRound className="size-4" />}
           />
         </CardContent>
@@ -109,7 +149,7 @@ export function RelatorioEquipamentosResponsavel({
                 variant="outline"
                 size="sm"
                 onClick={() =>
-                  exportarRelatorioEquipamentosPorResponsavel(dados, "xlsx")
+                  exportarRelatorioEquipamentosPorResponsavel(relatorioFiltrado, "xlsx")
                 }
               >
                 <FileSpreadsheet className="mr-2 size-4" />
@@ -121,7 +161,7 @@ export function RelatorioEquipamentosResponsavel({
                 variant="default"
                 size="sm"
                 onClick={() =>
-                  imprimirRelatorioEquipamentosPorResponsavel(dados, projetoNome)
+                  imprimirRelatorioEquipamentosPorResponsavel(relatorioFiltrado, projetoNome)
                 }
               >
                 <Printer className="mr-2 size-4" />
@@ -133,7 +173,7 @@ export function RelatorioEquipamentosResponsavel({
                 variant="outline"
                 size="sm"
                 onClick={() =>
-                  exportarRelatorioEquipamentosPorResponsavel(dados, "csv")
+                  exportarRelatorioEquipamentosPorResponsavel(relatorioFiltrado, "csv")
                 }
               >
                 <Download className="mr-2 size-4" />

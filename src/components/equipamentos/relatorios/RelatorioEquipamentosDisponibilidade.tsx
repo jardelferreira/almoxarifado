@@ -41,14 +41,24 @@ export function RelatorioEquipamentosDisponibilidade({
     );
   }, [busca, dados.linhas]);
 
+  const relatorioFiltrado = useMemo<RelatorioEquipamentosDisponibilidade>(() => ({
+    ...dados,
+    linhas,
+    totalEquipamentos: linhas.length,
+    quantidadeEstoque: linhas.reduce((total, linha) => total + linha.quantidadeEstoque, 0),
+    disponivel: linhas.reduce((total, linha) => total + linha.disponivel, 0),
+    emUso: linhas.reduce((total, linha) => total + linha.emUso, 0),
+    manutencao: linhas.reduce((total, linha) => total + linha.manutencao, 0),
+  }), [dados, linhas]);
+
   return (
     <div className="space-y-4">
       <Card>
         <CardContent className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
-          <Resumo label="Equipamentos" value={dados.totalEquipamentos} />
-          <Resumo label="Em estoque" value={dados.quantidadeEstoque} />
-          <Resumo label="Disponível" value={dados.disponivel} />
-          <Resumo label="Em uso" value={dados.emUso} />
+          <Resumo label="Equipamentos" value={relatorioFiltrado.totalEquipamentos} />
+          <Resumo label="Em estoque" value={relatorioFiltrado.quantidadeEstoque} />
+          <Resumo label="Disponível" value={relatorioFiltrado.disponivel} />
+          <Resumo label="Em uso" value={relatorioFiltrado.emUso} />
         </CardContent>
       </Card>
 
@@ -67,7 +77,7 @@ export function RelatorioEquipamentosDisponibilidade({
                 variant="outline"
                 size="sm"
                 onClick={() =>
-                  exportarRelatorioEquipamentosDisponibilidade(dados, "xlsx")
+                  exportarRelatorioEquipamentosDisponibilidade(relatorioFiltrado, "xlsx")
                 }
               >
                 <FileSpreadsheet className="mr-2 size-4" />
@@ -77,7 +87,7 @@ export function RelatorioEquipamentosDisponibilidade({
                 variant="default"
                 size="sm"
                 onClick={() =>
-                  imprimirRelatorioEquipamentosDisponibilidade(dados, projetoNome)
+                  imprimirRelatorioEquipamentosDisponibilidade(relatorioFiltrado, projetoNome)
                 }
               >
                 <Printer className="mr-2 size-4" />
@@ -87,7 +97,7 @@ export function RelatorioEquipamentosDisponibilidade({
                 variant="outline"
                 size="sm"
                 onClick={() =>
-                  exportarRelatorioEquipamentosDisponibilidade(dados, "csv")
+                  exportarRelatorioEquipamentosDisponibilidade(relatorioFiltrado, "csv")
                 }
               >
                 <Download className="mr-2 size-4" />

@@ -32,14 +32,26 @@ export function RelatorioEquipamentosEquipe({
     );
   }, [busca, dados.linhas]);
 
+  const relatorioFiltrado = useMemo<RelatorioEquipamentosEquipe>(() => ({
+    ...dados,
+    linhas,
+    resumo: {
+      total: linhas.reduce((total, linha) => total + linha.total, 0),
+      disponivel: linhas.reduce((total, linha) => total + linha.disponivel, 0),
+      emUso: linhas.reduce((total, linha) => total + linha.emUso, 0),
+      manutencao: linhas.reduce((total, linha) => total + linha.manutencao, 0),
+      encerrado: linhas.reduce((total, linha) => total + linha.encerrado, 0),
+    },
+  }), [dados, linhas]);
+
   return (
     <div className="space-y-4">
       <Card>
         <CardContent className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
-          <Resumo label="Equipes" value={dados.linhas.length} />
-          <Resumo label="Equipamentos" value={dados.resumo.total} />
-          <Resumo label="Disponível" value={dados.resumo.disponivel} />
-          <Resumo label="Em uso" value={dados.resumo.emUso} />
+          <Resumo label="Equipes" value={linhas.length} />
+          <Resumo label="Equipamentos" value={relatorioFiltrado.resumo.total} />
+          <Resumo label="Disponível" value={relatorioFiltrado.resumo.disponivel} />
+          <Resumo label="Em uso" value={relatorioFiltrado.resumo.emUso} />
         </CardContent>
       </Card>
 
@@ -54,7 +66,7 @@ export function RelatorioEquipamentosEquipe({
               <Button
                 variant="default"
                 size="sm"
-                onClick={() => imprimirRelatorioEquipamentosEquipe(dados, projetoNome)}
+                onClick={() => imprimirRelatorioEquipamentosEquipe(relatorioFiltrado, projetoNome)}
               >
                 <Printer className="mr-2 size-4" />
                 Imprimir / PDF
@@ -62,7 +74,7 @@ export function RelatorioEquipamentosEquipe({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => exportarRelatorioEquipamentosEquipe(dados, "xlsx")}
+                onClick={() => exportarRelatorioEquipamentosEquipe(relatorioFiltrado, "xlsx")}
               >
                 <FileSpreadsheet className="mr-2 size-4" />
                 Excel
@@ -70,7 +82,7 @@ export function RelatorioEquipamentosEquipe({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => exportarRelatorioEquipamentosEquipe(dados, "csv")}
+                onClick={() => exportarRelatorioEquipamentosEquipe(relatorioFiltrado, "csv")}
               >
                 <Download className="mr-2 size-4" />
                 CSV

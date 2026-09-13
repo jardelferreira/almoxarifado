@@ -32,6 +32,14 @@ function validarQuantidade(quantidade: number): void {
   }
 }
 
+function ordenarMovimentacoes(
+  movimentacoes: MovimentacaoEquipamento[],
+): MovimentacaoEquipamento[] {
+  return [...movimentacoes].sort((a, b) =>
+    `${a.criado_em}|${a.id}`.localeCompare(`${b.criado_em}|${b.id}`),
+  );
+}
+
 async function obterEquipes(
   projetoId: string,
 ): Promise<{
@@ -346,6 +354,14 @@ async function atualizarApropriacoes(
       return;
 
     case "SINALIZAR_MANUTENCAO":
+      if (tipo_origem === "FUNCIONARIO") {
+        await removerApropriacao(
+          estoque_equipamento_id,
+          origem_id,
+          quantidade,
+          agora,
+        );
+      }
       return;
 
     case "MANUTENCAO":
@@ -388,11 +404,7 @@ async function obterPendenciaReentrada(
     .equals(estoqueEquipamentoId)
     .toArray();
 
-  const ordenadas = [...movimentacoes].sort((a, b) => {
-    const dataA = `${a.data}|${a.criado_em}|${a.id}`;
-    const dataB = `${b.data}|${b.criado_em}|${b.id}`;
-    return dataA.localeCompare(dataB);
-  });
+  const ordenadas = ordenarMovimentacoes(movimentacoes);
 
   const pendentes: Array<{ tipo: "DEVOLUCAO_FORNECEDOR" | "BAIXA"; restante: number; origemId: string }> = [];
 
@@ -965,11 +977,7 @@ async function obterSinalizacaoPendente(
     .equals(estoqueEquipamentoId)
     .toArray();
 
-  const ordenadas = [...movimentacoes].sort((a, b) =>
-    `${a.data}|${a.criado_em}|${a.id}`.localeCompare(
-      `${b.data}|${b.criado_em}|${b.id}`,
-    ),
-  );
+  const ordenadas = ordenarMovimentacoes(movimentacoes);
 
   let pendente = 0;
 
@@ -1002,12 +1010,7 @@ export const movimentacoesEquipamentosRepo = {
       .equals(projetoId)
       .toArray()
       .then((rows) =>
-        rows.sort((a, b) => {
-          const dataA = `${a.data}|${a.criado_em}`;
-          const dataB = `${b.data}|${b.criado_em}`;
-
-          return dataB.localeCompare(dataA);
-        }),
+        ordenarMovimentacoes(rows).reverse(),
       );
   },
 
@@ -1036,12 +1039,7 @@ export const movimentacoesEquipamentosRepo = {
         .equals(estoqueEquipamentoId)
         .toArray();
 
-    return rows.sort((a, b) => {
-      const dataA = `${a.data}|${a.criado_em}`;
-      const dataB = `${b.data}|${b.criado_em}`;
-
-      return dataB.localeCompare(dataA);
-    });
+    return ordenarMovimentacoes(rows).reverse();
   },
 
   async salvar(

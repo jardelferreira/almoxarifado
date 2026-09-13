@@ -1,7 +1,7 @@
 import { useState } from "react";
 import {
+  ArchiveX,
   BarChart3,
-  Construction,
   FileClock,
   Package,
   UserRound,
@@ -12,6 +12,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { RelatorioEquipamentosEncerrados } from "@/components/equipamentos/relatorios/RelatorioEquipamentosEncerrados";
 import { RelatorioEquipamentosSituacao } from "@/components/equipamentos/relatorios/RelatorioEquipamentosSituacao";
 import { RelatorioEquipamentosEquipe } from "@/components/equipamentos/relatorios/RelatorioEquipamentosEquipe";
 import { RelatorioEquipamentosEmUso } from "@/components/equipamentos/relatorios/RelatorioEquipamentosEmUso";
@@ -27,6 +28,7 @@ import type {
   RelatorioEquipamentosDisponibilidade as DadosRelatorioDisponibilidade,
   RelatorioEquipamentosManutencao as DadosRelatorioManutencao,
   RelatorioEquipamentosMovimentacoes as DadosRelatorioMovimentacoes,
+  RelatorioEquipamentosEncerrados as DadosRelatorioEncerrados,
 } from "@/services/equipamentos/relatorios";
 
 type RelatorioId =
@@ -36,7 +38,8 @@ type RelatorioId =
   | "responsavel"
   | "disponibilidade"
   | "manutencao"
-  | "movimentacoes";
+  | "movimentacoes"
+  | "encerrados";
 
 type RelatorioOpcao = {
   id: RelatorioId;
@@ -96,6 +99,13 @@ const relatorios: RelatorioOpcao[] = [
     icon: FileClock,
     disponivel: true,
   },
+  {
+    id: "encerrados",
+    label: "Baixados / encerrados",
+    descricao: "Equipamentos sem saldo atual",
+    icon: ArchiveX,
+    disponivel: true,
+  },
 ];
 
 export function CentralRelatoriosEquipamentos({
@@ -106,6 +116,7 @@ export function CentralRelatoriosEquipamentos({
   dadosDisponibilidade,
   dadosManutencao,
   dadosMovimentacoes,
+  dadosEncerrados,
   projetoNome,
 }: {
   dadosSituacao: DadosRelatorioSituacao;
@@ -115,6 +126,7 @@ export function CentralRelatoriosEquipamentos({
   dadosDisponibilidade: DadosRelatorioDisponibilidade;
   dadosManutencao: DadosRelatorioManutencao;
   dadosMovimentacoes: DadosRelatorioMovimentacoes;
+  dadosEncerrados: DadosRelatorioEncerrados;
   projetoNome: string;
 }) {
   const [relatorioAtivo, setRelatorioAtivo] =
@@ -272,6 +284,13 @@ export function CentralRelatoriosEquipamentos({
           {relatorioAtivo === "movimentacoes" && (
             <RelatorioEquipamentosMovimentacoes
               dados={dadosMovimentacoes}
+              projetoNome={projetoNome}
+            />
+          )}
+
+          {relatorioAtivo === "encerrados" && (
+            <RelatorioEquipamentosEncerrados
+              dados={dadosEncerrados}
               projetoNome={projetoNome}
             />
           )}

@@ -85,6 +85,20 @@ export function RelatorioEquipamentosSituacao({
     });
   }, [busca, categoria, dados.linhas, situacao]);
 
+  const resumoFiltrado = useMemo(() => {
+    return linhas.reduce(
+      (acc, linha) => {
+        acc.total += linha.estado.saldo;
+        acc.disponivel += linha.estado.disponivel;
+        acc.emUso += linha.estado.apropriado;
+        acc.manutencao += linha.estado.manutencao;
+        acc.encerrado += linha.estado.devolvido + linha.estado.baixado;
+        return acc;
+      },
+      { total: 0, disponivel: 0, emUso: 0, manutencao: 0, encerrado: 0 },
+    );
+  }, [linhas]);
+
   const limparFiltros = () => {
     setBusca("");
     setCategoria("TODAS");
@@ -119,7 +133,7 @@ export function RelatorioEquipamentosSituacao({
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="default" size="sm" onClick={() => imprimirRelatorioEquipamentosSituacao(projetoNome, linhas, dados.resumo)}>
+              <Button type="button" variant="default" size="sm" onClick={() => imprimirRelatorioEquipamentosSituacao(projetoNome, linhas, resumoFiltrado)}>
                 <Printer className="mr-2 size-4" />
                 Imprimir / PDF
               </Button>
@@ -208,10 +222,10 @@ export function RelatorioEquipamentosSituacao({
 function localizacao(linha: RelatorioEquipamentoLinha) {
   if (linha.responsaveis.length) return linha.responsaveis.map((item) => item.nome).join(", ");
   if (linha.equipesAtuais.length) return linha.equipesAtuais.map((item) => item.nome).join(", ");
+  if (linha.estado.empresa > 0) return "Manutenção externa";
   if (linha.estado.manutencao > 0) return "Manutenção";
   if (linha.estado.disponivel > 0) return "Almoxarifado";
   if (linha.equipe) return linha.equipe.nome;
-  if (linha.estado.empresa > 0) return linha.empresa?.nome ?? "Empresa externa";
   return "—";
 }
 

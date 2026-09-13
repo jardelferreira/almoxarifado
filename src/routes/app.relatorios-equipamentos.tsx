@@ -12,6 +12,7 @@ import {
   consultarRelatorioEquipamentosMovimentacoes,
   consultarRelatorioEquipamentosEquipe,
   consultarRelatorioEquipamentosSituacao,
+  consultarRelatorioEquipamentosEncerrados,
 } from "@/services/equipamentos/relatorios";
 
 export const Route = createFileRoute("/app/relatorios-equipamentos")({
@@ -81,6 +82,14 @@ function RelatoriosEquipamentosPage() {
     [projetoId],
   );
 
+  const dadosEncerrados = useLiveQuery(
+    () =>
+      projetoId
+        ? consultarRelatorioEquipamentosEncerrados(projetoId)
+        : undefined,
+    [projetoId],
+  );
+
   const projeto = useLiveQuery(
     () => (projetoId ? getDB().projetos.get(projetoId) : undefined),
     [projetoId],
@@ -94,7 +103,7 @@ function RelatoriosEquipamentosPage() {
     );
   }
 
-  if (!dadosSituacao || !dadosEquipe || !dadosEmUso || !dadosResponsavel || !dadosDisponibilidade || !dadosManutencao || !dadosMovimentacoes) {
+  if (!dadosSituacao || !dadosEquipe || !dadosEmUso || !dadosResponsavel || !dadosDisponibilidade || !dadosManutencao || !dadosMovimentacoes || !dadosEncerrados) {
     return (
       <p className="text-sm text-muted-foreground">
         Carregando relatórios de equipamentos…
@@ -111,6 +120,7 @@ function RelatoriosEquipamentosPage() {
       dadosDisponibilidade={dadosDisponibilidade}
       dadosManutencao={dadosManutencao}
       dadosMovimentacoes={dadosMovimentacoes}
+      dadosEncerrados={dadosEncerrados}
       projetoNome={projeto?.nome ?? projetoId}
     />
   );

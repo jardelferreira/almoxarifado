@@ -313,6 +313,7 @@ function EquipamentosPage() {
           let restante = Math.max(0, movimento.quantidade);
           while (restante > 0 && pendencias.length > 0) {
             const pendencia = pendencias[pendencias.length - 1];
+            if (!pendencia) break;
             const aplicada = Math.min(restante, pendencia.restante);
             pendencia.restante -= aplicada;
             restante -= aplicada;
@@ -663,7 +664,7 @@ function EquipamentosPage() {
 
           // Baixa e devolução ao fornecedor encerram o saldo físico atual.
           if (movimento.tipo === "BAIXA" || movimento.tipo === "DEVOLUCAO_FORNECEDOR") {
-            if (chaveAtual() === origemKey) localAtual = null;
+            localAtual = null;
             continue;
           }
 

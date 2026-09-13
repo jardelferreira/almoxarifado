@@ -185,10 +185,10 @@ export function localizacaoLinha(linha: RelatorioEquipamentoLinha): string {
   if (linha.equipesAtuais.length) {
     return linha.equipesAtuais.map((item) => item.nome).join(", ");
   }
+  if (linha.estado.empresa > 0) return "Manutenção externa";
   if (linha.estado.manutencao > 0) return "Manutenção";
   if (linha.estado.disponivel > 0) return "Almoxarifado";
   if (linha.equipe) return linha.equipe.nome;
-  if (linha.estado.empresa > 0) return linha.empresa?.nome ?? "Empresa externa";
   return "—";
 }
 
@@ -329,6 +329,197 @@ export function exportarRelatorioEquipamentosSituacao(
     },
     formatosNumero: ["QUANTIDADE", "DISPONIVEL", "EM_USO", "MANUTENCAO"],
   }, formato);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Relatório Baixados / encerrados                                           */
+/* -------------------------------------------------------------------------- */
+
+export type MotivoEncerramentoEquipamento =
+  | "BAIXA"
+  | "DEVOLUCAO_FORNECEDOR"
+  | "BAIXA_E_DEVOLUCAO";
+
+export type RelatorioEquipamentoEncerradoLinha = {
+  estoqueId: string;
+  equipamento: Equipamento;
+  categoria: CategoriaEquipamento | undefined;
+  estoque: EstoqueEquipamento;
+  empresa: Empresa | undefined;
+  motivo: MotivoEncerramentoEquipamento;
+  quantidadeOriginal: number;
+  baixado: number;
+  devolvido: number;
+};
+
+export type RelatorioEquipamentosEncerrados = {
+  projetoId: string;
+  linhas: RelatorioEquipamentoEncerradoLinha[];
+  totalRegistros: number;
+  quantidadeEncerrada: number;
+  baixados: number;
+  devolvidos: number;
+};
+
+export function motivoEncerramentoLabel(
+  motivo: MotivoEncerramentoEquipamento,
+): string {
+  switch (motivo) {
+    case "BAIXA":
+      return "Baixa definitiva";
+    case "DEVOLUCAO_FORNECEDOR":
+      return "Devolução ao fornecedor";
+    case "BAIXA_E_DEVOLUCAO":
+      return "Baixa e devolução";
+  }
+}
+
+export async function consultarRelatorioEquipamentosEncerrados(
+  projetoId: string,
+): Promise<RelatorioEquipamentosEncerrados> {
+  const db = getDB();
+
+  const [estoques, equipamentos, categorias, empresas] = await Promise.all([
+    db.estoque_equipamentos.where("projeto_id").equals(projetoId).toArray(),
+    db.equipamentos.where("projeto_id").equals(projetoId).toArray(),
+    db.categorias_equipamentos.where("projeto_id").equals(projetoId).toArray(),
+    db.empresas.where("projeto_id").equals(projetoId).toArray(),
+  ]);
+
+  const equipamentoPorId = new Map(
+    equipamentos.map((item) => [item.id, item]),
+  );
+  const categoriaPorId = new Map(
+    categorias.map((item) => [item.id, item]),
+  );
+  const empresaPorId = new Map(
+    empresas.map((item) => [item.id, item]),
+  );
+
+  const linhas: RelatorioEquipamentoEncerradoLinha[] = [];
+
+  for (const estoque of estoques) {
+    const equipamento = equipamentoPorId.get(estoque.equipamento_id);
+    if (!equipamento) continue;
+
+    const estado = await estadoEquipamentosRepo.calcular(
+      projetoId,
+      estoque.id,
+    );
+
+    if (!estado.encerrado) continue;
+
+    let motivo: MotivoEncerramentoEquipamento;
+    if (estado.baixado > 0 && estado.devolvido > 0) {
+      motivo = "BAIXA_E_DEVOLUCAO";
+    } else if (estado.baixado > 0) {
+      motivo = "BAIXA";
+    } else {
+      motivo = "DEVOLUCAO_FORNECEDOR";
+    }
+
+    linhas.push({
+      estoqueId: estoque.id,
+      equipamento,
+      categoria: categoriaPorId.get(equipamento.categoria_id),
+      estoque,
+      empresa: empresaPorId.get(estoque.empresa_id),
+      motivo,
+      quantidadeOriginal: estado.quantidade,
+      baixado: estado.baixado,
+      devolvido: estado.devolvido,
+    });
+  }
+
+  linhas.sort((a, b) => {
+    const equipamento = a.equipamento.nome.localeCompare(
+      b.equipamento.nome,
+      "pt-BR",
+    );
+    if (equipamento !== 0) return equipamento;
+
+    const identificacaoA =
+      a.estoque.identificacao ||
+      a.estoque.patrimonio ||
+      a.estoque.serial ||
+      "";
+    const identificacaoB =
+      b.estoque.identificacao ||
+      b.estoque.patrimonio ||
+      b.estoque.serial ||
+      "";
+
+    return identificacaoA.localeCompare(identificacaoB, "pt-BR");
+  });
+
+  return {
+    projetoId,
+    linhas,
+    totalRegistros: linhas.length,
+    quantidadeEncerrada: linhas.reduce(
+      (total, linha) => total + linha.quantidadeOriginal,
+      0,
+    ),
+    baixados: linhas.reduce((total, linha) => total + linha.baixado, 0),
+    devolvidos: linhas.reduce((total, linha) => total + linha.devolvido, 0),
+  };
+}
+
+export function exportarRelatorioEquipamentosEncerrados(
+  linhas: RelatorioEquipamentoEncerradoLinha[],
+  formato: "xlsx" | "csv",
+) {
+  criarPlanilhaRelatorio(
+    {
+      nomeAba: "Baixados e encerrados",
+      arquivo: `relatorio_equipamentos_baixados_encerrados_${new Date().toISOString().slice(0, 10)}`,
+      colunas: [
+        "EQUIPAMENTO",
+        "CATEGORIA",
+        "IDENTIFICACAO",
+        "PATRIMONIO",
+        "SERIAL",
+        "PROPRIETARIO",
+        "MOTIVO",
+        "QUANTIDADE_ORIGINAL",
+        "BAIXADO",
+        "DEVOLVIDO",
+        "OBSERVACOES",
+      ],
+      linhas: linhas.map((linha) => ({
+        EQUIPAMENTO: linha.equipamento.nome,
+        CATEGORIA: linha.categoria?.nome ?? "—",
+        IDENTIFICACAO: linha.estoque.identificacao ?? "—",
+        PATRIMONIO: linha.estoque.patrimonio ?? "—",
+        SERIAL: linha.estoque.serial ?? "—",
+        PROPRIETARIO: linha.empresa?.nome ?? "—",
+        MOTIVO: motivoEncerramentoLabel(linha.motivo),
+        QUANTIDADE_ORIGINAL: linha.quantidadeOriginal,
+        BAIXADO: linha.baixado,
+        DEVOLVIDO: linha.devolvido,
+        OBSERVACOES: linha.estoque.observacoes ?? "",
+      })),
+      larguras: {
+        EQUIPAMENTO: 32,
+        CATEGORIA: 22,
+        IDENTIFICACAO: 20,
+        PATRIMONIO: 18,
+        SERIAL: 20,
+        PROPRIETARIO: 28,
+        MOTIVO: 24,
+        QUANTIDADE_ORIGINAL: 18,
+        BAIXADO: 12,
+        DEVOLVIDO: 12,
+        OBSERVACOES: 42,
+      },
+      formatosNumero: [
+        "QUANTIDADE_ORIGINAL",
+        "BAIXADO",
+        "DEVOLVIDO",
+      ],
+    },
+    formato,
+  );
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1447,3 +1638,63 @@ export function imprimirRelatorioEquipamentosMovimentacoes(
     ],
   );
 }
+
+export function imprimirRelatorioEquipamentosEncerrados(
+  projetoNome: string,
+  linhas: RelatorioEquipamentoEncerradoLinha[],
+) {
+  imprimirTabelaRelatorioEquipamentos(
+    "Equipamentos baixados / encerrados",
+    projetoNome,
+    [
+      "Equipamento",
+      "Categoria",
+      "Identificação",
+      "Proprietário",
+      "Motivo",
+      "Quantidade original",
+      "Baixado",
+      "Devolvido",
+      "Observações",
+    ],
+    linhas.map((linha) => [
+      linha.equipamento.nome,
+      linha.categoria?.nome ?? "—",
+      linha.estoque.identificacao ||
+        linha.estoque.patrimonio ||
+        linha.estoque.serial ||
+        "—",
+      linha.empresa?.nome ?? "—",
+      motivoEncerramentoLabel(linha.motivo),
+      linha.quantidadeOriginal,
+      linha.baixado,
+      linha.devolvido,
+      linha.estoque.observacoes ?? "",
+    ]),
+    [
+      { label: "Registros", valor: linhas.length },
+      {
+        label: "Quantidade encerrada",
+        valor: linhas.reduce(
+          (total, linha) => total + linha.quantidadeOriginal,
+          0,
+        ),
+      },
+      {
+        label: "Baixado",
+        valor: linhas.reduce(
+          (total, linha) => total + linha.baixado,
+          0,
+        ),
+      },
+      {
+        label: "Devolvido",
+        valor: linhas.reduce(
+          (total, linha) => total + linha.devolvido,
+          0,
+        ),
+      },
+    ],
+  );
+}
+
