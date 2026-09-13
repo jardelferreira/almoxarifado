@@ -45,9 +45,11 @@ import type {
     Equipamento,
     EstoqueEquipamento,
     Funcionario,
-    MovimentacaoEquipamento,
 } from "@/types";
-import { formatarData, num } from "@/utils/format";
+import { num } from "@/utils/format";
+import { HistoricoEquipamento } from "@/components/equipamentos/HistoricoEquipamento";
+import { construirHistoricoEquipamento } from "@/services/equipamentos/historico";
+import { gerarRelatorioEquipamento } from "@/services/equipamentos/relatorio-equipamento";
 
 export const Route = createFileRoute("/app/apropriacoes")({
     ssr: false,
@@ -63,36 +65,6 @@ type Registro = {
     responsavel: Funcionario | undefined;
     status: RegistroStatus;
 };
-
-function nomeParticipante(
-    movimento: MovimentacaoEquipamento,
-    funcionarios: Map<string, Funcionario>,
-    equipes: Map<string, string>,
-    empresas: Map<string, string>,
-    lado: "origem" | "destino",
-) {
-    const parte = lado === "origem" ? movimento.tipo_origem : movimento.tipo_destino;
-    const id = lado === "origem" ? movimento.origem_id : movimento.destino_id;
-
-    if (parte === "FUNCIONARIO") return funcionarios.get(id)?.nome ?? id;
-    if (parte === "EQUIPE") return equipes.get(id) ?? id;
-    return empresas.get(id) ?? id;
-}
-
-function descricaoMovimento(
-    movimento: MovimentacaoEquipamento,
-    funcionarios: Map<string, Funcionario>,
-    equipes: Map<string, string>,
-    empresas: Map<string, string>,
-) {
-    if (movimento.tipo === "SAIDA") {
-        return `Almoxarifado → ${nomeParticipante(movimento, funcionarios, equipes, empresas, "destino")}`;
-    }
-    if (movimento.tipo === "DEVOLUCAO") {
-        return `${nomeParticipante(movimento, funcionarios, equipes, empresas, "origem")} → ${nomeParticipante(movimento, funcionarios, equipes, empresas, "destino")}`;
-    }
-    return `${nomeParticipante(movimento, funcionarios, equipes, empresas, "origem")} → ${nomeParticipante(movimento, funcionarios, equipes, empresas, "destino")}`;
-}
 
 export function ApropriacoesPage() {
     const [projetoId] = useProjetoAtivoId();
@@ -205,12 +177,19 @@ export function ApropriacoesPage() {
         );
     }, [dados]);
 
+    const participantes = useMemo(() => ({
+        funcionarios: new Map(dados?.funcionarios.map((item) => [item.id, item]) ?? []),
+        equipes: new Map(dados?.equipes.map((item) => [item.id, item.nome]) ?? []),
+        empresas: new Map(dados?.empresas.map((item) => [item.id, item.nome]) ?? []),
+    }), [dados]);
+
     const historicoSelecionado = useMemo(() => {
         if (!selecionado || !dados) return [];
-        return dados.movimentacoes
-            .filter((movimento) => movimento.estoque_equipamento_id === selecionado.estoque.id)
-            .sort((a, b) => `${b.data}|${b.criado_em}|${b.id}`.localeCompare(`${a.data}|${a.criado_em}|${a.id}`));
-    }, [selecionado, dados]);
+        const movimentos = dados.movimentacoes.filter(
+            (movimento) => movimento.estoque_equipamento_id === selecionado.estoque.id,
+        );
+        return construirHistoricoEquipamento(selecionado.equipamento, movimentos, participantes);
+    }, [selecionado, dados, participantes]);
 
     const abrirApropriacao = (item?: Registro) => {
         const alvo = item ?? selecionado;
@@ -325,413 +304,28 @@ export function ApropriacoesPage() {
     const gerarRelatorio = () => {
         if (!selecionado || !dados || !projetoId) return;
 
-        const funcionariosMap = new Map(dados.funcionarios.map((item) => [item.id, item]));
-        const equipesMap = new Map(dados.equipes.map((item) => [item.id, item.nome]));
-        const empresasMap = new Map(dados.empresas.map((item) => [item.id, item.nome]));
-
-        const equipamento = selecionado.equipamento;
-        const estoque = selecionado.estoque;
-        const categoria = dados.categorias.find((item) => item.id === equipamento.categoria_id)?.nome ?? "—";
-        const responsavel = selecionado.responsavel?.nome ?? "Disponível no Almoxarifado";
+        const categoria = dados.categorias.find((item) => item.id === selecionado.equipamento.categoria_id)?.nome ?? "—";
         const equipe = selecionado.responsavel
             ? equipeDoFuncionario.get(selecionado.responsavel.id) ?? "Sem equipe"
             : "Almoxarifado";
 
-        const esc = (valor: unknown) =>
-            String(valor ?? "—")
-                .replace(/&/g, "&amp;")
-                .replace(/</g, "&lt;")
-                .replace(/>/g, "&gt;")
-                .replace(/"/g, "&quot;")
-                .replace(/'/g, "&#039;");
-
-        const identificacao = estoque.patrimonio || estoque.identificacao || estoque.serial || estoque.id;
-        const dataEmissao = new Intl.DateTimeFormat("pt-BR", {
-            dateStyle: "long",
-            timeStyle: "short",
-        }).format(new Date());
-
-        const historicoHtml = historicoSelecionado.length
-            ? historicoSelecionado.map((movimento) => `
-                <tr>
-                    <td>${esc(formatarData(movimento.data))}</td>
-                    <td><span class="movement">${esc(movimento.tipo)}</span></td>
-                    <td>${esc(descricaoMovimento(movimento, funcionariosMap, equipesMap, empresasMap))}</td>
-                    <td class="center">${esc(movimento.quantidade)}</td>
-                    <td>${esc(movimento.observacoes || "—")}</td>
-                </tr>
-            `).join("")
-            : `<tr><td colspan="5" class="empty">Nenhuma movimentação registrada para este equipamento.</td></tr>`;
-
-        const janela = window.open("", "_blank", "width=1100,height=800");
-        if (!janela) {
-            toast.error("Não foi possível abrir o relatório. Verifique se o navegador bloqueou a nova janela.");
-            return;
+        try {
+            gerarRelatorioEquipamento({
+                equipamento: selecionado.equipamento,
+                estoque: selecionado.estoque,
+                categoria,
+                responsavel: selecionado.responsavel,
+                equipe,
+                status: selecionado.status,
+                movimentacoes: dados.movimentacoes.filter(
+                    (movimento) => movimento.estoque_equipamento_id === selecionado.estoque.id,
+                ),
+                maps: participantes,
+            });
+            toast.success("Relatório aberto para impressão ou salvamento em PDF.");
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Não foi possível gerar o relatório.");
         }
-
-        janela.document.write(`<!doctype html>
-<html lang="pt-BR">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Relatório — ${esc(equipamento.nome)} — ${esc(identificacao)}</title>
-<style>
-    @page {
-        size: A4;
-        margin: 14mm 12mm 16mm;
-    }
-
-    :root {
-        color-scheme: light;
-        --ink: #172033;
-        --muted: #667085;
-        --line: #dfe3e8;
-        --soft: #f5f7fa;
-        --accent: #1f5eff;
-        --accent-soft: #edf3ff;
-        --success: #16794a;
-        --danger: #b42318;
-    }
-
-    * { box-sizing: border-box; }
-
-    body {
-        margin: 0;
-        color: var(--ink);
-        background: #fff;
-        font-family: Arial, Helvetica, sans-serif;
-        font-size: 10px;
-        line-height: 1.45;
-    }
-
-    .report {
-        max-width: 186mm;
-        margin: 0 auto;
-    }
-
-    .header {
-        display: flex;
-        align-items: flex-start;
-        justify-content: space-between;
-        gap: 24px;
-        padding-bottom: 14px;
-        border-bottom: 2px solid var(--ink);
-    }
-
-    .brand {
-        font-size: 9px;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 1.5px;
-        color: var(--accent);
-        margin-bottom: 5px;
-    }
-
-    h1 {
-        margin: 0;
-        font-size: 22px;
-        line-height: 1.15;
-        letter-spacing: -.3px;
-    }
-
-    .subtitle {
-        margin-top: 5px;
-        color: var(--muted);
-        font-size: 10px;
-    }
-
-    .meta {
-        min-width: 145px;
-        text-align: right;
-        color: var(--muted);
-        font-size: 9px;
-    }
-
-    .meta strong {
-        display: block;
-        color: var(--ink);
-        margin-bottom: 3px;
-    }
-
-    .status {
-        display: inline-block;
-        margin-top: 8px;
-        padding: 4px 9px;
-        border-radius: 999px;
-        background: var(--accent-soft);
-        color: var(--accent);
-        font-weight: 700;
-        font-size: 8px;
-        text-transform: uppercase;
-        letter-spacing: .7px;
-    }
-
-    .section {
-        margin-top: 18px;
-        break-inside: avoid;
-    }
-
-    .section-title {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        margin: 0 0 9px;
-        padding-bottom: 6px;
-        border-bottom: 1px solid var(--line);
-        font-size: 12px;
-        font-weight: 700;
-    }
-
-    .section-title::before {
-        content: "";
-        display: block;
-        width: 3px;
-        height: 15px;
-        border-radius: 2px;
-        background: var(--accent);
-    }
-
-    .grid {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 8px;
-    }
-
-    .field {
-        min-height: 42px;
-        padding: 8px 9px;
-        border: 1px solid var(--line);
-        border-radius: 6px;
-        background: #fff;
-    }
-
-    .field.wide { grid-column: span 3; }
-
-    .label {
-        display: block;
-        margin-bottom: 3px;
-        color: var(--muted);
-        font-size: 8px;
-        text-transform: uppercase;
-        letter-spacing: .55px;
-    }
-
-    .value {
-        font-size: 10px;
-        font-weight: 600;
-        overflow-wrap: anywhere;
-    }
-
-    .responsibility {
-        display: grid;
-        grid-template-columns: 1fr 1fr 1fr;
-        gap: 8px;
-        padding: 10px;
-        border: 1px solid #cddaff;
-        border-radius: 7px;
-        background: var(--accent-soft);
-    }
-
-    table {
-        width: 100%;
-        border-collapse: collapse;
-        table-layout: fixed;
-        font-size: 8.5px;
-    }
-
-    thead {
-        display: table-header-group;
-    }
-
-    tr {
-        break-inside: avoid;
-    }
-
-    th {
-        padding: 7px 6px;
-        text-align: left;
-        background: var(--soft);
-        border-top: 1px solid var(--line);
-        border-bottom: 1px solid var(--line);
-        color: #475467;
-        font-size: 7.5px;
-        text-transform: uppercase;
-        letter-spacing: .45px;
-    }
-
-    td {
-        padding: 7px 6px;
-        vertical-align: top;
-        border-bottom: 1px solid var(--line);
-        overflow-wrap: anywhere;
-    }
-
-    th:nth-child(1), td:nth-child(1) { width: 12%; }
-    th:nth-child(2), td:nth-child(2) { width: 16%; }
-    th:nth-child(4), td:nth-child(4) { width: 9%; text-align: center; }
-    th:nth-child(5), td:nth-child(5) { width: 22%; }
-
-    .movement {
-        display: inline-block;
-        padding: 2px 5px;
-        border-radius: 4px;
-        background: var(--soft);
-        font-size: 7px;
-        font-weight: 700;
-        white-space: nowrap;
-    }
-
-    .empty {
-        padding: 18px;
-        text-align: center;
-        color: var(--muted);
-    }
-
-    .footer {
-        margin-top: 20px;
-        padding-top: 8px;
-        border-top: 1px solid var(--line);
-        color: var(--muted);
-        font-size: 8px;
-        display: flex;
-        justify-content: space-between;
-        gap: 20px;
-    }
-
-    .print-actions {
-        position: fixed;
-        top: 16px;
-        right: 16px;
-        display: flex;
-        gap: 8px;
-        z-index: 10;
-    }
-
-    .print-actions button {
-        border: 1px solid #cfd5dd;
-        border-radius: 6px;
-        padding: 8px 12px;
-        background: #fff;
-        color: var(--ink);
-        font-weight: 600;
-        cursor: pointer;
-    }
-
-    .print-actions .primary {
-        border-color: var(--accent);
-        background: var(--accent);
-        color: #fff;
-    }
-
-    @media print {
-        .print-actions { display: none !important; }
-        .section { break-inside: avoid; }
-        .history { break-before: auto; }
-        body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    }
-
-    @media screen {
-        body { background: #eef1f5; padding: 28px; }
-        .report {
-            padding: 20px 24px;
-            background: #fff;
-            box-shadow: 0 8px 30px rgba(16, 24, 40, .08);
-        }
-    }
-</style>
-</head>
-<body>
-<div class="print-actions">
-    <button onclick="window.close()">Fechar</button>
-    <button class="primary" onclick="window.print()">Imprimir / Salvar PDF</button>
-</div>
-
-<main class="report">
-    <header class="header">
-        <div>
-            <div class="brand">Estoque Master · Equipamentos</div>
-            <h1>Relatório do equipamento</h1>
-            <div class="subtitle">${esc(equipamento.nome)} · ${esc(identificacao)}</div>
-        </div>
-        <div class="meta">
-            <strong>Relatório individual</strong>
-            Emitido em ${esc(dataEmissao)}
-            <span class="status">${esc(selecionado.status === "EM_USO" ? "Em uso" : selecionado.status === "MANUTENCAO" ? "Em manutenção" : "Disponível")}</span>
-        </div>
-    </header>
-
-    <section class="section">
-        <h2 class="section-title">Responsabilidade atual</h2>
-        <div class="responsibility">
-            <div>
-                <span class="label">Responsável</span>
-                <span class="value">${esc(responsavel)}</span>
-            </div>
-            <div>
-                <span class="label">Equipe</span>
-                <span class="value">${esc(equipe)}</span>
-            </div>
-            <div>
-                <span class="label">Status</span>
-                <span class="value">${esc(selecionado.status === "EM_USO" ? "Em uso" : selecionado.status === "MANUTENCAO" ? "Em manutenção" : "Disponível")}</span>
-            </div>
-        </div>
-    </section>
-
-    <section class="section">
-        <h2 class="section-title">Identificação</h2>
-        <div class="grid">
-            <div class="field"><span class="label">Patrimônio</span><span class="value">${esc(estoque.patrimonio)}</span></div>
-            <div class="field"><span class="label">Identificação</span><span class="value">${esc(estoque.identificacao)}</span></div>
-            <div class="field"><span class="label">Número de série</span><span class="value">${esc(estoque.serial)}</span></div>
-            <div class="field"><span class="label">Vínculo</span><span class="value">${esc(estoque.vinculo)}</span></div>
-            <div class="field"><span class="label">Tipo de controle</span><span class="value">${esc(equipamento.tipo_controle)}</span></div>
-            <div class="field"><span class="label">Categoria</span><span class="value">${esc(categoria)}</span></div>
-        </div>
-    </section>
-
-    <section class="section">
-        <h2 class="section-title">Dados do cadastro</h2>
-        <div class="grid">
-            <div class="field"><span class="label">Equipamento</span><span class="value">${esc(equipamento.nome)}</span></div>
-            <div class="field"><span class="label">Marca</span><span class="value">${esc(equipamento.marca)}</span></div>
-            <div class="field"><span class="label">Modelo</span><span class="value">${esc(equipamento.modelo)}</span></div>
-            <div class="field wide"><span class="label">Observações</span><span class="value">${esc(estoque.observacoes)}</span></div>
-        </div>
-    </section>
-
-    <section class="section history">
-        <h2 class="section-title">Histórico de movimentações</h2>
-        <table>
-            <thead>
-                <tr>
-                    <th>Data</th>
-                    <th>Movimento</th>
-                    <th>Origem → Destino</th>
-                    <th>Qtd.</th>
-                    <th>Observações</th>
-                </tr>
-            </thead>
-            <tbody>${historicoHtml}</tbody>
-        </table>
-    </section>
-
-    <footer class="footer">
-        <span>Documento gerado pelo Estoque Master.</span>
-        <span>${esc(equipamento.nome)} · ${esc(identificacao)}</span>
-    </footer>
-</main>
-
-<script>
-    window.addEventListener("load", () => {
-        setTimeout(() => window.print(), 350);
-    });
-</script>
-</body>
-</html>`);
-
-        janela.document.close();
-        toast.success("Relatório aberto para impressão ou salvamento em PDF.");
     };
 
     if (!projetoId) {
@@ -991,33 +585,7 @@ export function ApropriacoesPage() {
                                         </Button>
                                     </div>
                                 </SheetFooter>
-                                <section aria-labelledby="historico-equipamento">
-                                    <div className="mb-3 flex items-center justify-between gap-3">
-                                        <div>
-                                            <h2 id="historico-equipamento" className="font-semibold">Histórico</h2>
-                                            <p className="text-xs text-muted-foreground">Movimentações deste equipamento físico.</p>
-                                        </div>
-                                        <Badge variant="secondary">{historicoSelecionado.length}</Badge>
-                                    </div>
-                                    <div className="space-y-2">
-                                        {historicoSelecionado.slice(0, 8).map((movimento) => {
-                                            const funcionariosMap = new Map(dados.funcionarios.map((item) => [item.id, item]));
-                                            const equipesMap = new Map(dados.equipes.map((item) => [item.id, item.nome]));
-                                            const empresasMap = new Map(dados.empresas.map((item) => [item.id, item.nome]));
-                                            return (
-                                                <div key={movimento.id} className="rounded-lg border p-3">
-                                                    <div className="flex items-center justify-between gap-3">
-                                                        <Badge variant="outline">{movimento.tipo}</Badge>
-                                                        <span className="text-xs text-muted-foreground">{formatarData(movimento.data)}</span>
-                                                    </div>
-                                                    <p className="mt-2 text-sm">{descricaoMovimento(movimento, funcionariosMap, equipesMap, empresasMap)}</p>
-                                                    {movimento.observacoes && <p className="mt-1 text-xs text-muted-foreground">{movimento.observacoes}</p>}
-                                                </div>
-                                            );
-                                        })}
-                                        {historicoSelecionado.length > 8 && <p className="text-center text-xs text-muted-foreground">+ {historicoSelecionado.length - 8} movimentação(ões) no histórico.</p>}
-                                    </div>
-                                </section>
+                                <HistoricoEquipamento eventos={historicoSelecionado} />
                             </div>
                         </>
                     )}

@@ -4,6 +4,17 @@ import {
   Box,
   Eye,
   ClipboardList,
+  Warehouse,
+  Wrench,
+  UserRound,
+  PackageCheck,
+  PackageOpen,
+  ArrowRightLeft,
+  Truck,
+  Building2,
+  CircleAlert,
+  CircleCheck,
+  Ban,
   Pencil,
   Plus,
   Search,
@@ -199,7 +210,7 @@ function EquipamentosPage() {
     }
 
     const movimentos = [...movimentacoes].sort((a, b) =>
-      a.data.localeCompare(b.data) || a.criado_em.localeCompare(b.criado_em),
+      `${a.criado_em}|${a.id}`.localeCompare(`${b.criado_em}|${b.id}`),
     );
 
     for (const movimento of movimentos) {
@@ -233,42 +244,40 @@ function EquipamentosPage() {
         case "ENTRADA":
           break;
         case "SINALIZAR_MANUTENCAO":
-          // Sinalização é somente administrativa.
-          break;
-        case "MANUTENCAO":
-          // Histórico antigo: esta versão anterior tratava MANUTENCAO como
-          // envio efetivo para a equipe Manutenção. Mantemos a leitura para
-          // não quebrar históricos já gravados.
-          if (movimento.tipo_origem === "EQUIPE") {
-            estado.almoxarifado -= q;
-            estado.manutencao += q;
-          } else if (movimento.tipo_origem === "FUNCIONARIO") {
-            estado.apropriado -= q;
-            estado.manutencao += q;
-          }
+          retirarDaOrigem(movimento.tipo_origem, movimento.origem_id);
+          adicionarAoDestino(movimento.tipo_destino, movimento.destino_id);
           break;
         case "ENVIO":
-          if (
-            movimento.tipo_origem === "EQUIPE" &&
-            movimento.origem_id === equipes.find((e) => e.nome.trim().toLowerCase() === "almoxarifado")?.id
-          ) {
+          if (movimento.tipo_origem === "EQUIPE") {
+            const origem = equipes.find((item) => item.id === movimento.origem_id);
+            const nomeOrigem = origem?.nome.trim().toLowerCase();
+            if (nomeOrigem === "almoxarifado") {
+              estado.almoxarifado -= q;
+              estado.manutencao += q;
+            }
+            // Se a origem já é Manutenção, o envio externo não altera a contagem.
+          } else if (movimento.tipo_origem === "FUNCIONARIO") {
+            // Compatibilidade com históricos antigos.
+            estado.apropriado -= q;
+            estado.manutencao += q;
+          }
+          break;
+        case "MANUTENCAO":
+          // Histórico antigo: preserva a semântica física anterior.
+          if (movimento.tipo_origem === "EQUIPE" && movimento.origem_id === equipes.find((e) => e.nome.trim().toLowerCase() === "almoxarifado")?.id) {
             estado.almoxarifado -= q;
             estado.manutencao += q;
           } else if (movimento.tipo_origem === "FUNCIONARIO") {
             estado.apropriado -= q;
             estado.manutencao += q;
           }
-          // A empresa é apenas o destino externo do envio; a contagem
-          // operacional permanece em Manutenção.
           break;
         case "RETIRADA_MANUTENCAO":
-          // Histórico antigo: preserva sua semântica.
           if (movimento.origem_id === equipes.find((e) => e.nome.trim().toLowerCase() === "almoxarifado")?.id) {
             estado.almoxarifado -= q;
             estado.manutencao += q;
-          } else if (movimento.origem_id === equipes.find((e) => e.nome.trim().toLowerCase() === "manutenção")?.id) {
-            // Já estava em Manutenção.
           }
+          // Se já estava em Manutenção, o envio externo não reduz o saldo.
           break;
         case "RETORNO_MANUTENCAO":
           estado.manutencao -= q;
@@ -288,33 +297,37 @@ function EquipamentosPage() {
     for (const [id, estado] of resultado) {
       const estoque = estoques.find((item) => item.id === id);
       if (!estoque) continue;
-      const pendentes: Array<{ tipo: "DEVOLUCAO_FORNECEDOR" | "BAIXA"; restante: number }> = [];
-      const historico = movimentacoes
-        .filter((item) => item.estoque_equipamento_id === id)
-        .sort((a, b) => `${a.data}|${a.criado_em}|${a.id}`.localeCompare(`${b.data}|${b.criado_em}|${b.id}`));
+      // Saldo físico considera somente devoluções/baixas ainda pendentes.
+      // REENTRADA desfaz a última devolução/baixa pendente, exatamente como
+      // a regra do repositório de movimentações.
+      const pendencias: Array<{ tipo: "DEVOLUCAO_FORNECEDOR" | "BAIXA"; restante: number }> = [];
+      for (const movimento of movimentos) {
+        if (movimento.estoque_equipamento_id !== id) continue;
 
-      for (const item of historico) {
-        if (item.tipo === "DEVOLUCAO_FORNECEDOR" || item.tipo === "BAIXA") {
-          pendentes.push({ tipo: item.tipo, restante: item.quantidade });
-        } else if (item.tipo === "REENTRADA") {
-          let restante = item.quantidade;
-          while (restante > 0 && pendentes.length > 0) {
-            const pendencia = pendentes[pendentes.length - 1];
-            if (!pendencia) break;
+        if (movimento.tipo === "DEVOLUCAO_FORNECEDOR" || movimento.tipo === "BAIXA") {
+          pendencias.push({ tipo: movimento.tipo, restante: Math.max(0, movimento.quantidade) });
+          continue;
+        }
+
+        if (movimento.tipo === "REENTRADA") {
+          let restante = Math.max(0, movimento.quantidade);
+          while (restante > 0 && pendencias.length > 0) {
+            const pendencia = pendencias[pendencias.length - 1];
             const aplicada = Math.min(restante, pendencia.restante);
             pendencia.restante -= aplicada;
             restante -= aplicada;
-            if (pendencia.restante === 0) pendentes.pop();
+            if (pendencia.restante <= 0) pendencias.pop();
           }
         }
       }
 
-      const devolvido = pendentes
+      const devolvido = pendencias
         .filter((item) => item.tipo === "DEVOLUCAO_FORNECEDOR")
         .reduce((total, item) => total + item.restante, 0);
-      const baixado = pendentes
+      const baixado = pendencias
         .filter((item) => item.tipo === "BAIXA")
         .reduce((total, item) => total + item.restante, 0);
+
       estado.saldo = Math.max(0, estoque.quantidade - devolvido - baixado);
       estado.quantidade = estoque.quantidade;
       estado.almoxarifado = Math.max(0, estado.almoxarifado);
@@ -407,8 +420,14 @@ function EquipamentosPage() {
 
   async function salvar() {
     if (!projetoId) return;
-    if (!formulario.nome.trim()) toast.error("Informe o nome do equipamento.");
-    if (!formulario.categoria_id) toast.error("Selecione a categoria.");
+    if (!formulario.nome.trim()) {
+      toast.error("Informe o nome do equipamento.");
+      return;
+    }
+    if (!formulario.categoria_id) {
+      toast.error("Selecione a categoria.");
+      return;
+    }
     try {
       setSalvando(true);
       await equipamentosRepo.salvar(projetoId, { ...(editando ? { id: editando.id } : {}), categoria_id: formulario.categoria_id, nome: formulario.nome.trim(), tipo_controle: formulario.tipo_controle, modelo: formulario.modelo.trim() || null, marca: formulario.marca.trim() || null, descricao: formulario.descricao.trim() || null, ativo: editando?.ativo ?? true });
@@ -419,9 +438,18 @@ function EquipamentosPage() {
   }
   async function salvarEstoque() {
     if (!projetoId) return;
-    if (!estoqueFormulario.equipamento_id) toast.error("Selecione o equipamento do cadastro.");
-    if (!estoqueFormulario.empresa_id) toast.error("Selecione a empresa proprietária.");
-    if (!estoqueFormulario.data_entrada) toast.error("Informe a data de entrada.");
+    if (!estoqueFormulario.equipamento_id) {
+      toast.error("Selecione o equipamento do cadastro.");
+      return;
+    }
+    if (!estoqueFormulario.empresa_id) {
+      toast.error("Selecione a empresa proprietária.");
+      return;
+    }
+    if (!estoqueFormulario.data_entrada) {
+      toast.error("Informe a data de entrada.");
+      return;
+    }
 
     const equipamento = equipamentos.find((e) => e.id === estoqueFormulario.equipamento_id);
     if (!equipamento) {
@@ -516,7 +544,8 @@ function EquipamentosPage() {
     }
   }
   async function criarCategoria() {
-    if (!projetoId || !novaCategoria.trim()) {
+    if (!projetoId) return;
+    if (!novaCategoria.trim()) {
       toast.error("Informe o nome da categoria.");
       return;
     }
@@ -582,7 +611,7 @@ function EquipamentosPage() {
       mapa.set(movimento.estoque_equipamento_id, lista);
     }
     for (const lista of mapa.values()) {
-      lista.sort((a, b) => a.data.localeCompare(b.data) || a.criado_em.localeCompare(b.criado_em));
+      lista.sort((a, b) => `${a.criado_em}|${a.id}`.localeCompare(`${b.criado_em}|${b.id}`));
     }
     return mapa;
   }, [movimentacoes]);
@@ -598,13 +627,89 @@ function EquipamentosPage() {
 
     for (const estoque of estoques) {
       if (estoque.ativo === false) continue;
+
+      const equipamento = equipamentos.find((item) => item.id === estoque.equipamento_id);
+      const movimentos = movimentosPorEstoque.get(estoque.id) ?? [];
+      const saldoAtual = resumoPorEstoque.get(estoque.id)?.saldo ?? Math.max(0, estoque.quantidade - estoque.devolvido);
+
+      // Equipamento individual representa uma unidade física. Portanto, sua
+      // localização atual deve ser única e refletir somente o estado final do
+      // histórico, nunca somar localizações de movimentações passadas.
+      if (equipamento?.tipo_controle === "INDIVIDUAL") {
+        if (saldoAtual <= 0) {
+          resultado.set(estoque.id, []);
+          continue;
+        }
+
+        const almoxarifado = equipes.find((e) => e.nome.trim().toLowerCase() === "almoxarifado");
+        let localAtual: AlocacaoAtual | null = almoxarifado
+          ? { tipo: "EQUIPE", id: almoxarifado.id, quantidade: 1 }
+          : null;
+
+        const chaveAtual = () => localAtual ? `${localAtual.tipo}:${localAtual.id}` : null;
+
+        for (const movimento of movimentos) {
+          if (movimento.tipo === "ENTRADA") {
+            localAtual = {
+              tipo: movimento.tipo_destino,
+              id: movimento.destino_id,
+              quantidade: 1,
+            };
+            continue;
+          }
+
+          const origemKey = `${movimento.tipo_origem}:${movimento.origem_id}`;
+          const destinoKey = `${movimento.tipo_destino}:${movimento.destino_id}`;
+
+          // Baixa e devolução ao fornecedor encerram o saldo físico atual.
+          if (movimento.tipo === "BAIXA" || movimento.tipo === "DEVOLUCAO_FORNECEDOR") {
+            if (chaveAtual() === origemKey) localAtual = null;
+            continue;
+          }
+
+          // Reentrada restaura a unidade no destino (Almoxarifado quando
+          // o destino não foi persistido no histórico antigo).
+          if (movimento.tipo === "REENTRADA") {
+            if (movimento.tipo_destino && movimento.destino_id) {
+              localAtual = { tipo: movimento.tipo_destino, id: movimento.destino_id, quantidade: 1 };
+            } else if (almoxarifado) {
+              localAtual = { tipo: "EQUIPE", id: almoxarifado.id, quantidade: 1 };
+            }
+            continue;
+          }
+
+          // Para os demais movimentos, só alteramos a localização se a
+          // unidade realmente estiver na origem registrada.
+          if (chaveAtual() === origemKey) {
+            localAtual = {
+              tipo: movimento.tipo_destino,
+              id: movimento.destino_id,
+              quantidade: 1,
+            };
+          } else if (!localAtual && movimento.tipo_destino && movimento.destino_id) {
+            // Compatibilidade com históricos antigos que não preservaram a
+            // origem exatamente como está no registro atual.
+            localAtual = {
+              tipo: movimento.tipo_destino,
+              id: movimento.destino_id,
+              quantidade: 1,
+            };
+          }
+        }
+
+        resultado.set(estoque.id, localAtual ? [localAtual] : []);
+        continue;
+      }
+
+      // Controle quantitativo continua usando alocações acumuladas, pois uma
+      // mesma quantidade pode estar distribuída em mais de um local.
       const locais = new Map<string, AlocacaoAtual>();
       const almoxarifado = equipes.find((e) => e.nome.trim().toLowerCase() === "almoxarifado");
       if (almoxarifado && estoque.quantidade > 0) {
         locais.set(`EQUIPE:${almoxarifado.id}`, { tipo: "EQUIPE", id: almoxarifado.id, quantidade: estoque.quantidade });
       }
 
-      for (const movimento of movimentosPorEstoque.get(estoque.id) ?? []) {
+      for (const movimento of movimentos) {
         if (movimento.tipo === "ENTRADA") continue;
         const origemKey = `${movimento.tipo_origem}:${movimento.origem_id}`;
         const destinoKey = `${movimento.tipo_destino}:${movimento.destino_id}`;
@@ -621,7 +726,7 @@ function EquipamentosPage() {
       resultado.set(estoque.id, [...locais.values()].filter((item) => item.quantidade > 0));
     }
     return resultado;
-  }, [estoques, equipes, movimentosPorEstoque]);
+  }, [estoques, equipamentos, equipes, movimentosPorEstoque, resumoPorEstoque]);
 
   const rotuloLocal = (alocacao: AlocacaoAtual) => {
     if (alocacao.tipo === "FUNCIONARIO") {
@@ -630,6 +735,30 @@ function EquipamentosPage() {
     }
     if (alocacao.tipo === "EMPRESA") return `Empresa: ${empresaPorId.get(alocacao.id) ?? "não localizada"}`;
     return `Equipe: ${equipePorId.get(alocacao.id) ?? "não localizada"}`;
+  };
+
+  const situacaoSemLocalizacao = (estoqueId: string) => {
+    const historico = movimentosPorEstoque.get(estoqueId) ?? [];
+    const pendencias: Array<"DEVOLUCAO_FORNECEDOR" | "BAIXA"> = [];
+
+    for (const movimento of historico) {
+      if (movimento.tipo === "DEVOLUCAO_FORNECEDOR" || movimento.tipo === "BAIXA") {
+        pendencias.push(movimento.tipo);
+        continue;
+      }
+      if (movimento.tipo === "REENTRADA") {
+        let restante = Math.max(0, movimento.quantidade);
+        while (restante > 0 && pendencias.length > 0) {
+          pendencias.pop();
+          restante = 0;
+        }
+      }
+    }
+
+    const ultima = pendencias.at(-1);
+    if (ultima === "DEVOLUCAO_FORNECEDOR") return "Devolvido ao fornecedor";
+    if (ultima === "BAIXA") return "Baixado definitivamente";
+    return "Sem localização atual";
   };
 
   const rotuloParticipante = (tipo: MovimentacaoEquipamento["tipo_origem"], id: string) => {
@@ -641,10 +770,125 @@ function EquipamentosPage() {
     return equipePorId.get(id) ?? "Equipe não localizada";
   };
 
-  const dataMovimentacao = (data: string) => {
-    const [ano, mes, dia] = data.split("-");
-    return ano && mes && dia ? `${dia}/${mes}/${ano}` : data;
+  const movimentacaoVisual = (tipo: MovimentacaoEquipamento["tipo"]) => {
+    switch (tipo) {
+      case "ENTRADA":
+        return { label: "Entrada no estoque", icon: PackageCheck, iconClass: "text-emerald-600", badgeClass: "border-emerald-200 bg-emerald-50 text-emerald-700" };
+      case "SAIDA":
+        return { label: "Saída para funcionário", icon: PackageOpen, iconClass: "text-blue-600", badgeClass: "border-blue-200 bg-blue-50 text-blue-700" };
+      case "DEVOLUCAO":
+        return { label: "Devolução do funcionário", icon: ArrowRightLeft, iconClass: "text-cyan-600", badgeClass: "border-cyan-200 bg-cyan-50 text-cyan-700" };
+      case "TRANSFERENCIA":
+        return { label: "Transferência entre funcionários", icon: ArrowRightLeft, iconClass: "text-violet-600", badgeClass: "border-violet-200 bg-violet-50 text-violet-700" };
+      case "SINALIZAR_MANUTENCAO":
+        return { label: "Sinalizar para manutenção", icon: Wrench, iconClass: "text-amber-600", badgeClass: "border-amber-200 bg-amber-50 text-amber-700" };
+      case "ENVIO":
+        return { label: "Envio para manutenção", icon: Truck, iconClass: "text-orange-600", badgeClass: "border-orange-200 bg-orange-50 text-orange-700" };
+      case "RETORNO_MANUTENCAO":
+        return { label: "Retorno da manutenção", icon: Wrench, iconClass: "text-sky-600", badgeClass: "border-sky-200 bg-sky-50 text-sky-700" };
+      case "DEVOLUCAO_FORNECEDOR":
+        return { label: "Devolução ao fornecedor", icon: Building2, iconClass: "text-rose-600", badgeClass: "border-rose-200 bg-rose-50 text-rose-700" };
+      case "BAIXA":
+        return { label: "Baixa definitiva", icon: Ban, iconClass: "text-red-600", badgeClass: "border-red-200 bg-red-50 text-red-700" };
+      case "REENTRADA":
+        return { label: "Reentrada no estoque", icon: PackageCheck, iconClass: "text-violet-600", badgeClass: "border-violet-200 bg-violet-50 text-violet-700" };
+      case "MANUTENCAO":
+        return { label: "Manutenção (histórico)", icon: Wrench, iconClass: "text-amber-600", badgeClass: "border-amber-200 bg-amber-50 text-amber-700" };
+      case "RETIRADA_MANUTENCAO":
+        return { label: "Envio para manutenção (histórico)", icon: Truck, iconClass: "text-orange-600", badgeClass: "border-orange-200 bg-orange-50 text-orange-700" };
+    }
   };
+
+  const dataMovimentacao = (movimento: MovimentacaoEquipamento) => {
+    const criado = new Date(movimento.criado_em);
+    if (!Number.isNaN(criado.getTime())) {
+      return new Intl.DateTimeFormat("pt-BR", {
+        dateStyle: "short",
+        timeStyle: "short",
+      }).format(criado);
+    }
+
+    const [ano = "", mes = "", dia = ""] = movimento.data.split("-");
+    return ano && mes && dia ? `${dia}/${mes}/${ano}` : movimento.data;
+  };
+
+
+  const resumoGeral = useMemo(() => {
+    const equipamentosAtivos = equipamentos.filter((equipamento) => equipamento.ativo !== false);
+    const estoquesAtivos = estoques.filter((estoque) => estoque.ativo !== false);
+
+    return {
+      equipamentos: equipamentosAtivos.length,
+      saldo: equipamentosAtivos.reduce(
+        (total, equipamento) => total + (resumoPorEquipamento.get(equipamento.id)?.saldo ?? 0),
+        0,
+      ),
+      almoxarifado: equipamentosAtivos.reduce(
+        (total, equipamento) => total + (resumoPorEquipamento.get(equipamento.id)?.almoxarifado ?? 0),
+        0,
+      ),
+      emUso: equipamentosAtivos.reduce(
+        (total, equipamento) => total + (resumoPorEquipamento.get(equipamento.id)?.apropriado ?? 0),
+        0,
+      ),
+      manutencao: equipamentosAtivos.reduce(
+        (total, equipamento) => total + (resumoPorEquipamento.get(equipamento.id)?.manutencao ?? 0),
+        0,
+      ),
+      registros: estoquesAtivos.length,
+    };
+  }, [equipamentos, estoques, resumoPorEquipamento]);
+
+  const cardsResumo = [
+    {
+      label: "Equipamentos",
+      value: resumoGeral.equipamentos,
+      description: "cadastros ativos",
+      icon: PackageCheck,
+      className: "border-primary/15 bg-primary/5",
+      iconClassName: "text-primary",
+    },
+    {
+      label: "Saldo total",
+      value: resumoGeral.saldo,
+      description: "quantidade em estoque",
+      icon: ClipboardList,
+      className: "border-sky-200 bg-sky-50/60",
+      iconClassName: "text-sky-700",
+    },
+    {
+      label: "Almoxarifado",
+      value: resumoGeral.almoxarifado,
+      description: "disponíveis para retirada",
+      icon: Warehouse,
+      className: "border-emerald-200 bg-emerald-50/60",
+      iconClassName: "text-emerald-700",
+    },
+    {
+      label: "Em uso",
+      value: resumoGeral.emUso,
+      description: "apropriados a funcionários",
+      icon: UserRound,
+      className: "border-blue-200 bg-blue-50/60",
+      iconClassName: "text-blue-700",
+    },
+    {
+      label: "Manutenção",
+      value: resumoGeral.manutencao,
+      description: "em manutenção",
+      icon: Wrench,
+      className: "border-orange-200 bg-orange-50/60",
+      iconClassName: "text-orange-700",
+    },
+    {
+      label: "Registros físicos",
+      value: resumoGeral.registros,
+      description: "registros ativos de estoque",
+      icon: Box,
+      className: "border-border bg-muted/20",
+      iconClassName: "text-muted-foreground",
+    },
+  ];
 
   if (!projetoId) return <Card><CardContent className="py-10 text-center text-sm text-muted-foreground">Nenhum projeto ativo selecionado.</CardContent></Card>;
 
@@ -654,22 +898,86 @@ function EquipamentosPage() {
         <div><h1 className="text-2xl font-semibold tracking-tight">Equipamentos</h1><p className="text-sm text-muted-foreground">Cadastros de equipamentos e registros físicos de estoque.</p></div>
         <div className="flex gap-2"><Button variant="outline" onClick={() => abrirNovoEstoque()}><ClipboardList className="mr-2 h-4 w-4" />Adicionar ao estoque</Button><Button onClick={abrirNovo}><Plus className="mr-2 h-4 w-4" />Novo equipamento</Button></div>
       </div>
-      <Card><CardHeader><div className="relative max-w-md"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Pesquisar equipamento..." className="pl-9" /></div></CardHeader><CardContent><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left"><th className="px-3 py-3 font-medium">Equipamento</th><th className="px-3 py-3 font-medium">Categoria</th><th className="px-3 py-3 font-medium">Controle</th><th className="px-3 py-3 font-medium">Saldo</th><th className="px-3 py-3 font-medium">Almox.</th><th className="px-3 py-3 font-medium">Em uso</th><th className="px-3 py-3 font-medium">Manut.</th><th className="px-3 py-3 font-medium">Registros</th><th className="px-3 py-3 font-medium">Ativo</th><th className="px-3 py-3 text-right font-medium">Ações</th></tr></thead><tbody>
-      {filtrados.map((e) => { const registros = estoquePorEquipamento.get(e.id) ?? []; return <tr key={e.id} className="border-b last:border-0"><td className="px-3 py-3"><div className="flex items-center gap-3"><div className="flex h-9 w-9 items-center justify-center rounded-lg bg-muted"><Box className="h-4 w-4" /></div><div><div className="font-medium">{e.nome}</div>{(e.marca || e.modelo) && <div className="text-xs text-muted-foreground">{[e.marca, e.modelo].filter(Boolean).join(" • ")}</div>}</div></div></td><td className="px-3 py-3">{categoriaPorId.get(e.categoria_id) ?? "—"}</td><td className="px-3 py-3"><Badge variant="secondary">{e.tipo_controle === "INDIVIDUAL" ? "Individual" : "Quantitativo"}</Badge></td><td className="px-3 py-3 font-medium">{saldoTotal(e.id)}</td><td className="px-3 py-3">{almoxarifadoTotal(e.id)}</td><td className="px-3 py-3">{apropriadoTotal(e.id)}</td><td className="px-3 py-3">{manutencaoTotal(e.id)}</td><td className="px-3 py-3"><Badge variant="outline">{registros.length}</Badge></td><td className="px-3 py-3">
-            <label className="inline-flex cursor-pointer items-center gap-2" title={e.ativo === false ? "Ativar equipamento" : "Desativar equipamento"}>
-              <input type="checkbox" checked={e.ativo !== false} onChange={() => void alternarAtivo(e)} className="h-4 w-4 cursor-pointer rounded border-input accent-primary" />
-              <span className="text-xs text-muted-foreground">{e.ativo === false ? "Inativo" : "Ativo"}</span>
-            </label>
-          </td><td className="px-3 py-3"><div className="flex justify-end gap-1"><Button variant="ghost" size="icon" title="Detalhes" onClick={() => void abrirDetalhes(e)}><Eye className="h-4 w-4" /></Button><Button variant="ghost" size="icon" title="Adicionar estoque" onClick={() => abrirNovoEstoque(e)}><Plus className="h-4 w-4" /></Button><Button variant="ghost" size="icon" title="Editar" onClick={() => abrirEdicao(e)}><Pencil className="h-4 w-4" /></Button><Button variant="ghost" size="icon" title="Excluir" onClick={() => void excluir(e)}><Trash2 className="h-4 w-4" /></Button></div></td></tr>; })}
-      {filtrados.length === 0 && <tr><td colSpan={10} className="py-12 text-center text-sm text-muted-foreground">{busca ? "Nenhum equipamento encontrado." : "Nenhum equipamento cadastrado."}</td></tr>}
-      </tbody></table></div></CardContent></Card>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {cardsResumo.map(({ label, value, description, icon: Icon, className, iconClassName }) => (
+          <Card key={label} className={`overflow-hidden shadow-sm ${className}`}>
+            <CardContent className="p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-muted-foreground">{label}</p>
+                  <p className="mt-1 text-2xl font-bold tracking-tight">{value}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{description}</p>
+                </div>
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border bg-background/70">
+                  <Icon className={`h-5 w-5 ${iconClassName}`} />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+      <Card className="overflow-hidden border-border/70 shadow-sm">
+        <CardHeader className="border-b bg-muted/20 pb-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="flex items-center gap-2 font-semibold"><Box className="h-4 w-4 text-primary" /> Catálogo de equipamentos</div>
+              <p className="mt-1 text-xs text-muted-foreground">Visão consolidada do saldo e da situação operacional.</p>
+            </div>
+            <div className="relative w-full max-w-md">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Pesquisar equipamento..." className="pl-9 bg-background" />
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead><tr className="border-b bg-muted/10 text-left">
+                <th className="px-4 py-3 font-medium">Equipamento</th><th className="px-4 py-3 font-medium">Categoria</th><th className="px-4 py-3 font-medium">Controle</th><th className="px-4 py-3 text-center font-medium">Saldo</th><th className="px-4 py-3 text-center font-medium">Almox.</th><th className="px-4 py-3 text-center font-medium">Em uso</th><th className="px-4 py-3 text-center font-medium">Manut.</th><th className="px-4 py-3 text-center font-medium">Registros</th><th className="px-4 py-3 font-medium">Status</th><th className="px-4 py-3 text-right font-medium">Ações</th>
+              </tr></thead>
+              <tbody>
+                {filtrados.map((e) => {
+                  const registros = estoquePorEquipamento.get(e.id) ?? [];
+                  const saldo = saldoTotal(e.id);
+                  const almox = almoxarifadoTotal(e.id);
+                  const emUso = apropriadoTotal(e.id);
+                  const manutencao = manutencaoTotal(e.id);
+                  return <tr key={e.id} className="group border-b transition-colors last:border-0 hover:bg-muted/20">
+                    <td className="px-4 py-3.5">
+                      <div className="flex items-center gap-3">
+                        <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${e.ativo === false ? "border-muted bg-muted/50 text-muted-foreground" : "border-primary/15 bg-primary/5 text-primary"}`}><Box className="h-5 w-5" /></div>
+                        <div className="min-w-0"><div className="font-semibold leading-tight">{e.nome}</div>{(e.marca || e.modelo) && <div className="mt-1 text-xs text-muted-foreground">{[e.marca, e.modelo].filter(Boolean).join(" • ")}</div>}</div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3.5"><span className="text-sm">{categoriaPorId.get(e.categoria_id) ?? "—"}</span></td>
+                    <td className="px-4 py-3.5"><Badge variant="outline" className="bg-background">{e.tipo_controle === "INDIVIDUAL" ? "Individual" : "Quantitativo"}</Badge></td>
+                    <td className="px-4 py-3.5 text-center"><span className="inline-flex min-w-9 items-center justify-center rounded-lg border bg-background px-2 py-1 font-bold">{saldo}</span></td>
+                    <td className="px-4 py-3.5 text-center"><span className="inline-flex items-center gap-1.5 font-medium text-emerald-700"><Warehouse className="h-3.5 w-3.5" />{almox}</span></td>
+                    <td className="px-4 py-3.5 text-center"><span className="inline-flex items-center gap-1.5 font-medium text-blue-700"><UserRound className="h-3.5 w-3.5" />{emUso}</span></td>
+                    <td className="px-4 py-3.5 text-center"><span className={`inline-flex items-center gap-1.5 font-medium ${manutencao > 0 ? "text-orange-700" : "text-muted-foreground"}`}><Wrench className="h-3.5 w-3.5" />{manutencao}</span></td>
+                    <td className="px-4 py-3.5 text-center"><Badge variant="outline" className="min-w-8 justify-center">{registros.length}</Badge></td>
+                    <td className="px-4 py-3.5">
+                      <label className="inline-flex cursor-pointer items-center gap-2" title={e.ativo === false ? "Ativar equipamento" : "Desativar equipamento"}>
+                        <input type="checkbox" checked={e.ativo !== false} onChange={() => void alternarAtivo(e)} className="h-4 w-4 cursor-pointer rounded border-input accent-primary" />
+                        <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium ${e.ativo === false ? "border-red-200 bg-red-50 text-red-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>{e.ativo === false ? <CircleAlert className="h-3 w-3" /> : <CircleCheck className="h-3 w-3" />}{e.ativo === false ? "Inativo" : "Ativo"}</span>
+                      </label>
+                    </td>
+                    <td className="px-4 py-3.5"><div className="flex justify-end gap-1 opacity-80 transition-opacity group-hover:opacity-100"><Button variant="ghost" size="icon" className="h-8 w-8" title="Detalhes" onClick={() => void abrirDetalhes(e)}><Eye className="h-4 w-4" /></Button><Button variant="ghost" size="icon" className="h-8 w-8" title="Adicionar estoque" onClick={() => abrirNovoEstoque(e)}><Plus className="h-4 w-4" /></Button><Button variant="ghost" size="icon" className="h-8 w-8" title="Editar" onClick={() => abrirEdicao(e)}><Pencil className="h-4 w-4" /></Button><Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" title="Excluir" onClick={() => void excluir(e)}><Trash2 className="h-4 w-4" /></Button></div></td>
+                  </tr>;
+                })}
+                {filtrados.length === 0 && <tr><td colSpan={10} className="py-14 text-center text-sm text-muted-foreground"><div className="flex flex-col items-center gap-2"><Box className="h-8 w-8 text-muted-foreground/50" /><span>{busca ? "Nenhum equipamento encontrado." : "Nenhum equipamento cadastrado."}</span></div></td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
     </div>
 
-    <Dialog open={Boolean(equipamentoDetalhe)} onOpenChange={(open) => !open && setEquipamentoDetalhe(null)}><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-6xl"><DialogHeader><DialogTitle>Detalhes do equipamento</DialogTitle></DialogHeader>{equipamentoDetalhe && <div className="space-y-6">
+    <Dialog open={Boolean(equipamentoDetalhe)} onOpenChange={(open) => !open && setEquipamentoDetalhe(null)}><DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-6xl"><DialogHeader><DialogTitle className="flex items-center gap-2"><Box className="h-5 w-5 text-primary" />Detalhes do equipamento</DialogTitle></DialogHeader>{equipamentoDetalhe && <div className="space-y-6">
       <div className="rounded-lg border bg-muted/30 p-4"><div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"><div><h2 className="text-xl font-semibold">{equipamentoDetalhe.nome}</h2><div className="mt-2 flex flex-wrap items-center gap-2"><Badge variant="secondary">{categoriaPorId.get(equipamentoDetalhe.categoria_id) ?? "Sem categoria"}</Badge><Badge variant="outline">{equipamentoDetalhe.tipo_controle === "INDIVIDUAL" ? "Controle individual" : "Controle quantitativo"}</Badge><Badge variant={equipamentoDetalhe.ativo === false ? "outline" : "secondary"}>{equipamentoDetalhe.ativo === false ? "Inativo" : "Ativo"}</Badge></div><p className="mt-3 text-sm text-muted-foreground">{[equipamentoDetalhe.marca, equipamentoDetalhe.modelo].filter(Boolean).join(" • ") || "Marca/modelo não informados"}</p>{equipamentoDetalhe.descricao && <p className="mt-2 max-w-3xl text-sm">{equipamentoDetalhe.descricao}</p>}</div><Button onClick={() => abrirNovoEstoque(equipamentoDetalhe)} disabled={equipamentoDetalhe.ativo === false}><Plus className="mr-2 h-4 w-4" />Adicionar estoque</Button></div></div>
-      <div className="grid gap-3 sm:grid-cols-5"><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Saldo</p><p className="mt-1 text-xl font-semibold">{saldoTotal(equipamentoDetalhe.id)}</p></div><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Almoxarifado</p><p className="mt-1 text-xl font-semibold">{almoxarifadoTotal(equipamentoDetalhe.id)}</p></div><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Em uso</p><p className="mt-1 text-xl font-semibold">{apropriadoTotal(equipamentoDetalhe.id)}</p></div><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Manutenção</p><p className="mt-1 text-xl font-semibold">{manutencaoTotal(equipamentoDetalhe.id)}</p></div><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Registros físicos</p><p className="mt-1 text-xl font-semibold">{estoqueSelecionado.length}</p></div></div>
-      <div className="space-y-3"><div><h3 className="font-semibold">Estoque físico</h3><p className="text-sm text-muted-foreground">Cada linha representa um registro físico independente.</p></div><div className="overflow-x-auto rounded-lg border"><table className="w-full text-sm"><thead><tr className="border-b bg-muted/30 text-left"><th className="px-3 py-3">Proprietário</th><th className="px-3 py-3">Vínculo</th><th className="px-3 py-3">Localização atual</th><th className="px-3 py-3">Identificação</th><th className="px-3 py-3">Serial</th><th className="px-3 py-3">Patrimônio</th><th className="px-3 py-3">Saldo</th><th className="px-3 py-3">Ativo</th></tr></thead><tbody>{estoqueSelecionado.map((e) => <tr key={e.id} className="border-b last:border-0 align-top"><td className="px-3 py-3">{empresaPorId.get(e.empresa_id) ?? "—"}</td><td className="px-3 py-3">{vinculoLabel(e.vinculo)}</td><td className="px-3 py-3"><div className="space-y-1">{(alocacoesAtuais.get(e.id) ?? []).map((local) => <div key={`${local.tipo}:${local.id}`}><span>{rotuloLocal(local)}</span><span className="ml-2 text-xs text-muted-foreground">({local.quantidade})</span></div>)}{(alocacoesAtuais.get(e.id) ?? []).length === 0 && <span className="text-muted-foreground">Sem localização atual</span>}</div></td><td className="px-3 py-3">{e.identificacao ?? "—"}</td><td className="px-3 py-3">{e.serial ?? "—"}</td><td className="px-3 py-3">{e.patrimonio ?? "—"}</td><td className="px-3 py-3 font-medium">{resumoPorEstoque.get(e.id)?.saldo ?? Math.max(0, e.quantidade - e.devolvido)}</td><td className="px-3 py-3"><label className="inline-flex cursor-pointer items-center gap-2" title={e.ativo === false ? "Ativar registro" : "Desativar registro"}><input type="checkbox" checked={e.ativo !== false} onChange={() => void alternarEstoqueAtivo(e)} className="h-4 w-4 cursor-pointer rounded border-input accent-primary" /><span className="text-xs text-muted-foreground">{e.ativo === false ? "Inativo" : "Ativo"}</span></label></td></tr>)}{estoqueSelecionado.length === 0 && <tr><td colSpan={8} className="py-8 text-center text-muted-foreground">Nenhum registro de estoque.</td></tr>}</tbody></table></div></div>
-      <div className="space-y-3"><div><h3 className="font-semibold">Histórico de movimentações</h3><p className="text-sm text-muted-foreground">Histórico do equipamento, separado por registro físico.</p></div><div className="space-y-3">{estoqueSelecionado.map((e) => { const historico = movimentosPorEstoque.get(e.id) ?? []; const aberto = historicosAbertos.has(e.id); return <div key={e.id} className="rounded-lg border"><button type="button" className="flex w-full items-center justify-between gap-3 p-4 text-left hover:bg-muted/50" onClick={() => setHistoricosAbertos((atual) => { const proximo = new Set(atual); if (proximo.has(e.id)) proximo.delete(e.id); else proximo.add(e.id); return proximo; })}><div className="min-w-0"><div className="font-medium">{e.identificacao || e.patrimonio || e.serial || `Registro ${e.id.slice(0, 8)}`}</div><div className="mt-1 text-xs text-muted-foreground">{historico.length} {historico.length === 1 ? "movimentação registrada" : "movimentações registradas"}</div></div><div className="flex shrink-0 items-center gap-3"><Badge variant="outline">Saldo: {resumoPorEstoque.get(e.id)?.saldo ?? Math.max(0, e.quantidade - e.devolvido)}</Badge><ChevronDown className={`h-4 w-4 transition-transform ${aberto ? "rotate-180" : ""}`} /></div></button>{aberto && <div className="border-t px-4"><div className="divide-y">{historico.length === 0 ? <p className="py-4 text-sm text-muted-foreground">Nenhuma movimentação registrada.</p> : historico.map((movimento) => <div key={movimento.id} className="grid gap-2 py-3 sm:grid-cols-[110px_1fr_auto] sm:items-start"><div className="text-xs text-muted-foreground">{dataMovimentacao(movimento.data)}</div><div><div className="font-medium">{movimento.tipo}</div><div className="text-sm text-muted-foreground">{rotuloParticipante(movimento.tipo_origem, movimento.origem_id)} <span className="mx-1">→</span> {rotuloParticipante(movimento.tipo_destino, movimento.destino_id)}</div>{movimento.referencia_documento && <div className="mt-1 text-xs text-muted-foreground">Documento: {movimento.referencia_documento}</div>}{movimento.observacoes && <div className="mt-1 text-xs text-muted-foreground">{movimento.observacoes}</div>}</div><div className="text-sm font-medium sm:text-right">Qtd. {movimento.quantidade}</div></div>)}</div></div>}</div>; })}</div></div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5"><div className="rounded-xl border border-primary/15 bg-primary/5 p-4"><div className="flex items-center gap-2 text-xs font-medium text-primary"><Box className="h-4 w-4" />Saldo</div><p className="mt-2 text-2xl font-bold">{saldoTotal(equipamentoDetalhe.id)}</p></div><div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-4"><div className="flex items-center gap-2 text-xs font-medium text-emerald-700"><Warehouse className="h-4 w-4" />Almoxarifado</div><p className="mt-2 text-2xl font-bold text-emerald-800">{almoxarifadoTotal(equipamentoDetalhe.id)}</p></div><div className="rounded-xl border border-blue-200 bg-blue-50/60 p-4"><div className="flex items-center gap-2 text-xs font-medium text-blue-700"><UserRound className="h-4 w-4" />Em uso</div><p className="mt-2 text-2xl font-bold text-blue-800">{apropriadoTotal(equipamentoDetalhe.id)}</p></div><div className="rounded-xl border border-orange-200 bg-orange-50/60 p-4"><div className="flex items-center gap-2 text-xs font-medium text-orange-700"><Wrench className="h-4 w-4" />Manutenção</div><p className="mt-2 text-2xl font-bold text-orange-800">{manutencaoTotal(equipamentoDetalhe.id)}</p></div><div className="rounded-xl border bg-muted/20 p-4"><div className="flex items-center gap-2 text-xs font-medium text-muted-foreground"><ClipboardList className="h-4 w-4" />Registros físicos</div><p className="mt-2 text-2xl font-bold">{estoqueSelecionado.length}</p></div></div>
+      <div className="space-y-3"><div><h3 className="font-semibold">Estoque físico</h3><p className="text-sm text-muted-foreground">Cada linha representa um registro físico independente.</p></div><div className="overflow-x-auto rounded-lg border"><table className="w-full text-sm"><thead><tr className="border-b bg-muted/30 text-left"><th className="px-3 py-3">Proprietário</th><th className="px-3 py-3">Vínculo</th><th className="px-3 py-3">Localização atual</th><th className="px-3 py-3">Identificação</th><th className="px-3 py-3">Serial</th><th className="px-3 py-3">Patrimônio</th><th className="px-3 py-3">Saldo</th><th className="px-3 py-3">Ativo</th></tr></thead><tbody>{estoqueSelecionado.map((e) => <tr key={e.id} className="border-b last:border-0 align-top"><td className="px-3 py-3">{empresaPorId.get(e.empresa_id) ?? "—"}</td><td className="px-3 py-3">{vinculoLabel(e.vinculo)}</td><td className="px-3 py-3"><div className="space-y-1">{(alocacoesAtuais.get(e.id) ?? []).map((local) => <div key={`${local.tipo}:${local.id}`}><span>{rotuloLocal(local)}</span><span className="ml-2 text-xs text-muted-foreground">({local.quantidade})</span></div>)}{(alocacoesAtuais.get(e.id) ?? []).length === 0 && <span className={resumoPorEstoque.get(e.id)?.saldo === 0 ? "font-medium text-muted-foreground" : "text-muted-foreground"}>{situacaoSemLocalizacao(e.id)}</span>}</div></td><td className="px-3 py-3">{e.identificacao ?? "—"}</td><td className="px-3 py-3">{e.serial ?? "—"}</td><td className="px-3 py-3">{e.patrimonio ?? "—"}</td><td className="px-3 py-3 font-medium">{resumoPorEstoque.get(e.id)?.saldo ?? Math.max(0, e.quantidade - e.devolvido)}</td><td className="px-3 py-3"><label className="inline-flex cursor-pointer items-center gap-2" title={e.ativo === false ? "Ativar registro" : "Desativar registro"}><input type="checkbox" checked={e.ativo !== false} onChange={() => void alternarEstoqueAtivo(e)} className="h-4 w-4 cursor-pointer rounded border-input accent-primary" /><span className="text-xs text-muted-foreground">{e.ativo === false ? "Inativo" : "Ativo"}</span></label></td></tr>)}{estoqueSelecionado.length === 0 && <tr><td colSpan={8} className="py-8 text-center text-muted-foreground">Nenhum registro de estoque.</td></tr>}</tbody></table></div></div>
+      <div className="space-y-3"><div><h3 className="font-semibold">Histórico de movimentações</h3><p className="text-sm text-muted-foreground">Histórico do equipamento, separado por registro físico.</p></div><div className="space-y-3">{estoqueSelecionado.map((e) => { const historico = movimentosPorEstoque.get(e.id) ?? []; const aberto = historicosAbertos.has(e.id); return <div key={e.id} className="rounded-lg border"><button type="button" className="flex w-full items-center justify-between gap-3 p-4 text-left hover:bg-muted/50" onClick={() => setHistoricosAbertos((atual) => { const proximo = new Set(atual); if (proximo.has(e.id)) proximo.delete(e.id); else proximo.add(e.id); return proximo; })}><div className="min-w-0"><div className="font-medium">{e.identificacao || e.patrimonio || e.serial || `Registro ${e.id.slice(0, 8)}`}</div><div className="mt-1 text-xs text-muted-foreground">{historico.length} {historico.length === 1 ? "movimentação registrada" : "movimentações registradas"}</div></div><div className="flex shrink-0 items-center gap-3"><Badge variant="outline">Saldo: {resumoPorEstoque.get(e.id)?.saldo ?? Math.max(0, e.quantidade - e.devolvido)}</Badge><ChevronDown className={`h-4 w-4 transition-transform ${aberto ? "rotate-180" : ""}`} /></div></button>{aberto && <div className="border-t px-4"><div className="divide-y">{historico.length === 0 ? <p className="py-4 text-sm text-muted-foreground">Nenhuma movimentação registrada.</p> : historico.map((movimento) => { const visual = movimentacaoVisual(movimento.tipo); const Icon = visual.icon; return <div key={movimento.id} className="group grid gap-3 py-4 sm:grid-cols-[110px_1fr_auto] sm:items-start"><div className="pt-1 text-xs text-muted-foreground">{dataMovimentacao(movimento)}</div><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${visual.badgeClass}`}><Icon className={`h-3.5 w-3.5 ${visual.iconClass}`} />{visual.label}</span><span className="rounded-md bg-muted px-2 py-1 text-xs font-semibold">Qtd. {movimento.quantidade}</span></div><div className="mt-2 flex flex-wrap items-center gap-2 text-sm"><span className="inline-flex items-center rounded-md border bg-background px-2 py-1">{rotuloParticipante(movimento.tipo_origem, movimento.origem_id)}</span><span className="text-muted-foreground">→</span><span className="inline-flex items-center rounded-md border bg-background px-2 py-1">{rotuloParticipante(movimento.tipo_destino, movimento.destino_id)}</span></div>{movimento.referencia_documento && <div className="mt-2 text-xs text-muted-foreground">Documento: {movimento.referencia_documento}</div>}{movimento.observacoes && <div className="mt-1 text-xs text-muted-foreground">{movimento.observacoes}</div>}</div></div>; })}</div></div>}</div>; })}</div></div>
     </div>}</DialogContent></Dialog>
 
     <Dialog open={dialogNovaCategoria} onOpenChange={setDialogNovaCategoria}><DialogContent className="sm:max-w-md"><DialogHeader><DialogTitle>Nova categoria de equipamento</DialogTitle></DialogHeader><div className="space-y-2 py-2"><Label>Nome da categoria</Label><Input value={novaCategoria} onChange={(e) => setNovaCategoria(e.target.value)} autoFocus onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void criarCategoria(); } }} /></div><DialogFooter><Button variant="outline" onClick={() => setDialogNovaCategoria(false)}>Cancelar</Button><Button onClick={() => void criarCategoria()} disabled={salvando}>{salvando ? "Criando..." : "Criar categoria"}</Button></DialogFooter></DialogContent></Dialog>

@@ -19,6 +19,9 @@ import {
   Wrench,
   UserCheck,
   X,
+  FileChartLine,
+  LayoutList,
+  FileClock,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useState, useEffect } from "react";
@@ -48,8 +51,8 @@ const navGroups: NavGroup[] = [
     icon: Boxes,
     items: [
       { to: "/app", label: "Dashboard", icon: LayoutDashboard, exact: true },
-      { to: "/app/lancar", label: "Lançar", icon: PackagePlus },
-      { to: "/app/movimentacoes", label: "Movimentações", icon: ListChecks },
+      { to: "/app/lancar", label: "Lançar", icon: ArrowLeftRight },
+      { to: "/app/movimentacoes", label: "Movimentações", icon: FileClock },
       { to: "/app/estoque", label: "Estoque", icon: Warehouse },
       { to: "/app/cadastros", label: "Cadastros", icon: Settings2 },
       { to: "/app/dados", label: "Dados", icon: Database },
@@ -59,9 +62,10 @@ const navGroups: NavGroup[] = [
     label: "Equipamentos",
     icon: Wrench,
     items: [
-      { to: "/app/equipamentos", label: "Equipamentos", icon: HardHat },
+      { to: "/app/equipamentos", label: "Equipamentos", icon: LayoutList },
       { to: "/app/apropriacoes", label: "Apropriações", icon: UserCheck },
-      { to: "/app/movimentacoes-equipamentos", label: "Movimentações", icon: Activity },
+      { to: "/app/movimentacoes-equipamentos", label: "Movimentações", icon: ArrowLeftRight },
+      { to: "/app/relatorios-equipamentos", label: "Relatorios", icon: FileChartLine },
     ],
   },
 ];
@@ -73,6 +77,9 @@ function Navigation({
   expanded: boolean;
   onNavigate?: () => void;
 }) {
+
+  // const db = getDB(); 
+  // db.movimentacoes_equipamentos.clear()
   return (
     <nav aria-label="Navegação principal" className="flex-1 overflow-y-auto px-2 py-3">
       <div className="space-y-4">

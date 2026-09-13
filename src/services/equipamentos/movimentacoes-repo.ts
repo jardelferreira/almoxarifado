@@ -526,10 +526,13 @@ async function validarEstadoDaOrigem(
       throw new Error("Origem inválida para MANUTENCAO.");
 
     case "ENVIO":
-      if (tipo_origem === "EQUIPE") {
-        if (origem_id !== equipes.almoxarifado.id) {
-          throw new Error("O envio por equipe deve partir do Almoxarifado.");
-        }
+      if (tipo_origem !== "EQUIPE") {
+        throw new Error(
+          "O envio para manutenção deve partir do Almoxarifado ou da Manutenção.",
+        );
+      }
+
+      if (origem_id === equipes.almoxarifado.id) {
         exigirDisponibilidade(
           estado.almoxarifado,
           quantidade,
@@ -538,16 +541,18 @@ async function validarEstadoDaOrigem(
         return;
       }
 
-      if (tipo_origem === "FUNCIONARIO") {
+      if (origem_id === equipes.manutencao.id) {
         exigirDisponibilidade(
-          estado.funcionarios.get(origem_id) ?? 0,
+          Math.max(0, estado.manutencao - estado.empresa),
           quantidade,
-          "O funcionário não possui quantidade suficiente para envio à manutenção.",
+          "Não há quantidade disponível na Manutenção para envio externo.",
         );
         return;
       }
 
-      throw new Error("O envio deve partir do Almoxarifado ou de um funcionário.");
+      throw new Error(
+        "O envio deve partir do Almoxarifado ou da Manutenção.",
+      );
 
     case "RETIRADA_MANUTENCAO":
       if (origem_id === equipes.manutencao.id) {
@@ -602,25 +607,32 @@ async function validarEstadoDaOrigem(
       return;
     }
 
-    case "BAIXA":
-      if (tipo_origem !== "EQUIPE" || origem_id !== equipes.almoxarifado.id) {
+    case "BAIXA": {
+      if (tipo_origem !== "EQUIPE") {
         throw new Error(
-          "A baixa somente pode ser realizada para equipamento que esteja no Almoxarifado.",
+          "A baixa deve partir do Almoxarifado ou da Manutenção.",
         );
       }
 
-      if (estado.almoxarifado !== estado.saldo) {
+      if (origem_id === equipes.almoxarifado.id) {
+        exigirDisponibilidade(
+          estado.almoxarifado,
+          quantidade,
+          "Quantidade insuficiente no Almoxarifado para baixa.",
+        );
+      } else if (origem_id === equipes.manutencao.id) {
+        exigirDisponibilidade(
+          estado.manutencao,
+          quantidade,
+          "Quantidade insuficiente na Manutenção para baixa.",
+        );
+      } else {
         throw new Error(
-          "A baixa somente pode ser realizada quando o equipamento estiver exclusivamente no Almoxarifado.",
+          "A baixa deve partir do Almoxarifado ou da Manutenção.",
         );
       }
-
-      exigirDisponibilidade(
-        estado.almoxarifado,
-        quantidade,
-        "Quantidade insuficiente no Almoxarifado para baixa.",
-      );
       return;
+    }
 
     case "DEVOLUCAO_FORNECEDOR":
       if (
@@ -767,8 +779,12 @@ function validarRegraDoTipo(
           "ENVIO deve ser Almoxarifado ou Funcionário → Empresa de manutenção.",
         );
       }
-      if (tipo_origem === "EQUIPE" && origem_id !== equipes.almoxarifado.id) {
-        throw new Error("O envio por equipe deve partir do Almoxarifado.");
+      if (
+        tipo_origem === "EQUIPE" &&
+        origem_id !== equipes.almoxarifado.id &&
+        origem_id !== equipes.manutencao.id
+      ) {
+        throw new Error("O envio por equipe deve partir do Almoxarifado ou da Manutenção.");
       }
       return;
 
@@ -803,11 +819,12 @@ function validarRegraDoTipo(
     case "BAIXA":
       if (
         tipo_origem !== "EQUIPE" ||
-        origem_id !== equipes.almoxarifado.id ||
+        (origem_id !== equipes.almoxarifado.id &&
+          origem_id !== equipes.manutencao.id) ||
         tipo_destino !== "EMPRESA"
       ) {
         throw new Error(
-          "BAIXA deve ser Almoxarifado → Empresa proprietária.",
+          "BAIXA deve ser Almoxarifado ou Manutenção → Empresa proprietária.",
         );
       }
       return;
@@ -1068,6 +1085,15 @@ export const movimentacoesEquipamentosRepo = {
       dados.projeto_id,
     );
 
+    // REENTRADA sempre retorna ao Almoxarifado por padrão.
+    // O destino pode ser omitido pela interface sem invalidar a movimentação.
+    if (dados.tipo === "REENTRADA" && !dados.destino_id) {
+      dados = {
+        ...dados,
+        destino_id: equipes.almoxarifado.id,
+      };
+    }
+
     if (
       dados.tipo === "ENVIO" &&
       estoque.vinculo !== "PROPRIO" &&
@@ -1264,10 +1290,15 @@ export const movimentacoesEquipamentosRepo = {
           const novoBaixado =
             (estoqueAtual.baixado ?? 0) + movimentacao.quantidade;
 
-          // A baixa é definitiva: o registro é encerrado quando toda a quantidade
-          // do registro físico foi baixada.
-          if (movimentacao.quantidade > estadoAtual.almoxarifado) {
-            throw new Error("Quantidade insuficiente no Almoxarifado para baixa.");
+          // A baixa pode partir do Almoxarifado ou da Manutenção.
+          const quantidadeNaOrigem = movimentacao.origem_id === equipes.almoxarifado.id
+            ? estadoAtual.almoxarifado
+            : movimentacao.origem_id === equipes.manutencao.id
+              ? estadoAtual.manutencao
+              : 0;
+
+          if (movimentacao.quantidade > quantidadeNaOrigem) {
+            throw new Error("Quantidade insuficiente na origem para baixa.");
           }
 
           if (estoqueAtual.devolvido + novoBaixado > estoqueAtual.quantidade) {

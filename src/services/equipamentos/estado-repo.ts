@@ -45,10 +45,9 @@ function ordenarMovimentacoes(
   movimentacoes: MovimentacaoEquipamento[],
 ): MovimentacaoEquipamento[] {
   return [...movimentacoes].sort((a, b) => {
-    const dataA = `${a.data}|${a.criado_em}|${a.id}`;
-    const dataB = `${b.data}|${b.criado_em}|${b.id}`;
-
-    return dataA.localeCompare(dataB);
+    // A ordem do histórico é determinada pelo instante real de criação.
+    // `data` é a data operacional informada pelo usuário e pode ser retroativa.
+    return `${a.criado_em}|${a.id}`.localeCompare(`${b.criado_em}|${b.id}`);
   });
 }
 
@@ -311,7 +310,40 @@ export const estadoEquipamentosRepo = {
         }
 
         case "SINALIZAR_MANUTENCAO": {
-          // Sinalização é somente administrativa.
+          if (movimentacao.tipo_destino !== "EQUIPE" || movimentacao.destino_id !== equipes.manutencao.id) {
+            throw new Error(
+              "SINALIZAR_MANUTENCAO deve ter a equipe Manutenção como destino.",
+            );
+          }
+
+          if (movimentacao.tipo_origem === "FUNCIONARIO") {
+            remover(
+              funcionarios,
+              movimentacao.origem_id,
+              quantidade,
+            );
+          } else if (
+            movimentacao.tipo_origem === "EQUIPE" &&
+            movimentacao.origem_id === equipes.almoxarifado.id
+          ) {
+            almoxarifado -= quantidade;
+            removerEquipe(movimentacao.origem_id, quantidade);
+
+            if (almoxarifado < 0) {
+              throw new Error(
+                "Quantidade insuficiente no Almoxarifado para sinalização de manutenção.",
+              );
+            }
+          } else {
+            throw new Error(
+              "A sinalização deve partir do Almoxarifado ou de um funcionário.",
+            );
+          }
+
+          // A partir da sinalização, o equipamento fica bloqueado no
+          // domínio Manutenção, mesmo que ainda esteja fisicamente no projeto.
+          manutencao += quantidade;
+          adicionarEquipe(equipes.manutencao.id, quantidade);
           break;
         }
 
@@ -347,34 +379,42 @@ export const estadoEquipamentosRepo = {
 
         case "ENVIO": {
           if (movimentacao.tipo_origem === "EQUIPE") {
-            if (movimentacao.origem_id !== equipes.almoxarifado.id) {
+            if (movimentacao.origem_id === equipes.almoxarifado.id) {
+              // Envio direto: sai do Almoxarifado e passa ao domínio Manutenção.
+              almoxarifado -= quantidade;
+              removerEquipe(movimentacao.origem_id, quantidade);
+
+              if (almoxarifado < 0) {
+                throw new Error(
+                  "Quantidade insuficiente no Almoxarifado para envio à manutenção.",
+                );
+              }
+
+              manutencao += quantidade;
+              adicionarEquipe(equipes.manutencao.id, quantidade);
+            } else if (movimentacao.origem_id !== equipes.manutencao.id) {
               throw new Error(
-                "ENVIO por equipe deve partir do Almoxarifado.",
+                "ENVIO deve partir do Almoxarifado ou da Manutenção.",
               );
             }
-
-            almoxarifado -= quantidade;
-            removerEquipe(movimentacao.origem_id, quantidade);
-
-            if (almoxarifado < 0) {
-              throw new Error(
-                "Quantidade insuficiente no Almoxarifado para envio à manutenção.",
-              );
-            }
+            // Quando já está em Manutenção, o envio externo apenas registra
+            // que parte do saldo está fora do projeto, sem alterar a contagem
+            // do domínio Manutenção. `empresa` é o marcador externo.
           } else if (movimentacao.tipo_origem === "FUNCIONARIO") {
+            // Compatibilidade com históricos antigos. Novos envios devem
+            // passar primeiro por SINALIZAR_MANUTENCAO.
             remover(
               funcionarios,
               movimentacao.origem_id,
               quantidade,
             );
+            manutencao += quantidade;
+            adicionarEquipe(equipes.manutencao.id, quantidade);
           } else {
             throw new Error(
-              "ENVIO deve partir do Almoxarifado ou de um funcionário.",
+              "ENVIO deve partir do Almoxarifado ou da Manutenção.",
             );
           }
-
-          manutencao += quantidade;
-          adicionarEquipe(equipes.manutencao.id, quantidade);
 
           if (movimentacao.tipo_destino === "EMPRESA") {
             empresa += quantidade;
@@ -539,13 +579,16 @@ export const estadoEquipamentosRepo = {
         case "BAIXA": {
           if (movimentacao.tipo_origem !== "EQUIPE") {
             throw new Error(
-              "BAIXA deve partir do Almoxarifado.",
+              "BAIXA deve partir do Almoxarifado ou da Manutenção.",
             );
           }
 
-          if (movimentacao.origem_id !== equipes.almoxarifado.id) {
+          if (
+            movimentacao.origem_id !== equipes.almoxarifado.id &&
+            movimentacao.origem_id !== equipes.manutencao.id
+          ) {
             throw new Error(
-              "BAIXA somente pode ser realizada para equipamento que esteja no Almoxarifado.",
+              "BAIXA somente pode ser realizada para equipamento que esteja no Almoxarifado ou na Manutenção.",
             );
           }
 
@@ -555,13 +598,24 @@ export const estadoEquipamentosRepo = {
             );
           }
 
-          almoxarifado -= quantidade;
-          removerEquipe(movimentacao.origem_id, quantidade);
+          if (movimentacao.origem_id === equipes.almoxarifado.id) {
+            almoxarifado -= quantidade;
+            removerEquipe(movimentacao.origem_id, quantidade);
 
-          if (almoxarifado < 0) {
-            throw new Error(
-              "Quantidade insuficiente no Almoxarifado para baixa.",
-            );
+            if (almoxarifado < 0) {
+              throw new Error(
+                "Quantidade insuficiente no Almoxarifado para baixa.",
+              );
+            }
+          } else {
+            manutencao -= quantidade;
+            removerEquipe(movimentacao.origem_id, quantidade);
+
+            if (manutencao < 0) {
+              throw new Error(
+                "Quantidade insuficiente na Manutenção para baixa.",
+              );
+            }
           }
 
           baixado += quantidade;

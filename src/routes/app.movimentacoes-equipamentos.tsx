@@ -1,20 +1,24 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import {
-  Activity,
   ArrowDownToLine,
-  ArrowLeftRight,
   ArrowRight,
+  ArrowRightLeft,
   ArrowUpFromLine,
-  Ban,
+  Building2,
   Eye,
   PackageCheck,
+  PackageOpen,
+  PackageX,
   Plus,
   RotateCcw,
   Search,
+  Trash2,
   Truck,
   UserRound,
+  Warehouse,
   Wrench,
+  type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -117,12 +121,12 @@ const tipoLabels: Record<MovimentacaoEquipamentoTipo, string> = {
   DEVOLUCAO: "Devolução do funcionário",
   TRANSFERENCIA: "Transferência entre funcionários",
   SINALIZAR_MANUTENCAO: "Sinalizar para manutenção",
-  ENVIO: "Enviar para manutenção",
+  ENVIO: "Envio para manutenção",
   RETORNO_MANUTENCAO: "Retorno da manutenção",
   DEVOLUCAO_FORNECEDOR: "Devolução ao fornecedor",
   BAIXA: "Baixa definitiva",
   REENTRADA: "Reentrada no estoque",
-  MANUTENCAO: "Sinalizar para manutenção (histórico)",
+  MANUTENCAO: "Manutenção (histórico)",
   RETIRADA_MANUTENCAO: "Enviar para manutenção (histórico)",
 };
 
@@ -144,6 +148,94 @@ const parteLabels: Record<MovimentacaoEquipamentoParte, string> = {
   EQUIPE: "Equipe",
   FUNCIONARIO: "Funcionário",
 };
+
+type MovimentoVisual = {
+  icon: LucideIcon;
+  badgeClass: string;
+  iconClass: string;
+  rowClass: string;
+};
+
+const movimentoVisual: Record<MovimentacaoEquipamentoTipo, MovimentoVisual> = {
+  ENTRADA: {
+    icon: PackageCheck,
+    badgeClass: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    iconClass: "bg-emerald-100 text-emerald-700",
+    rowClass: "hover:bg-emerald-50/40",
+  },
+  SAIDA: {
+    icon: ArrowUpFromLine,
+    badgeClass: "border-blue-200 bg-blue-50 text-blue-700",
+    iconClass: "bg-blue-100 text-blue-700",
+    rowClass: "hover:bg-blue-50/40",
+  },
+  DEVOLUCAO: {
+    icon: ArrowDownToLine,
+    badgeClass: "border-cyan-200 bg-cyan-50 text-cyan-700",
+    iconClass: "bg-cyan-100 text-cyan-700",
+    rowClass: "hover:bg-cyan-50/40",
+  },
+  TRANSFERENCIA: {
+    icon: ArrowRightLeft,
+    badgeClass: "border-violet-200 bg-violet-50 text-violet-700",
+    iconClass: "bg-violet-100 text-violet-700",
+    rowClass: "hover:bg-violet-50/40",
+  },
+  SINALIZAR_MANUTENCAO: {
+    icon: Wrench,
+    badgeClass: "border-amber-200 bg-amber-50 text-amber-700",
+    iconClass: "bg-amber-100 text-amber-700",
+    rowClass: "hover:bg-amber-50/40",
+  },
+  ENVIO: {
+    icon: Truck,
+    badgeClass: "border-orange-200 bg-orange-50 text-orange-700",
+    iconClass: "bg-orange-100 text-orange-700",
+    rowClass: "hover:bg-orange-50/40",
+  },
+  RETORNO_MANUTENCAO: {
+    icon: RotateCcw,
+    badgeClass: "border-teal-200 bg-teal-50 text-teal-700",
+    iconClass: "bg-teal-100 text-teal-700",
+    rowClass: "hover:bg-teal-50/40",
+  },
+  DEVOLUCAO_FORNECEDOR: {
+    icon: PackageX,
+    badgeClass: "border-rose-200 bg-rose-50 text-rose-700",
+    iconClass: "bg-rose-100 text-rose-700",
+    rowClass: "hover:bg-rose-50/40",
+  },
+  BAIXA: {
+    icon: Trash2,
+    badgeClass: "border-red-200 bg-red-50 text-red-700",
+    iconClass: "bg-red-100 text-red-700",
+    rowClass: "hover:bg-red-50/40",
+  },
+  REENTRADA: {
+    icon: PackageOpen,
+    badgeClass: "border-indigo-200 bg-indigo-50 text-indigo-700",
+    iconClass: "bg-indigo-100 text-indigo-700",
+    rowClass: "hover:bg-indigo-50/40",
+  },
+  MANUTENCAO: {
+    icon: Wrench,
+    badgeClass: "border-amber-200 bg-amber-50 text-amber-700",
+    iconClass: "bg-amber-100 text-amber-700",
+    rowClass: "hover:bg-amber-50/40",
+  },
+  RETIRADA_MANUTENCAO: {
+    icon: Truck,
+    badgeClass: "border-orange-200 bg-orange-50 text-orange-700",
+    iconClass: "bg-orange-100 text-orange-700",
+    rowClass: "hover:bg-orange-50/40",
+  },
+};
+
+function iconeParte(tipo: MovimentacaoEquipamentoParte): LucideIcon {
+  if (tipo === "EMPRESA") return Building2;
+  if (tipo === "FUNCIONARIO") return UserRound;
+  return Warehouse;
+}
 
 function normalizar(texto: string) {
   return texto
@@ -172,34 +264,20 @@ function nomeParte(
   return nomePessoa(funcionarios.get(id));
 }
 
-const movimentoVisual: Record<MovimentacaoEquipamentoTipo, {
-  icon: typeof Activity;
-  badge: string;
-  label: string;
-}> = {
-  ENTRADA: { icon: ArrowDownToLine, badge: "bg-emerald-50 text-emerald-700 border-emerald-200", label: "Entrada" },
-  SAIDA: { icon: ArrowUpFromLine, badge: "bg-blue-50 text-blue-700 border-blue-200", label: "Saída" },
-  DEVOLUCAO: { icon: RotateCcw, badge: "bg-sky-50 text-sky-700 border-sky-200", label: "Devolução" },
-  TRANSFERENCIA: { icon: ArrowLeftRight, badge: "bg-violet-50 text-violet-700 border-violet-200", label: "Transferência" },
-  SINALIZAR_MANUTENCAO: { icon: Wrench, badge: "bg-amber-50 text-amber-700 border-amber-200", label: "Manutenção" },
-  ENVIO: { icon: Truck, badge: "bg-orange-50 text-orange-700 border-orange-200", label: "Envio" },
-  RETORNO_MANUTENCAO: { icon: RotateCcw, badge: "bg-teal-50 text-teal-700 border-teal-200", label: "Retorno" },
-  DEVOLUCAO_FORNECEDOR: { icon: Truck, badge: "bg-rose-50 text-rose-700 border-rose-200", label: "Fornecedor" },
-  BAIXA: { icon: Ban, badge: "bg-red-50 text-red-700 border-red-200", label: "Baixa" },
-  REENTRADA: { icon: PackageCheck, badge: "bg-emerald-50 text-emerald-700 border-emerald-200", label: "Reentrada" },
-  MANUTENCAO: { icon: Wrench, badge: "bg-amber-50 text-amber-700 border-amber-200", label: "Manutenção" },
-  RETIRADA_MANUTENCAO: { icon: Truck, badge: "bg-orange-50 text-orange-700 border-orange-200", label: "Envio" },
-};
-
-function MovimentoBadge({ tipo }: { tipo: MovimentacaoEquipamentoTipo }) {
-  const visual = movimentoVisual[tipo];
-  const Icon = visual.icon;
-  return (
-    <Badge variant="outline" className={`inline-flex items-center gap-1.5 whitespace-nowrap ${visual.badge}`}>
-      <Icon className="size-3.5" />
-      <span>{visual.label}</span>
-    </Badge>
-  );
+function detalhesRegistroFisico(
+  stock: EstoqueEquipamento,
+  equipamento: Equipamento | undefined,
+  empresaPorId: Map<string, Empresa>,
+): string {
+  if (equipamento?.tipo_controle !== "INDIVIDUAL") {
+    return stock.identificacao || stock.patrimonio || stock.serial || "Sem identificação";
+  }
+  return [
+    `Empresa: ${empresaPorId.get(stock.empresa_id)?.nome ?? "não informada"}`,
+    `Patrimônio: ${stock.patrimonio || "—"}`,
+    `Identificação: ${stock.identificacao || "—"}`,
+    `Serial: ${stock.serial || "—"}`,
+  ].join(" · ");
 }
 
 function MovimentacoesEquipamentosPage() {
@@ -228,7 +306,7 @@ function MovimentacoesEquipamentosPage() {
       db.funcionarios.where("projeto_id").equals(projetoId).and((x) => x.status === "ATIVO").toArray(),
     ]);
 
-    setMovimentacoes([...movs].sort((a, b) => b.data.localeCompare(a.data)));
+    setMovimentacoes([...movs].sort((a, b) => `${b.criado_em}|${b.id}`.localeCompare(`${a.criado_em}|${a.id}`)));
     setEquipamentos(eqs);
     setEstoques(stocks.map((stock) => stock.ativo === undefined ? { ...stock, ativo: true } : stock));
     setEmpresas(emps);
@@ -291,7 +369,7 @@ function MovimentacoesEquipamentosPage() {
     }
 
     const ordenadas = [...movimentacoes].sort(
-      (a, b) => a.data.localeCompare(b.data) || a.criado_em.localeCompare(b.criado_em),
+      (a, b) => `${a.criado_em}|${a.id}`.localeCompare(`${b.criado_em}|${b.id}`),
     );
 
     for (const mov of ordenadas) {
@@ -324,7 +402,12 @@ function MovimentacoesEquipamentosPage() {
           adicionarFuncionario(mov.destino_id, mov.quantidade);
           break;
         case "SINALIZAR_MANUTENCAO":
-          // Sinalização é somente administrativa.
+          if (mov.tipo_origem === "EQUIPE") {
+            estado.almoxarifado -= mov.quantidade;
+          } else if (mov.tipo_origem === "FUNCIONARIO") {
+            removerFuncionario(mov.origem_id, mov.quantidade);
+          }
+          estado.manutencao += mov.quantidade;
           break;
         case "MANUTENCAO":
           // Histórico antigo: preserva a semântica física anterior.
@@ -338,11 +421,16 @@ function MovimentacoesEquipamentosPage() {
           break;
         case "ENVIO":
           if (mov.tipo_origem === "EQUIPE") {
-            estado.almoxarifado -= mov.quantidade;
+            if (mov.origem_id === equipesOperacionais.almoxarifado?.id) {
+              estado.almoxarifado -= mov.quantidade;
+              estado.manutencao += mov.quantidade;
+            }
+            // Já em Manutenção: o envio externo não altera a contagem do domínio.
           } else if (mov.tipo_origem === "FUNCIONARIO") {
+            // Compatibilidade com históricos antigos.
             removerFuncionario(mov.origem_id, mov.quantidade);
+            estado.manutencao += mov.quantidade;
           }
-          estado.manutencao += mov.quantidade;
           if (mov.tipo_destino === "EMPRESA") estado.empresa += mov.quantidade;
           break;
         case "RETIRADA_MANUTENCAO":
@@ -424,8 +512,8 @@ function MovimentacoesEquipamentosPage() {
     });
   }, [estoques, estados, equipamentoPorId, formulario.origemId]);
 
-  // Sinalizações pendentes são administrativas e não mudam a localização.
-  // Uma sinalização pendente impede nova sinalização até o envio efetivo.
+  // Sinalizações pendentes representam equipamentos já bloqueados no domínio Manutenção.
+  // O envio externo consome a pendência correspondente; o retorno encerra o ciclo.
   const sinalizacoesPendentes = useMemo(() => {
     const resultado = new Map<string, number>();
     const porEstoque = new Map<string, MovimentacaoEquipamento[]>();
@@ -439,7 +527,7 @@ function MovimentacoesEquipamentosPage() {
     for (const [estoqueId, lista] of porEstoque) {
       let pendente = 0;
       const ordenadas = [...lista].sort(
-        (a, b) => `${a.data}|${a.criado_em}|${a.id}`.localeCompare(`${b.data}|${b.criado_em}|${b.id}`),
+        (a, b) => `${a.criado_em}|${a.id}`.localeCompare(`${b.criado_em}|${b.id}`),
       );
 
       for (const mov of ordenadas) {
@@ -509,8 +597,22 @@ function MovimentacoesEquipamentosPage() {
     });
   }, [estoques, estados, equipamentoPorId, equipesOperacionais.almoxarifado?.id]);
 
+  const origensDisponiveisParaEnvio = useMemo(() => {
+    if (formulario.tipo !== "ENVIO") return [];
+    const origens: Array<{ id: string; label: string }> = [];
+    const almoxarifadoId = equipesOperacionais.almoxarifado?.id;
+    const manutencaoId = equipesOperacionais.manutencao?.id;
+    if (almoxarifadoId && estoques.some((stock) => (estados.get(stock.id)?.almoxarifado ?? 0) > 0)) {
+      origens.push({ id: almoxarifadoId, label: "Almoxarifado" });
+    }
+    if (manutencaoId && estoques.some((stock) => ((estados.get(stock.id)?.manutencao ?? 0) - (estados.get(stock.id)?.empresa ?? 0)) > 0)) {
+      origens.push({ id: manutencaoId, label: "Manutenção" });
+    }
+    return origens;
+  }, [formulario.tipo, equipesOperacionais, estoques, estados]);
+
   // Registros físicos disponíveis para envio à manutenção.
-  // Equipamento que já está em Manutenção não pode ser enviado novamente.
+  // A operação parte somente do Almoxarifado ou da Manutenção.
   const estoquesDaOrigemEnvio = useMemo(() => {
     if (formulario.tipo !== "ENVIO" || !formulario.origemParte || !formulario.origemId) {
       return [];
@@ -523,17 +625,19 @@ function MovimentacoesEquipamentosPage() {
       const estado = estados.get(stock.id);
       if (!estado) return false;
 
-      if (formulario.origemParte === "EQUIPE") {
-        return formulario.origemId === equipesOperacionais.almoxarifado?.id && estado.almoxarifado > 0;
+      if (formulario.origemParte !== "EQUIPE") return false;
+      if (formulario.origemId === equipesOperacionais.almoxarifado?.id) return estado.almoxarifado > 0;
+      if (formulario.origemId === equipesOperacionais.manutencao?.id) {
+        return estado.manutencao - estado.empresa > 0;
       }
-
-      return (estado.funcionarios.get(formulario.origemId) ?? 0) > 0;
+      return false;
     });
   }, [
     formulario.tipo,
     formulario.origemParte,
     formulario.origemId,
     equipesOperacionais.almoxarifado?.id,
+    equipesOperacionais.manutencao?.id,
     estoques,
     equipamentoPorId,
     estados,
@@ -574,17 +678,44 @@ function MovimentacoesEquipamentosPage() {
     });
   }, [formulario.tipo, estoques, estados, equipamentoPorId]);
 
-  const estoquesParaBaixa = useMemo(() => {
+  const origensDisponiveisParaBaixa = useMemo(() => {
     if (formulario.tipo !== "BAIXA") return [];
+
+    const almoxarifadoId = equipesOperacionais.almoxarifado?.id;
+    const manutencaoId = equipesOperacionais.manutencao?.id;
+    const origens: Array<{ id: string; label: string }> = [];
+
+    if (almoxarifadoId && estoques.some((stock) => (estados.get(stock.id)?.almoxarifado ?? 0) > 0)) {
+      origens.push({ id: almoxarifadoId, label: "Almoxarifado" });
+    }
+
+    if (manutencaoId && estoques.some((stock) => (estados.get(stock.id)?.manutencao ?? 0) > 0)) {
+      origens.push({ id: manutencaoId, label: "Manutenção" });
+    }
+
+    return origens;
+  }, [formulario.tipo, equipesOperacionais.almoxarifado?.id, equipesOperacionais.manutencao?.id, estoques, estados]);
+
+  const estoquesParaBaixa = useMemo(() => {
+    if (formulario.tipo !== "BAIXA" || !formulario.origemId) return [];
 
     return estoques.filter((stock) => {
       if (stock.ativo === false) return false;
       if (equipamentoPorId.get(stock.equipamento_id)?.ativo === false) return false;
       const estado = estados.get(stock.id);
       if (!estado) return false;
-      return estado.saldo > 0 && estado.almoxarifado === estado.saldo;
+
+      if (formulario.origemId === equipesOperacionais.almoxarifado?.id) {
+        return estado.saldo > 0 && estado.almoxarifado > 0;
+      }
+
+      if (formulario.origemId === equipesOperacionais.manutencao?.id) {
+        return estado.saldo > 0 && estado.manutencao > 0;
+      }
+
+      return false;
     });
-  }, [formulario.tipo, estoques, estados, equipamentoPorId]);
+  }, [formulario.tipo, formulario.origemId, estoques, estados, equipamentoPorId, equipesOperacionais.almoxarifado?.id, equipesOperacionais.manutencao?.id]);
 
   const pendenciasReentrada = useMemo(() => {
     const resultado = new Map<string, { tipo: "DEVOLUCAO_FORNECEDOR" | "BAIXA"; restante: number; origemId: string }>();
@@ -598,7 +729,7 @@ function MovimentacoesEquipamentosPage() {
 
     for (const [estoqueId, lista] of porEstoque) {
       const pendentes: Array<{ tipo: "DEVOLUCAO_FORNECEDOR" | "BAIXA"; restante: number; origemId: string }> = [];
-      const ordenadas = [...lista].sort((a, b) => `${a.data}|${a.criado_em}|${a.id}`.localeCompare(`${b.data}|${b.criado_em}|${b.id}`));
+      const ordenadas = [...lista].sort((a, b) => `${a.criado_em}|${a.id}`.localeCompare(`${b.criado_em}|${b.id}`));
       for (const mov of ordenadas) {
         if (mov.tipo === "DEVOLUCAO_FORNECEDOR" || mov.tipo === "BAIXA") {
           pendentes.push({ tipo: mov.tipo, restante: mov.quantidade, origemId: mov.destino_id });
@@ -743,8 +874,8 @@ function MovimentacoesEquipamentosPage() {
   const empresaManutencaoPorEstoque = useMemo(() => {
     const mapa = new Map<string, string>();
     const ordenadas = [...movimentacoes].sort((a, b) => {
-      const chaveA = `${a.data}|${a.criado_em}`;
-      const chaveB = `${b.data}|${b.criado_em}`;
+      const chaveA = `${a.criado_em}|${a.id}`;
+      const chaveB = `${b.criado_em}|${b.id}`;
       return chaveA.localeCompare(chaveB);
     });
 
@@ -800,8 +931,8 @@ function MovimentacoesEquipamentosPage() {
         origemId: formulario.origemId,
         destinoParte: "EMPRESA" as const,
         destinoId: formulario.destinoId,
-        origemLabel: formulario.origemParte === "FUNCIONARIO"
-          ? "Funcionário"
+        origemLabel: formulario.origemId === manut?.id
+          ? "Manutenção"
           : formulario.origemId
             ? "Almoxarifado"
             : "Origem",
@@ -828,25 +959,26 @@ function MovimentacoesEquipamentosPage() {
       const pendencia = estoqueSelecionado
         ? pendenciasReentrada.get(estoqueSelecionado.id)
         : undefined;
-      const equipeDestino = formulario.destinoId
-        ? equipes.find((equipe) => equipe.id === formulario.destinoId)
-        : undefined;
+      const destinoId = formulario.destinoId || almox?.id || "";
+      const equipeDestino = equipes.find((equipe) => equipe.id === destinoId);
       return {
         origemParte: "EMPRESA" as const,
         origemId: pendencia?.origemId ?? "",
         destinoParte: "EQUIPE" as const,
-        destinoId: formulario.destinoId || almox?.id || "",
+        destinoId,
         origemLabel: "Empresa",
-        destinoLabel: equipeDestino?.nome ?? "Todo o projeto (Almoxarifado)",
+        destinoLabel: equipeDestino?.nome ?? "Almoxarifado",
       };
     }
     if (tipo === "BAIXA") {
+      const origemId = formulario.origemId || almox?.id || "";
+      const origemLabel = origemId === manut?.id ? "Manutenção" : "Almoxarifado";
       return {
         origemParte: "EQUIPE" as const,
-        origemId: almox?.id ?? "",
+        origemId,
         destinoParte: "EMPRESA" as const,
         destinoId: estoqueSelecionado?.empresa_id ?? "",
-        origemLabel: "Almoxarifado",
+        origemLabel,
         destinoLabel: "Baixa definitiva",
       };
     }
@@ -870,7 +1002,7 @@ function MovimentacoesEquipamentosPage() {
         return estadoSelecionado.funcionarios.get(formulario.origemId) ?? 0;
       case "ENVIO":
         return formulario.origemId === equipesOperacionais.manutencao?.id
-          ? estadoSelecionado.manutencao
+          ? Math.max(0, estadoSelecionado.manutencao - estadoSelecionado.empresa)
           : estadoSelecionado.almoxarifado;
       case "RETORNO_MANUTENCAO":
         return estadoSelecionado.empresa > 0
@@ -879,9 +1011,9 @@ function MovimentacoesEquipamentosPage() {
       case "REENTRADA":
         return pendenciasReentrada.get(formulario.estoqueEquipamentoId)?.restante ?? 0;
       case "BAIXA":
-        return estadoSelecionado.almoxarifado === estadoSelecionado.saldo
-          ? estadoSelecionado.almoxarifado
-          : 0;
+        return formulario.origemId === equipesOperacionais.manutencao?.id
+          ? Math.min(estadoSelecionado.manutencao, estadoSelecionado.saldo)
+          : Math.min(estadoSelecionado.almoxarifado, estadoSelecionado.saldo);
       case "DEVOLUCAO_FORNECEDOR":
         return estadoSelecionado.manutencao > 0
           ? estadoSelecionado.manutencao
@@ -966,7 +1098,9 @@ function MovimentacoesEquipamentosPage() {
       origemParte: origemAutomatica
         ? "EQUIPE"
         : atual.origemParte,
-      destinoId: atual.tipo === "REENTRADA" ? atual.destinoId : "",
+      destinoId: atual.tipo === "REENTRADA"
+        ? (atual.destinoId || equipesOperacionais.almoxarifado?.id || "")
+        : "",
       quantidade: "1",
       empresaId: stock?.empresa_id ?? "",
     }));
@@ -1111,9 +1245,27 @@ function MovimentacoesEquipamentosPage() {
         toast.error("Informe o motivo da baixa.");
         return;
       }
-      if (tipo === "BAIXA" && (estado.almoxarifado !== estado.saldo || estado.saldo <= 0)) {
-        toast.error("A baixa somente pode ser realizada quando o equipamento estiver exclusivamente no Almoxarifado.");
+      const quantidade = equipamento.tipo_controle === "INDIVIDUAL" ? 1 : Number(formulario.quantidade);
+      if (!Number.isFinite(quantidade) || quantidade <= 0) {
+        toast.error("Informe uma quantidade válida.");
         return;
+      }
+      if (equipamento.tipo_controle === "QUANTITATIVO" && !Number.isInteger(quantidade)) {
+        toast.error("A quantidade deve ser inteira.");
+        return;
+      }
+
+      if (tipo === "BAIXA") {
+        const origemIdBaixa = formulario.origemId || equipesOperacionais.almoxarifado?.id || "";
+        const quantidadeNaOrigem = origemIdBaixa === equipesOperacionais.manutencao?.id
+          ? estado.manutencao
+          : origemIdBaixa === equipesOperacionais.almoxarifado?.id
+            ? estado.almoxarifado
+            : 0;
+        if (estado.saldo <= 0 || quantidadeNaOrigem <= 0 || quantidade > quantidadeNaOrigem) {
+          toast.error("Não há quantidade suficiente na origem selecionada para baixa.");
+          return;
+        }
       }
 
       if (tipo === "SAIDA" && estado.almoxarifado <= 0) {
@@ -1125,21 +1277,12 @@ function MovimentacoesEquipamentosPage() {
         return;
       }
 
-      const quantidade = equipamento.tipo_controle === "INDIVIDUAL" ? 1 : Number(formulario.quantidade);
-      if (!Number.isFinite(quantidade) || quantidade <= 0) {
-        toast.error("Informe uma quantidade válida.");
-        return;
-      }
-      if (equipamento.tipo_controle === "QUANTITATIVO" && !Number.isInteger(quantidade)) {
-        toast.error("A quantidade deve ser inteira.");
-        return;
-      }
       if (maxQuantidade !== undefined && quantidade > maxQuantidade) {
         toast.error(`A quantidade máxima desta operação é ${maxQuantidade}.`);
         return;
       }
 
-      if (tipo === "DEVOLUCAO" || ((tipo === "SINALIZAR_MANUTENCAO" || tipo === "ENVIO") && formulario.origemParte === "FUNCIONARIO")) {
+      if (tipo === "DEVOLUCAO" || (tipo === "SINALIZAR_MANUTENCAO" && formulario.origemParte === "FUNCIONARIO")) {
         const apropriadoAoFuncionario = estado.funcionarios.get(formulario.origemId) ?? 0;
         if (!formulario.origemId) {
           toast.error("Selecione o funcionário de origem.");
@@ -1206,30 +1349,29 @@ function MovimentacoesEquipamentosPage() {
           return;
         }
 
-        if (estado.manutencao > 0) {
-          toast.error("Este equipamento já está em manutenção.");
+        if (formulario.origemParte !== "EQUIPE") {
+          toast.error("O envio para manutenção deve partir do Almoxarifado ou da Manutenção.");
           return;
         }
-
         if (
-          formulario.origemParte === "EQUIPE" &&
-          formulario.origemId !== equipesOperacionais.almoxarifado?.id
+          formulario.origemId !== equipesOperacionais.almoxarifado?.id &&
+          formulario.origemId !== equipesOperacionais.manutencao?.id
         ) {
-          toast.error("O envio por equipe deve partir do Almoxarifado.");
+          toast.error("O envio deve partir do Almoxarifado ou da Manutenção.");
           return;
         }
       }
 
-      if (
-        (tipo === "SINALIZAR_MANUTENCAO" || tipo === "ENVIO") &&
-        formulario.origemParte !== "FUNCIONARIO" &&
-        formulario.origemParte !== "EQUIPE"
-      ) {
+      if (tipo === "SINALIZAR_MANUTENCAO" && formulario.origemParte !== "FUNCIONARIO" && formulario.origemParte !== "EQUIPE") {
         toast.error("Selecione a origem do equipamento.");
         return;
       }
-      if (tipo === "BAIXA" && formulario.origemId && formulario.origemId !== equipesOperacionais.almoxarifado?.id) {
-        toast.error("A baixa somente pode partir do Almoxarifado.");
+      if (tipo === "ENVIO" && formulario.origemParte !== "EQUIPE") {
+        toast.error("Selecione o Almoxarifado ou a Manutenção como origem.");
+        return;
+      }
+      if (tipo === "BAIXA" && formulario.origemId !== equipesOperacionais.almoxarifado?.id && formulario.origemId !== equipesOperacionais.manutencao?.id) {
+        toast.error("Selecione o Almoxarifado ou a Manutenção como origem da baixa.");
         return;
       }
       if (!origemId || !destinoId) {
@@ -1237,7 +1379,7 @@ function MovimentacoesEquipamentosPage() {
         return;
       }
       if (tipo === "REENTRADA" && destinoParte !== "EQUIPE") {
-        toast.error("Não foi possível determinar o destino da reentrada.");
+        toast.error("Não foi possível determinar a equipe de destino da reentrada.");
         return;
       }
       if (tipo === "TRANSFERENCIA" && origemId === destinoId) {
@@ -1341,7 +1483,10 @@ function MovimentacoesEquipamentosPage() {
 
               return (
                 <SelectItem key={stock.id} value={stock.id}>
-                  {equipamento?.nome ?? "Equipamento"}{stock.identificacao ? ` — ${stock.identificacao}` : ""} · disponível: {quantidadeDisponivel}
+                  <div className="flex min-w-0 flex-col gap-0.5">
+                    <span>{equipamento?.nome ?? "Equipamento"} · disponível: {quantidadeDisponivel}</span>
+                    <span className="max-w-[42rem] truncate text-xs text-muted-foreground">{detalhesRegistroFisico(stock, equipamento, empresaPorId)}</span>
+                  </div>
                 </SelectItem>
               );
             })}
@@ -1351,138 +1496,100 @@ function MovimentacoesEquipamentosPage() {
     );
   };
 
-  const totalMovimentacoes = movimentacoes.length;
-  const entradas = movimentacoes.filter((mov) => mov.tipo === "ENTRADA" || mov.tipo === "REENTRADA").length;
-  const saidas = movimentacoes.filter((mov) => ["SAIDA", "DEVOLUCAO_FORNECEDOR", "BAIXA"].includes(mov.tipo)).length;
-  const manutencoes = movimentacoes.filter((mov) => ["SINALIZAR_MANUTENCAO", "ENVIO", "RETORNO_MANUTENCAO"].includes(mov.tipo)).length;
-
   return (
     <>
-      <div className="mx-auto w-full max-w-[1400px] space-y-5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div className="min-w-0">
-            <div className="mb-2 flex items-center gap-2 text-xs font-medium text-muted-foreground">
-              <Activity className="size-4" />
-              Equipamentos / Operação
+      <div className="space-y-6">
+        <div className="flex flex-col gap-4 rounded-xl border bg-background p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <ArrowRightLeft className="h-5 w-5" />
             </div>
-            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Movimentações</h1>
-            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Registre e acompanhe a movimentação física dos equipamentos do projeto.</p>
+            <div>
+              <h1 className="text-2xl font-semibold tracking-tight">Movimentações de equipamentos</h1>
+              <p className="text-sm text-muted-foreground">Controle a entrada, saída, devolução, transferência e manutenção.</p>
+            </div>
           </div>
-          <Button onClick={abrirNovo} className="w-full sm:w-auto">
-            <Plus className="mr-2 h-4 w-4" />
-            Nova movimentação
-          </Button>
+          <Button onClick={abrirNovo} className="shadow-sm"><Plus className="mr-2 h-4 w-4" />Nova movimentação</Button>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          {[
-            { label: "Movimentações", value: totalMovimentacoes, icon: Activity },
-            { label: "Entradas", value: entradas, icon: ArrowDownToLine },
-            { label: "Saídas", value: saidas, icon: ArrowUpFromLine },
-            { label: "Manutenção", value: manutencoes, icon: Wrench },
-          ].map((item) => {
-            const Icon = item.icon;
-            return (
-              <Card key={item.label} className="shadow-none">
-                <CardContent className="flex items-center gap-3 p-4">
-                  <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-muted">
-                    <Icon className="size-5 text-muted-foreground" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="truncate text-xs font-medium text-muted-foreground">{item.label}</p>
-                    <p className="text-xl font-semibold leading-tight">{item.value}</p>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-
-        <Card className="overflow-hidden shadow-sm">
-          <CardHeader className="border-b bg-muted/20 p-4 sm:p-5">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="font-semibold">Histórico de movimentações</h2>
-                <p className="text-xs text-muted-foreground">Pesquise por equipamento, identificação, origem, destino ou documento.</p>
-              </div>
-              <div className="relative w-full sm:max-w-sm">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input value={busca} onChange={(event) => setBusca(event.target.value)} placeholder="Pesquisar movimentação..." className="pl-9" />
-              </div>
+        <Card className="overflow-hidden">
+          <CardHeader className="border-b bg-muted/20">
+            <div className="relative max-w-md">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input value={busca} onChange={(event) => setBusca(event.target.value)} placeholder="Pesquisar movimentação..." className="pl-9" />
             </div>
           </CardHeader>
-          <CardContent className="p-0">
-            {movimentacoesFiltradas.length === 0 ? (
-              <div className="flex min-h-56 flex-col items-center justify-center px-6 text-center">
-                <div className="mb-3 flex size-12 items-center justify-center rounded-full bg-muted">
-                  <Search className="size-5 text-muted-foreground" />
-                </div>
-                <p className="font-medium">Nenhuma movimentação encontrada</p>
-                <p className="mt-1 max-w-sm text-sm text-muted-foreground">Tente outro termo de pesquisa ou registre uma nova movimentação.</p>
-              </div>
-            ) : (
-              <>
-                <div className="divide-y md:hidden">
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/10 text-left">
+                    <th className="px-3 py-3">Data / hora</th>
+                    <th className="px-3 py-3">Movimentação</th>
+                    <th className="px-3 py-3">Equipamento</th>
+                    <th className="px-3 py-3">Fluxo</th>
+                    <th className="px-3 py-3">Qtd.</th>
+                    <th className="px-3 py-3 text-right">Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
                   {movimentacoesFiltradas.map((mov) => {
                     const stock = estoquePorId.get(mov.estoque_equipamento_id);
                     const equipamento = stock ? equipamentoPorId.get(stock.equipamento_id) : undefined;
                     const origem = nomeParte(mov.tipo_origem, mov.origem_id, empresaPorId, equipePorId, funcionarioPorId);
                     const destino = nomeParte(mov.tipo_destino, mov.destino_id, empresaPorId, equipePorId, funcionarioPorId);
+                    const visual = movimentoVisual[mov.tipo];
+                    const MovimentoIcon = visual.icon;
+                    const OrigemIcon = iconeParte(mov.tipo_origem);
+                    const DestinoIcon = iconeParte(mov.tipo_destino);
                     return (
-                      <button key={mov.id} type="button" onClick={() => setDetalhe(mov)} className="w-full px-4 py-4 text-left transition-colors hover:bg-muted/40 active:bg-muted/60">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <MovimentoBadge tipo={mov.tipo} />
-                            <p className="mt-2 truncate font-medium">{equipamento?.nome ?? "Equipamento removido"}</p>
-                            {stock?.identificacao && <p className="truncate text-xs text-muted-foreground">{stock.identificacao}</p>}
+                      <tr key={mov.id} className={`border-b last:border-0 transition-colors ${visual.rowClass}`}>
+                        <td className="whitespace-nowrap px-3 py-3 align-middle">
+                          <div className="flex items-center gap-2 text-sm">
+                            <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${visual.iconClass}`}>
+                              <MovimentoIcon className="h-4 w-4" />
+                            </span>
+                            <span>{new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(mov.criado_em))}</span>
                           </div>
-                          <span className="shrink-0 text-xs text-muted-foreground">{new Date(`${mov.data}T00:00:00`).toLocaleDateString("pt-BR")}</span>
-                        </div>
-                        <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
-                          <span className="max-w-[42%] truncate">{origem}</span>
-                          <ArrowRight className="size-3.5 shrink-0" />
-                          <span className="max-w-[42%] truncate">{destino}</span>
-                          <span className="ml-auto shrink-0 rounded-md bg-muted px-2 py-1 font-semibold text-foreground">{mov.quantidade}</span>
-                        </div>
-                      </button>
+                        </td>
+                        <td className="px-3 py-3 align-middle">
+                          <Badge variant="outline" className={`gap-1.5 font-medium ${visual.badgeClass}`}>
+                            <MovimentoIcon className="h-3.5 w-3.5" />
+                            {tipoLabels[mov.tipo]}
+                          </Badge>
+                        </td>
+                        <td className="px-3 py-3 align-middle">
+                          <div className="font-medium">{equipamento?.nome ?? "Equipamento removido"}</div>
+                          {stock && <div className="mt-0.5 max-w-[18rem] truncate text-xs text-muted-foreground">{detalhesRegistroFisico(stock, equipamento, empresaPorId)}</div>}
+                        </td>
+                        <td className="px-3 py-3 align-middle">
+                          <div className="flex min-w-[15rem] items-center gap-2">
+                            <div className="flex min-w-0 items-center gap-1.5 rounded-md border bg-background px-2 py-1.5">
+                              <OrigemIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                              <span className="truncate" title={origem}>{origem}</span>
+                            </div>
+                            <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                            <div className="flex min-w-0 items-center gap-1.5 rounded-md border bg-background px-2 py-1.5">
+                              <DestinoIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                              <span className="truncate" title={destino}>{destino}</span>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-3 py-3 align-middle">
+                          <span className={`inline-flex min-w-10 justify-center rounded-md border px-2 py-1 text-xs font-semibold ${visual.badgeClass}`}>{mov.quantidade}</span>
+                        </td>
+                        <td className="px-3 py-3 text-right align-middle">
+                          <Button variant="ghost" size="icon" className="rounded-lg" onClick={() => setDetalhe(mov)} aria-label="Ver detalhes">
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                        </td>
+                      </tr>
                     );
                   })}
-                </div>
-
-                <div className="hidden overflow-x-auto md:block">
-                  <table className="w-full min-w-[760px] text-sm">
-                    <thead className="bg-muted/20">
-                      <tr className="border-b text-left">
-                        <th className="px-4 py-3 font-medium text-muted-foreground">Data</th>
-                        <th className="px-4 py-3 font-medium text-muted-foreground">Movimentação</th>
-                        <th className="px-4 py-3 font-medium text-muted-foreground">Equipamento</th>
-                        <th className="px-4 py-3 font-medium text-muted-foreground">Fluxo</th>
-                        <th className="px-4 py-3 font-medium text-muted-foreground">Qtd.</th>
-                        <th className="px-4 py-3 text-right font-medium text-muted-foreground">Ações</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {movimentacoesFiltradas.map((mov) => {
-                        const stock = estoquePorId.get(mov.estoque_equipamento_id);
-                        const equipamento = stock ? equipamentoPorId.get(stock.equipamento_id) : undefined;
-                        const origem = nomeParte(mov.tipo_origem, mov.origem_id, empresaPorId, equipePorId, funcionarioPorId);
-                        const destino = nomeParte(mov.tipo_destino, mov.destino_id, empresaPorId, equipePorId, funcionarioPorId);
-                        return (
-                          <tr key={mov.id} className="border-b transition-colors last:border-0 hover:bg-muted/30">
-                            <td className="whitespace-nowrap px-4 py-3.5 text-muted-foreground">{new Date(`${mov.data}T00:00:00`).toLocaleDateString("pt-BR")}</td>
-                            <td className="px-4 py-3.5"><MovimentoBadge tipo={mov.tipo} /></td>
-                            <td className="max-w-[240px] px-4 py-3.5"><div className="truncate font-medium">{equipamento?.nome ?? "Equipamento removido"}</div>{stock?.identificacao && <div className="truncate text-xs text-muted-foreground">{stock.identificacao}</div>}</td>
-                            <td className="px-4 py-3.5"><div className="flex max-w-[320px] items-center gap-2"><span className="truncate">{origem}</span><ArrowRight className="size-4 shrink-0 text-muted-foreground" /><span className="truncate">{destino}</span></div></td>
-                            <td className="px-4 py-3.5 font-semibold">{mov.quantidade}</td>
-                            <td className="px-4 py-3.5 text-right"><Button variant="ghost" size="icon" aria-label="Ver detalhes" onClick={() => setDetalhe(mov)}><Eye className="h-4 w-4" /></Button></td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </>
-            )}
+                  {movimentacoesFiltradas.length === 0 && <tr><td colSpan={6} className="py-10 text-center text-sm text-muted-foreground">Nenhuma movimentação encontrada.</td></tr>}
+                </tbody>
+              </table>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -1604,15 +1711,10 @@ function MovimentacoesEquipamentosPage() {
                     <div className="space-y-2">
                       <Label>Origem do equipamento</Label>
                       <Select
-                        value={formulario.origemParte === "FUNCIONARIO" ? `FUNCIONARIO:${formulario.origemId}` : formulario.origemId}
+                        value={formulario.origemId}
                         onValueChange={(value) => {
-                          if (value.startsWith("FUNCIONARIO:")) {
-                            atualizar("origemParte", "FUNCIONARIO");
-                            atualizar("origemId", value.slice("FUNCIONARIO:".length));
-                          } else {
-                            atualizar("origemParte", "EQUIPE");
-                            atualizar("origemId", value);
-                          }
+                          atualizar("origemParte", "EQUIPE");
+                          atualizar("origemId", value);
                           atualizar("estoqueEquipamentoId", "");
                           atualizar("quantidade", "1");
                         }}
@@ -1621,20 +1723,19 @@ function MovimentacoesEquipamentosPage() {
                           <SelectValue placeholder="Selecione a origem" />
                         </SelectTrigger>
                         <SelectContent>
-                          {equipesOperacionais.almoxarifado && (
-                            <SelectItem value={equipesOperacionais.almoxarifado.id}>
-                              Almoxarifado
+                          {origensDisponiveisParaEnvio.length === 0 ? (
+                            <SelectItem value="__vazio__" disabled>
+                              Nenhum equipamento disponível para envio à manutenção
                             </SelectItem>
-                          )}
-                          {funcionariosComApropriacoes.map((funcionario) => (
-                            <SelectItem key={funcionario.id} value={`FUNCIONARIO:${funcionario.id}`}>
-                              {nomePessoa(funcionario)}
+                          ) : origensDisponiveisParaEnvio.map((origem) => (
+                            <SelectItem key={origem.id} value={origem.id}>
+                              {origem.label}
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                       <p className="text-xs text-muted-foreground">
-                        Selecione a origem do equipamento: Almoxarifado ou Funcionário.
+                        Selecione onde o equipamento está: Almoxarifado ou Manutenção.
                       </p>
                     </div>
 
@@ -1664,13 +1765,16 @@ function MovimentacoesEquipamentosPage() {
                           ) : estoquesDaOrigemEnvio.map((stock) => {
                             const equipamento = equipamentoPorId.get(stock.equipamento_id);
                             const estado = estados.get(stock.id);
-                            const quantidadeDisponivel = formulario.origemParte === "FUNCIONARIO"
-                              ? estado?.funcionarios.get(formulario.origemId) ?? 0
+                            const quantidadeDisponivel = formulario.origemId === equipesOperacionais.manutencao?.id
+                              ? Math.max(0, (estado?.manutencao ?? 0) - (estado?.empresa ?? 0))
                               : estado?.almoxarifado ?? 0;
 
                             return (
                               <SelectItem key={stock.id} value={stock.id}>
-                                {equipamento?.nome ?? "Equipamento"}{stock.identificacao ? ` — ${stock.identificacao}` : ""} · disponível: {quantidadeDisponivel}
+                                <div className="flex min-w-0 flex-col gap-0.5">
+                    <span>{equipamento?.nome ?? "Equipamento"} · disponível: {quantidadeDisponivel}</span>
+                    <span className="max-w-[42rem] truncate text-xs text-muted-foreground">{detalhesRegistroFisico(stock, equipamento, empresaPorId)}</span>
+                  </div>
                               </SelectItem>
                             );
                           })}
@@ -1741,7 +1845,10 @@ function MovimentacoesEquipamentosPage() {
                               : estado?.manutencao ?? 0;
                             return (
                               <SelectItem key={stock.id} value={stock.id}>
-                                {equipamento?.nome ?? "Equipamento"}{stock.identificacao ? ` — ${stock.identificacao}` : ""} · {externo ? "Empresa de manutenção" : "Manutenção"} · disponível: {quantidadeDisponivel}
+                                <div className="flex min-w-0 flex-col gap-0.5">
+                                  <span>{equipamento?.nome ?? "Equipamento"} · {externo ? "Empresa de manutenção" : "Manutenção"} · disponível: {quantidadeDisponivel}</span>
+                                  <span className="max-w-[42rem] truncate text-xs text-muted-foreground">{detalhesRegistroFisico(stock, equipamento, empresaPorId)}</span>
+                                </div>
                               </SelectItem>
                             );
                           })}
@@ -1753,8 +1860,8 @@ function MovimentacoesEquipamentosPage() {
                 {formulario.tipo === "REENTRADA" && (
                   <div className="space-y-3">
                     <div className="rounded-lg border bg-muted/30 p-4 text-sm">
-                      <strong>Empresa</strong> <ArrowRight className="mx-2 inline h-4 w-4" /> <strong>Equipe</strong>
-                      <p className="mt-1 text-xs text-muted-foreground">A empresa de origem é determinada automaticamente pelo histórico. Selecione apenas o equipamento e a equipe que receberá a reentrada.</p>
+                      <strong>Empresa</strong> <ArrowRight className="mx-2 inline h-4 w-4" /> <strong>Almoxarifado</strong>
+                      <p className="mt-1 text-xs text-muted-foreground">A empresa de origem e o destino são determinados automaticamente. A reentrada retorna por padrão ao Almoxarifado.</p>
                     </div>
                     <div className="space-y-2">
                       <Label>Equipamento para reentrada</Label>
@@ -1769,38 +1876,19 @@ function MovimentacoesEquipamentosPage() {
                             const origem = pendencia?.tipo === "BAIXA" ? "Baixa" : "Devolução ao fornecedor";
                             return (
                               <SelectItem key={stock.id} value={stock.id}>
-                                {equipamento?.nome ?? "Equipamento"}{stock.identificacao ? ` — ${stock.identificacao}` : ""} · {origem} · disponível: {pendencia?.restante ?? 0}
+                                <div className="flex min-w-0 flex-col gap-0.5">
+                                  <span>{equipamento?.nome ?? "Equipamento"} · {origem} · disponível: {pendencia?.restante ?? 0}</span>
+                                  <span className="max-w-[42rem] truncate text-xs text-muted-foreground">{detalhesRegistroFisico(stock, equipamento, empresaPorId)}</span>
+                                </div>
                               </SelectItem>
                             );
                           })}
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="space-y-2">
-                      <Label>Equipe de destino (opcional)</Label>
-                      <Select
-                        value={formulario.destinoId || "__todo_projeto__"}
-                        onValueChange={(value) =>
-                          atualizar("destinoId", value === "__todo_projeto__" ? "" : value)
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Todo o projeto" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__todo_projeto__">Todo o projeto</SelectItem>
-                          {equipes
-                            .filter((equipe) => equipe.ativo !== false)
-                            .map((equipe) => (
-                              <SelectItem key={equipe.id} value={equipe.id}>
-                                {equipe.nome}
-                              </SelectItem>
-                            ))}
-                        </SelectContent>
-                      </Select>
-                      <p className="text-xs text-muted-foreground">
-                        Sem equipe específica, o equipamento retorna ao Almoxarifado e fica disponível para todo o projeto.
-                      </p>
+                    <div className="rounded-lg border bg-background p-3 text-sm">
+                      <span className="font-medium">Destino padrão:</span> Almoxarifado
+                      <p className="mt-1 text-xs text-muted-foreground">Não é necessário selecionar uma equipe. O sistema utiliza o Almoxarifado como destino padrão.</p>
                     </div>
                   </div>
                 )}
@@ -1808,8 +1896,28 @@ function MovimentacoesEquipamentosPage() {
                 {formulario.tipo === "BAIXA" && (
                   <>
                     <div className="rounded-lg border bg-muted/30 p-4 text-sm">
-                      <strong>Almoxarifado</strong> <ArrowRight className="mx-2 inline h-4 w-4" /> <strong>Baixa definitiva</strong>
-                      <p className="mt-1 text-xs text-muted-foreground">Somente equipamentos que estejam exclusivamente no Almoxarifado podem receber baixa.</p>
+                      <strong>Almoxarifado / Manutenção</strong> <ArrowRight className="mx-2 inline h-4 w-4" /> <strong>Baixa definitiva</strong>
+                      <p className="mt-1 text-xs text-muted-foreground">A baixa pode ser registrada para equipamentos que estejam no Almoxarifado ou na Manutenção.</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Origem da baixa</Label>
+                      <Select
+                        value={formulario.origemId}
+                        onValueChange={(value) => {
+                          atualizar("origemId", value);
+                          atualizar("estoqueEquipamentoId", "");
+                          atualizar("quantidade", "1");
+                        }}
+                      >
+                        <SelectTrigger><SelectValue placeholder="Selecione a origem" /></SelectTrigger>
+                        <SelectContent>
+                          {origensDisponiveisParaBaixa.length === 0 ? (
+                            <SelectItem value="__vazio__" disabled>Nenhum equipamento disponível para baixa</SelectItem>
+                          ) : origensDisponiveisParaBaixa.map((origem) => (
+                            <SelectItem key={origem.id} value={origem.id}>{origem.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div className="space-y-2">
                       <Label>Equipamento em estoque</Label>
@@ -1823,7 +1931,10 @@ function MovimentacoesEquipamentosPage() {
                             const estado = estados.get(stock.id);
                             return (
                               <SelectItem key={stock.id} value={stock.id}>
-                                {equipamento?.nome ?? "Equipamento"}{stock.identificacao ? ` — ${stock.identificacao}` : ""} · disponível: {estado?.almoxarifado ?? 0}
+                                <div className="flex min-w-0 flex-col gap-0.5">
+                                  <span>{equipamento?.nome ?? "Equipamento"} · disponível: {formulario.origemId === equipesOperacionais.manutencao?.id ? (estado?.manutencao ?? 0) : (estado?.almoxarifado ?? 0)}</span>
+                                  <span className="max-w-[42rem] truncate text-xs text-muted-foreground">{detalhesRegistroFisico(stock, equipamento, empresaPorId)}</span>
+                                </div>
                               </SelectItem>
                             );
                           })}
@@ -1902,7 +2013,10 @@ function MovimentacoesEquipamentosPage() {
 
                             return (
                               <SelectItem key={stock.id} value={stock.id}>
-                                {equipamento?.nome ?? "Equipamento"}{stock.identificacao ? ` — ${stock.identificacao}` : ""} · disponível: {quantidadeDisponivel}
+                                <div className="flex min-w-0 flex-col gap-0.5">
+                    <span>{equipamento?.nome ?? "Equipamento"} · disponível: {quantidadeDisponivel}</span>
+                    <span className="max-w-[42rem] truncate text-xs text-muted-foreground">{detalhesRegistroFisico(stock, equipamento, empresaPorId)}</span>
+                  </div>
                               </SelectItem>
                             );
                           })}
@@ -1967,7 +2081,67 @@ function MovimentacoesEquipamentosPage() {
           {detalhe && (() => {
             const stock = estoquePorId.get(detalhe.estoque_equipamento_id);
             const equipamento = stock ? equipamentoPorId.get(stock.equipamento_id) : undefined;
-            return <div className="space-y-4 text-sm"><div><span className="text-muted-foreground">Movimentação</span><div className="font-medium">{tipoLabels[detalhe.tipo]}</div></div><div><span className="text-muted-foreground">Equipamento</span><div className="font-medium">{equipamento?.nome ?? "Equipamento removido"}</div></div><div className="flex items-center gap-2"><span>{nomeParte(detalhe.tipo_origem, detalhe.origem_id, empresaPorId, equipePorId, funcionarioPorId)}</span><ArrowRight className="h-4 w-4" /><span>{nomeParte(detalhe.tipo_destino, detalhe.destino_id, empresaPorId, equipePorId, funcionarioPorId)}</span></div><div><span className="text-muted-foreground">Quantidade</span><div>{detalhe.quantidade}</div></div><div><span className="text-muted-foreground">Data</span><div>{new Date(`${detalhe.data}T00:00:00`).toLocaleDateString("pt-BR")}</div></div>{detalhe.referencia_documento && <div><span className="text-muted-foreground">Documento</span><div>{detalhe.referencia_documento}</div></div>}{detalhe.observacoes && <div><span className="text-muted-foreground">Observações</span><div className="whitespace-pre-wrap">{detalhe.observacoes}</div></div>}</div>;
+            const visual = movimentoVisual[detalhe.tipo];
+            const MovimentoIcon = visual.icon;
+            const OrigemIcon = iconeParte(detalhe.tipo_origem);
+            const DestinoIcon = iconeParte(detalhe.tipo_destino);
+            const origem = nomeParte(detalhe.tipo_origem, detalhe.origem_id, empresaPorId, equipePorId, funcionarioPorId);
+            const destino = nomeParte(detalhe.tipo_destino, detalhe.destino_id, empresaPorId, equipePorId, funcionarioPorId);
+            return (
+              <div className="space-y-5 text-sm">
+                <div className={`flex items-center gap-3 rounded-xl border p-3 ${visual.badgeClass}`}>
+                  <span className={`flex h-10 w-10 items-center justify-center rounded-xl ${visual.iconClass}`}>
+                    <MovimentoIcon className="h-5 w-5" />
+                  </span>
+                  <div>
+                    <div className="text-xs font-medium uppercase tracking-wide opacity-70">Movimentação</div>
+                    <div className="font-semibold">{tipoLabels[detalhe.tipo]}</div>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border bg-muted/20 p-3">
+                  <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Equipamento</div>
+                  <div className="mt-1 font-semibold">{equipamento?.nome ?? "Equipamento removido"}</div>
+                  {stock && <div className="mt-1 text-xs text-muted-foreground">{detalhesRegistroFisico(stock, equipamento, empresaPorId)}</div>}
+                </div>
+
+                <div>
+                  <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Fluxo</div>
+                  <div className="flex items-center gap-2 rounded-xl border p-3">
+                    <div className="flex min-w-0 flex-1 items-center gap-2">
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
+                        <OrigemIcon className="h-4 w-4" />
+                      </span>
+                      <span className="truncate font-medium" title={origem}>{origem}</span>
+                    </div>
+                    <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <div className="flex min-w-0 flex-1 items-center gap-2">
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
+                        <DestinoIcon className="h-4 w-4" />
+                      </span>
+                      <span className="truncate font-medium" title={destino}>{destino}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-xl border p-3">
+                    <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Quantidade</div>
+                    <div className={`mt-1 inline-flex rounded-md border px-2.5 py-1 text-lg font-bold ${visual.badgeClass}`}>{detalhe.quantidade}</div>
+                  </div>
+                  <div className="rounded-xl border p-3">
+                    <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Data da movimentação</div>
+                    <div className="mt-1 font-medium">{new Intl.DateTimeFormat("pt-BR", { dateStyle: "short" }).format(new Date(`${detalhe.data}T00:00:00`))}</div>
+                  </div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div><span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Registrada em</span><div className="mt-1">{new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "medium" }).format(new Date(detalhe.criado_em))}</div></div>
+                  {detalhe.referencia_documento && <div><span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Documento</span><div className="mt-1">{detalhe.referencia_documento}</div></div>}
+                </div>
+                {detalhe.observacoes && <div className="rounded-xl border bg-muted/20 p-3"><div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Observações</div><div className="mt-1 whitespace-pre-wrap">{detalhe.observacoes}</div></div>}
+              </div>
+            );
           })()}
         </DialogContent>
       </Dialog>

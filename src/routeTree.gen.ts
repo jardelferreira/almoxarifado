@@ -20,6 +20,7 @@ import { Route as AppEstoqueRouteImport } from './routes/app.estoque'
 import { Route as AppLancarRouteImport } from './routes/app.lancar'
 import { Route as AppMovimentacoesRouteImport } from './routes/app.movimentacoes'
 import { Route as AppMovimentacoesEquipamentosRouteImport } from './routes/app.movimentacoes-equipamentos'
+import { Route as AppRelatoriosEquipamentosRouteImport } from './routes/app.relatorios-equipamentos'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -77,6 +78,12 @@ const AppMovimentacoesEquipamentosRoute =
     path: '/movimentacoes-equipamentos',
     getParentRoute: () => AppRoute,
   } as any)
+const AppRelatoriosEquipamentosRoute =
+  AppRelatoriosEquipamentosRouteImport.update({
+    id: '/relatorios-equipamentos',
+    path: '/relatorios-equipamentos',
+    getParentRoute: () => AppRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -89,6 +96,7 @@ export interface FileRoutesByFullPath {
   '/app/lancar': typeof AppLancarRoute
   '/app/movimentacoes': typeof AppMovimentacoesRoute
   '/app/movimentacoes-equipamentos': typeof AppMovimentacoesEquipamentosRoute
+  '/app/relatorios-equipamentos': typeof AppRelatoriosEquipamentosRoute
   '/app/': typeof AppIndexRoute
 }
 export interface FileRoutesByTo {
@@ -101,6 +109,7 @@ export interface FileRoutesByTo {
   '/app/lancar': typeof AppLancarRoute
   '/app/movimentacoes': typeof AppMovimentacoesRoute
   '/app/movimentacoes-equipamentos': typeof AppMovimentacoesEquipamentosRoute
+  '/app/relatorios-equipamentos': typeof AppRelatoriosEquipamentosRoute
   '/app': typeof AppIndexRoute
 }
 export interface FileRoutesById {
@@ -115,6 +124,7 @@ export interface FileRoutesById {
   '/app/lancar': typeof AppLancarRoute
   '/app/movimentacoes': typeof AppMovimentacoesRoute
   '/app/movimentacoes-equipamentos': typeof AppMovimentacoesEquipamentosRoute
+  '/app/relatorios-equipamentos': typeof AppRelatoriosEquipamentosRoute
   '/app/': typeof AppIndexRoute
 }
 export interface FileRouteTypes {
@@ -130,6 +140,7 @@ export interface FileRouteTypes {
     | '/app/lancar'
     | '/app/movimentacoes'
     | '/app/movimentacoes-equipamentos'
+    | '/app/relatorios-equipamentos'
     | '/app/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -142,6 +153,7 @@ export interface FileRouteTypes {
     | '/app/lancar'
     | '/app/movimentacoes'
     | '/app/movimentacoes-equipamentos'
+    | '/app/relatorios-equipamentos'
     | '/app'
   id:
     | '__root__'
@@ -155,6 +167,7 @@ export interface FileRouteTypes {
     | '/app/lancar'
     | '/app/movimentacoes'
     | '/app/movimentacoes-equipamentos'
+    | '/app/relatorios-equipamentos'
     | '/app/'
   fileRoutesById: FileRoutesById
 }
@@ -242,6 +255,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppMovimentacoesEquipamentosRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/relatorios-equipamentos': {
+      id: '/app/relatorios-equipamentos'
+      path: '/relatorios-equipamentos'
+      fullPath: '/app/relatorios-equipamentos'
+      preLoaderRoute: typeof AppRelatoriosEquipamentosRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
@@ -254,6 +274,7 @@ interface AppRouteChildren {
   AppLancarRoute: typeof AppLancarRoute
   AppMovimentacoesRoute: typeof AppMovimentacoesRoute
   AppMovimentacoesEquipamentosRoute: typeof AppMovimentacoesEquipamentosRoute
+  AppRelatoriosEquipamentosRoute: typeof AppRelatoriosEquipamentosRoute
   AppIndexRoute: typeof AppIndexRoute
 }
 
@@ -266,6 +287,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppLancarRoute: AppLancarRoute,
   AppMovimentacoesRoute: AppMovimentacoesRoute,
   AppMovimentacoesEquipamentosRoute: AppMovimentacoesEquipamentosRoute,
+  AppRelatoriosEquipamentosRoute: AppRelatoriosEquipamentosRoute,
   AppIndexRoute: AppIndexRoute,
 }
 
