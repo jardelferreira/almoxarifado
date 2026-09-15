@@ -38,6 +38,60 @@ export type ProdutoEstatistica = {
   semConsumo: boolean;
 };
 
+export type ConsumoJanela = {
+  dias: number;
+  inicio: string;
+  ate: string;
+  saidas: number;
+  mediaDiaria: number;
+  mediaSemanal: number;
+  mediaMensal: number;
+};
+
+export type TendenciaConsumo = {
+  media7Dias: number | null;
+  media30Dias: number | null;
+  media90Dias: number | null;
+  variacao7Sobre30: number | null;
+  variacao30Sobre90: number | null;
+  direcao: "acelerando" | "reduzindo" | "estavel" | "indeterminada";
+  baseConservadora: number | null;
+};
+
+export type AnaliseConsumo = {
+  janelas: ConsumoJanela[];
+  tendencia: TendenciaConsumo;
+  coberturaConservadoraDias: number | null;
+};
+
+
+export type EstatisticaEquipe = {
+  equipeId: string;
+  equipe: Equipe;
+  posicoesEstoque: number;
+  produtosComEstoque: number;
+  posicoesAbaixoDoMinimo: number;
+  saidasNoPeriodo: number;
+  produtosConsumidos: number;
+  mediaSaidasPorDia: number;
+  produtosEmRisco: number;
+  menorCoberturaDias: number | null;
+  valorEstoqueDocumentado: number | null;
+  valorConsumoDocumentado: number | null;
+};
+
+export type ProdutoEquipeEstatistica = {
+  equipeId: string;
+  equipe: Equipe;
+  estoqueAtual: number;
+  estoqueMinimo: number;
+  consumoPeriodo: number;
+  consumoMedioDiario: number;
+  coberturaDias: number | null;
+  diasAteMinimo: number | null;
+  abaixoDoMinimo: boolean;
+};
+
 export type EstatisticasEstado = {
   posicoesEstoque: number;
   produtosComEstoque: number;
@@ -78,11 +132,95 @@ export function diferencaDiasPeriodo(periodo: PeriodoEstatisticas): number {
   return Math.max(1, Math.floor((ate.getTime() - de.getTime()) / DAY_MS) + 1);
 }
 
+function calcularSaidasPeriodo(
+  movimentacoes: Movimentacao[],
+  periodo: PeriodoEstatisticas,
+): number {
+  return filtrarMovimentacoesPeriodo(movimentacoes, periodo)
+    .filter((movimentacao) => movimentacao.tipo === "SAIDA")
+    .reduce((total, movimentacao) => total + movimentacao.quantidade, 0);
+}
+
+function criarJanelaConsumo(periodo: PeriodoEstatisticas, dias: number): PeriodoEstatisticas {
+  const ate = periodo.ate;
+  const fim = parseData(ate);
+  if (Number.isNaN(fim.getTime())) return periodo;
+  const inicio = new Date(fim);
+  inicio.setDate(inicio.getDate() - (Math.max(1, dias) - 1));
+  return { de: formatarDataISO(inicio), ate };
+}
+
+function arredondar(valor: number, casas = 4): number {
+  return Number(valor.toFixed(casas));
+}
+
 export function formatarDataISO(data: Date): string {
   const ano = data.getFullYear();
   const mes = String(data.getMonth() + 1).padStart(2, "0");
   const dia = String(data.getDate()).padStart(2, "0");
   return `${ano}-${mes}-${dia}`;
+}
+
+export function analisarConsumo(
+  movimentacoes: Movimentacao[],
+  periodo: PeriodoEstatisticas,
+  estoqueAtual: number | null = null,
+): AnaliseConsumo {
+  const janelas = [7, 30, 60, 90, 180, 365].map((dias) => {
+    const janela = criarJanelaConsumo(periodo, dias);
+    const diasEfetivos = diferencaDiasPeriodo(janela);
+    const saidas = calcularSaidasPeriodo(movimentacoes, janela);
+    const mediaDiaria = saidas / diasEfetivos;
+    return {
+      dias,
+      inicio: janela.de,
+      ate: janela.ate,
+      saidas: arredondar(saidas),
+      mediaDiaria: arredondar(mediaDiaria),
+      mediaSemanal: arredondar(mediaDiaria * 7),
+      mediaMensal: arredondar(mediaDiaria * 30.4375),
+    };
+  });
+
+  const porDias = new Map(janelas.map((janela) => [janela.dias, janela]));
+  const media7 = porDias.get(7)?.mediaDiaria ?? null;
+  const media30 = porDias.get(30)?.mediaDiaria ?? null;
+  const media90 = porDias.get(90)?.mediaDiaria ?? null;
+
+  const variacao = (atual: number | null, anterior: number | null) => {
+    if (atual == null || anterior == null || anterior <= 0) return null;
+    return arredondar(((atual - anterior) / anterior) * 100, 1);
+  };
+
+  const variacao7Sobre30 = variacao(media7, media30);
+  const variacao30Sobre90 = variacao(media30, media90);
+  let direcao: TendenciaConsumo["direcao"] = "indeterminada";
+  const variacaoRecente = variacao7Sobre30 ?? variacao30Sobre90;
+  if (variacaoRecente != null) {
+    if (variacaoRecente >= 10) direcao = "acelerando";
+    else if (variacaoRecente <= -10) direcao = "reduzindo";
+    else direcao = "estavel";
+  }
+
+  const bases = [media7, media30, media90].filter((valor): valor is number => valor != null && valor > 0);
+  const baseConservadora = bases.length ? Math.max(...bases) : null;
+
+  return {
+    janelas,
+    tendencia: {
+      media7Dias: media7,
+      media30Dias: media30,
+      media90Dias: media90,
+      variacao7Sobre30,
+      variacao30Sobre90,
+      direcao,
+      baseConservadora: baseConservadora == null ? null : arredondar(baseConservadora),
+    },
+    coberturaConservadoraDias:
+      baseConservadora == null || estoqueAtual == null
+        ? null
+        : arredondar(Math.max(0, estoqueAtual) / baseConservadora, 1),
+  };
 }
 
 export function adicionarDias(dataISO: string, dias: number): string {
@@ -244,6 +382,117 @@ export function calcularProdutoEstatistica(
     abaixoDoMinimo: estoqueAtual < estoqueMinimo,
     semConsumo: consumoPeriodo <= 0,
   };
+}
+
+export function calcularProdutoPorEquipe(
+  produto: Produto,
+  movimentacoes: Movimentacao[],
+  equipes: Equipe[],
+  periodo: PeriodoEstatisticas,
+): ProdutoEquipeEstatistica[] {
+  return equipes
+    .map((equipe) => {
+      const analise = calcularProdutoEstatistica(
+        produto,
+        movimentacoes.filter((movimentacao) => movimentacao.equipe_id === equipe.id),
+        periodo,
+      );
+      return {
+        equipeId: equipe.id,
+        equipe,
+        estoqueAtual: analise.estoqueAtual,
+        estoqueMinimo: analise.estoqueMinimo,
+        consumoPeriodo: analise.consumoPeriodo,
+        consumoMedioDiario: analise.consumoMedioDiario,
+        coberturaDias: analise.coberturaDias,
+        diasAteMinimo: analise.diasAteMinimo,
+        abaixoDoMinimo: analise.abaixoDoMinimo,
+      };
+    })
+    .filter((item) => item.estoqueAtual > 0 || item.consumoPeriodo > 0)
+    .sort((a, b) => b.estoqueAtual - a.estoqueAtual || a.equipe.nome.localeCompare(b.equipe.nome));
+}
+
+export function calcularEstatisticasEquipes(
+  produtos: Produto[],
+  movimentacoes: Movimentacao[],
+  unidades: Parameters<typeof montarEstoque>[2],
+  categorias: Parameters<typeof montarEstoque>[3],
+  equipes: Equipe[],
+  periodo: PeriodoEstatisticas,
+  custos?: Map<string, CustoProdutoDocumentado>,
+  documentosAtivos = false,
+): EstatisticaEquipe[] {
+  const estoque = montarEstoque(produtos, movimentacoes, unidades, categorias, equipes);
+  const movsPeriodo = filtrarMovimentacoesPeriodo(movimentacoes, periodo);
+  const diasPeriodo = diferencaDiasPeriodo(periodo);
+  const custoMap = custos ?? new Map<string, CustoProdutoDocumentado>();
+
+  return equipes
+    .map((equipe) => {
+      const estoqueEquipe = estoque.filter((item) => item.equipe.id === equipe.id);
+      const produtosComEstoque = new Set(
+        estoqueEquipe.filter((item) => item.estoque > 0).map((item) => item.produto.id),
+      );
+      const abaixo = estoqueEquipe.filter((item) => item.baixo).length;
+      const movsSaida = movsPeriodo.filter(
+        (movimentacao) => movimentacao.equipe_id === equipe.id && movimentacao.tipo === "SAIDA",
+      );
+      const produtosConsumidos = new Set(movsSaida.map((movimentacao) => movimentacao.produto_id)).size;
+
+      const analises = produtos
+        .map((produto) =>
+          calcularProdutoEstatistica(
+            produto,
+            movimentacoes.filter((movimentacao) => movimentacao.equipe_id === equipe.id),
+            periodo,
+          ),
+        )
+        .filter((item) => item.estoqueAtual > 0 || item.consumoPeriodo > 0);
+
+      const coberturas = analises
+        .map((item) => item.coberturaDias)
+        .filter((valor): valor is number => valor != null && valor >= 0);
+
+      let valorEstoqueDocumentado: number | null = null;
+      let valorConsumoDocumentado: number | null = null;
+      if (documentosAtivos) {
+        valorEstoqueDocumentado = 0;
+        valorConsumoDocumentado = 0;
+        for (const item of estoqueEquipe) {
+          if (item.estoque <= 0) continue;
+          const custo = custoMap.get(item.produto.id)?.custoMedioUnitario;
+          if (custo != null) valorEstoqueDocumentado += item.estoque * custo;
+        }
+        for (const movimentacao of movsSaida) {
+          const custo = custoMap.get(movimentacao.produto_id)?.custoMedioUnitario;
+          if (custo != null) valorConsumoDocumentado += movimentacao.quantidade * custo;
+        }
+        valorEstoqueDocumentado = arredondar(valorEstoqueDocumentado, 2);
+        valorConsumoDocumentado = arredondar(valorConsumoDocumentado, 2);
+      }
+
+      return {
+        equipeId: equipe.id,
+        equipe,
+        posicoesEstoque: estoqueEquipe.filter((item) => item.estoque > 0).length,
+        produtosComEstoque: produtosComEstoque.size,
+        posicoesAbaixoDoMinimo: abaixo,
+        saidasNoPeriodo: movsSaida.length,
+        produtosConsumidos,
+        mediaSaidasPorDia: arredondar(movsSaida.length / diasPeriodo, 2),
+        produtosEmRisco: analises.filter(
+          (item) => item.estoqueAtual > 0 && item.coberturaDias != null && item.coberturaDias <= 30,
+        ).length,
+        menorCoberturaDias: coberturas.length ? arredondar(Math.min(...coberturas), 1) : null,
+        valorEstoqueDocumentado,
+        valorConsumoDocumentado,
+      };
+    })
+    .filter((item) =>
+      item.posicoesEstoque > 0 || item.saidasNoPeriodo > 0 || item.produtosEmRisco > 0,
+    )
+    .sort((a, b) => b.saidasNoPeriodo - a.saidasNoPeriodo || b.posicoesEstoque - a.posicoesEstoque);
 }
 
 export type CustoProdutoDocumentado = {

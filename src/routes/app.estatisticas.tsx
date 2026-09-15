@@ -26,7 +26,10 @@ import {
   calcularResumoFinanceiro,
   calcularValorPorGrupo,
   calcularFluxoPeriodo,
+  analisarConsumo,
   calcularProdutoEstatistica,
+  calcularEstatisticasEquipes,
+  calcularProdutoPorEquipe,
   criarPeriodoPadrao,
   filtrarMovimentacoesPeriodo,
   agruparFluxoPorEquipe,
@@ -57,6 +60,7 @@ function EstatisticasMateriaisPage() {
   const [ate, setAte] = useState(periodoPadrao.ate);
   const [produtoId, setProdutoId] = useState<string | null>(null);
   const [equipeId, setEquipeId] = useState<string | null>(null);
+  const [estatisticaAtiva, setEstatisticaAtiva] = useState<"movimentacoes" | "consumo" | "equipes" | "financeiro">("movimentacoes");
 
   const configuracao = useLiveQuery(
     () => (projetoId ? configuracoesRepo.obter(projetoId) : undefined),
@@ -124,6 +128,22 @@ function EstatisticasMateriaisPage() {
     [dados, produtoSelecionado, equipeId, periodo.de, periodo.ate],
   );
 
+  const analiseConsumoProduto = useMemo(
+    () =>
+      produtoSelecionado && dados
+        ? analisarConsumo(
+            equipeId
+              ? dados.movimentacoes.filter(
+                  (m) => m.equipe_id === equipeId && m.produto_id === produtoSelecionado.id,
+                )
+              : dados.movimentacoes.filter((m) => m.produto_id === produtoSelecionado.id),
+            periodo,
+            produtoAnalise?.estoqueAtual ?? null,
+          )
+        : null,
+    [dados, produtoSelecionado, equipeId, periodo.de, periodo.ate, produtoAnalise?.estoqueAtual],
+  );
+
   // O gráfico sempre exibe um par de barras (entradas/saídas) por estoque de
   // equipe, considerando as movimentações já filtradas por período, produto e
   // equipe conforme os filtros ativos na tela. Estoques não vinculados a uma
@@ -148,6 +168,40 @@ function EstatisticasMateriaisPage() {
         return a.nome.localeCompare(b.nome);
       });
   }, [dados, movimentacoesFiltradas]);
+
+  const estatisticasEquipes = useMemo(
+    () =>
+      dados
+        ? calcularEstatisticasEquipes(
+            dados.produtos,
+            produtoId
+              ? dados.movimentacoes.filter((movimentacao) => movimentacao.produto_id === produtoId)
+              : dados.movimentacoes,
+            dados.unidades,
+            dados.categorias,
+            equipeId
+              ? dados.equipes.filter((equipe) => equipe.id === equipeId)
+              : dados.equipes,
+            periodo,
+            undefined,
+            false,
+          )
+        : [],
+    [dados, produtoId, equipeId, periodo.de, periodo.ate],
+  );
+
+  const produtoPorEquipe = useMemo(
+    () =>
+      produtoSelecionado && dados
+        ? calcularProdutoPorEquipe(
+            produtoSelecionado,
+            equipeId ? dados.movimentacoes.filter((movimentacao) => movimentacao.equipe_id === equipeId) : dados.movimentacoes,
+            dados.equipes,
+            periodo,
+          )
+        : [],
+    [dados, produtoSelecionado, equipeId, periodo.de, periodo.ate],
+  );
 
   const documentosAtivos = configuracao?.modulos.documentos === true;
 
@@ -298,7 +352,122 @@ function EstatisticasMateriaisPage() {
         </p>
       </section>
 
-      <section aria-labelledby="fluxo" className="space-y-3">
+      <div className="overflow-x-auto rounded-2xl border-2 border-primary/20 bg-primary/5 p-1.5 shadow-sm">
+        <div role="tablist" aria-label="Categorias de estatísticas" className="flex min-w-max gap-1.5">
+          {[
+            { id: "movimentacoes" as const, label: "Movimentações", icon: BarChart3 },
+            { id: "consumo" as const, label: "Consumo e cobertura", icon: CalendarClock },
+            { id: "equipes" as const, label: "Equipes", icon: PackageCheck },
+            { id: "financeiro" as const, label: "Financeiro", icon: ChartNoAxesCombined },
+          ].map(({ id, label, icon: Icon }) => {
+            const ativo = estatisticaAtiva === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={ativo}
+                onClick={() => setEstatisticaAtiva(id)}
+                className={`inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors ${
+                  ativo
+                    ? "bg-primary text-primary-foreground shadow-md ring-1 ring-primary/30"
+                    : "text-muted-foreground hover:bg-primary/10 hover:text-foreground"
+                }`}
+              >
+                <Icon className="size-4" />
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {estatisticaAtiva === "equipes" ? (
+        <section aria-labelledby="equipes" className="space-y-3">
+        <div className="flex items-center gap-2">
+          <PackageCheck className="size-5 text-primary" />
+          <h2 id="equipes" className="font-display text-lg font-semibold uppercase">Análise por equipe</h2>
+        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">
+              {produtoSelecionado ? `Distribuição de ${produtoSelecionado.nome} por equipe` : "Visão operacional por equipe"}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {produtoSelecionado ? (
+              produtoPorEquipe.length ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[760px] text-sm">
+                    <thead>
+                      <tr className="border-b text-left text-xs text-muted-foreground">
+                        <th className="px-3 py-2 font-medium">Equipe</th>
+                        <th className="px-3 py-2 font-medium text-right">Estoque</th>
+                        <th className="px-3 py-2 font-medium text-right">Mínimo</th>
+                        <th className="px-3 py-2 font-medium text-right">Consumo/dia</th>
+                        <th className="px-3 py-2 font-medium text-right">Cobertura</th>
+                        <th className="px-3 py-2 font-medium text-right">Até mínimo</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {produtoPorEquipe.map((item) => (
+                        <tr key={item.equipeId} className="border-b last:border-0">
+                          <td className="px-3 py-3 font-medium">{item.equipe.nome}</td>
+                          <td className="px-3 py-3 text-right">{num(item.estoqueAtual)}</td>
+                          <td className="px-3 py-3 text-right">{num(item.estoqueMinimo)}</td>
+                          <td className="px-3 py-3 text-right">{num(item.consumoMedioDiario)}</td>
+                          <td className={`px-3 py-3 text-right font-semibold ${item.coberturaDias != null && item.coberturaDias <= 30 ? "text-red-600" : ""}`}>
+                            {item.coberturaDias == null ? "—" : `${num(item.coberturaDias)} d`}
+                          </td>
+                          <td className="px-3 py-3 text-right">
+                            {item.diasAteMinimo == null ? "—" : `${num(item.diasAteMinimo)} d`}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">O produto selecionado não possui estoque ou movimentações vinculadas às equipes.</p>
+              )
+            ) : estatisticasEquipes.length ? (
+              <div className="grid gap-3 lg:grid-cols-2">
+                {estatisticasEquipes.map((item) => (
+                  <div key={item.equipeId} className="rounded-xl border p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate font-semibold">{item.equipe.nome}</p>
+                        <p className="text-xs text-muted-foreground">{num(item.saidasNoPeriodo)} saídas no período · {num(item.produtosConsumidos)} produtos consumidos</p>
+                      </div>
+                      {item.produtosEmRisco > 0 ? (
+                        <span className="shrink-0 rounded-full border border-red-200 bg-red-50 px-2 py-1 text-xs font-medium text-red-700">
+                          {num(item.produtosEmRisco)} em risco
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="mt-4 grid gap-2 sm:grid-cols-4">
+                      <Metric label="Posições" value={num(item.posicoesEstoque)} />
+                      <Metric label="Produtos" value={num(item.produtosComEstoque)} />
+                      <Metric label="Abaixo mínimo" value={num(item.posicoesAbaixoDoMinimo)} />
+                      <Metric label="Saídas/dia" value={num(item.mediaSaidasPorDia)} />
+                    </div>
+                    <p className="mt-3 text-xs text-muted-foreground">
+                      Menor cobertura estimada: {item.menorCoberturaDias == null ? "não determinada" : `${num(item.menorCoberturaDias)} dias`}.
+                    </p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">Nenhuma equipe possui estoque ou movimentação relevante no período selecionado.</p>
+            )}
+            <p className="text-xs text-muted-foreground">
+              Para a visão global, quantidades físicas de unidades diferentes não são somadas entre produtos. A comparação por equipe utiliza posições, produtos, frequência de saídas e cobertura por material.
+            </p>
+          </CardContent>
+        </Card>
+      </section>
+      ) : estatisticaAtiva === "movimentacoes" ? (
+        <section aria-labelledby="fluxo" className="space-y-3">
         <div className="flex items-center gap-2">
           <BarChart3 className="size-5 text-primary" />
           <h2 id="fluxo" className="font-display text-lg font-semibold uppercase">Entradas × saídas</h2>
@@ -348,8 +517,8 @@ function EstatisticasMateriaisPage() {
           </CardContent>
         </Card>
       </section>
-
-      <section aria-labelledby="riscos" className="space-y-3">
+      ) : estatisticaAtiva === "consumo" ? (
+        <section aria-labelledby="riscos" className="space-y-3">
         <div className="flex items-center gap-2">
           <CalendarClock className="size-5 text-primary" />
           <h2 id="riscos" className="font-display text-lg font-semibold uppercase">Cobertura e risco de ruptura</h2>
@@ -402,8 +571,80 @@ function EstatisticasMateriaisPage() {
                     <Metric label="Até estoque mínimo" value={produtoAnalise.diasAteMinimo == null ? "—" : `${produtoAnalise.diasAteMinimo} dias`} />
                     <Metric label="Ruptura estimada" value={produtoAnalise.dataEstimadaRuptura ?? "—"} />
                   </div>
+                  {analiseConsumoProduto ? (
+                    <div className="space-y-4">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="text-sm font-semibold">Consumo por janela</p>
+                          <p className="text-xs text-muted-foreground">Médias calculadas somente pelas saídas do produto nos últimos N dias, ancoradas na data final selecionada.</p>
+                        </div>
+                        <span className={`inline-flex w-fit rounded-full border px-2.5 py-1 text-xs font-medium ${
+                          analiseConsumoProduto.tendencia.direcao === "acelerando"
+                            ? "border-red-200 bg-red-50 text-red-700"
+                            : analiseConsumoProduto.tendencia.direcao === "reduzindo"
+                              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                              : analiseConsumoProduto.tendencia.direcao === "estavel"
+                                ? "border-amber-200 bg-amber-50 text-amber-700"
+                                : "text-muted-foreground"
+                        }`}>
+                          {analiseConsumoProduto.tendencia.direcao === "acelerando"
+                            ? "Consumo em aceleração"
+                            : analiseConsumoProduto.tendencia.direcao === "reduzindo"
+                              ? "Consumo em redução"
+                              : analiseConsumoProduto.tendencia.direcao === "estavel"
+                                ? "Consumo estável"
+                                : "Tendência indeterminada"}
+                        </span>
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                        {analiseConsumoProduto.janelas.map((janela) => (
+                          <div key={janela.dias} className="rounded-lg border p-3">
+                            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Últimos {janela.dias} dias</p>
+                            <p className="mt-1 text-sm font-semibold">{num(janela.saidas)} em saídas</p>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {num(janela.mediaDiaria)}/dia · {num(janela.mediaSemanal)}/semana · {num(janela.mediaMensal)}/mês
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        <Metric
+                          label="Variação 7d × 30d"
+                          value={
+                            analiseConsumoProduto.tendencia.variacao7Sobre30 == null
+                              ? "—"
+                              : `${analiseConsumoProduto.tendencia.variacao7Sobre30 > 0 ? "+" : ""}${num(analiseConsumoProduto.tendencia.variacao7Sobre30)}%`
+                          }
+                        />
+                        <Metric
+                          label="Variação 30d × 90d"
+                          value={
+                            analiseConsumoProduto.tendencia.variacao30Sobre90 == null
+                              ? "—"
+                              : `${analiseConsumoProduto.tendencia.variacao30Sobre90 > 0 ? "+" : ""}${num(analiseConsumoProduto.tendencia.variacao30Sobre90)}%`
+                          }
+                        />
+                        <Metric
+                          label="Base conservadora"
+                          value={
+                            analiseConsumoProduto.tendencia.baseConservadora == null
+                              ? "—"
+                              : `${num(analiseConsumoProduto.tendencia.baseConservadora)}/dia`
+                          }
+                        />
+                        <Metric
+                          label="Cobertura conservadora"
+                          value={
+                            analiseConsumoProduto.coberturaConservadoraDias == null
+                              ? "—"
+                              : `${num(analiseConsumoProduto.coberturaConservadoraDias)} dias`
+                          }
+                        />
+                      </div>
+                    </div>
+                  ) : null}
                   <div className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground">
-                    A estimativa usa somente saídas do período selecionado e o estoque físico atual do produto. Sem consumo no período, a cobertura permanece indeterminada.
+                    A estimativa usa somente saídas do período selecionado e o estoque físico atual do produto. As janelas de consumo são ancoradas na data final selecionada. Sem consumo suficiente, a tendência e a cobertura permanecem indeterminadas.
                   </div>
                 </div>
               ) : (
@@ -415,8 +656,8 @@ function EstatisticasMateriaisPage() {
           </Card>
         </div>
       </section>
-
-      <section aria-labelledby="financeiro" className="space-y-3">
+      ) : (
+        <section aria-labelledby="financeiro" className="space-y-3">
         <div className="flex items-center gap-2">
           <ChartNoAxesCombined className="size-5 text-primary" />
           <h2 id="financeiro" className="font-display text-lg font-semibold uppercase">Observabilidade financeira</h2>
@@ -458,6 +699,7 @@ function EstatisticasMateriaisPage() {
           </>
         )}
       </section>
+      )}
     </div>
   );
 }
