@@ -1,5 +1,6 @@
 import {
   Activity,
+  BarChart3,
   ArrowLeftRight,
   Boxes,
   ChevronLeft,
@@ -62,6 +63,7 @@ const navGroups: NavGroup[] = [
       { to: "/app/lancar", label: "Lançar", icon: ArrowLeftRight },
       { to: "/app/movimentacoes", label: "Movimentações", icon: FileClock },
       { to: "/app/estoque", label: "Estoque", icon: Warehouse },
+      { to: "/app/estatisticas", label: "Estatísticas", icon: BarChart3 },
       { to: "/app/cadastros", label: "Cadastros", icon: Settings2 },
     ],
   },

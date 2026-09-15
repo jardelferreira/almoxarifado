@@ -18,6 +18,7 @@ import { Route as AppConfiguracoesRouteImport } from './routes/app.configuracoes
 import { Route as AppDadosRouteImport } from './routes/app.dados'
 import { Route as AppDocumentosRouteImport } from './routes/app.documentos'
 import { Route as AppEquipamentosRouteImport } from './routes/app.equipamentos'
+import { Route as AppEstatisticasRouteImport } from './routes/app.estatisticas'
 import { Route as AppEstoqueRouteImport } from './routes/app.estoque'
 import { Route as AppInventarioRouteImport } from './routes/app.inventario'
 import { Route as AppLancarRouteImport } from './routes/app.lancar'
@@ -71,6 +72,11 @@ const AppEquipamentosRoute = AppEquipamentosRouteImport.update({
   path: '/equipamentos',
   getParentRoute: () => AppRoute,
 } as any)
+const AppEstatisticasRoute = AppEstatisticasRouteImport.update({
+  id: '/estatisticas',
+  path: '/estatisticas',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppEstoqueRoute = AppEstoqueRouteImport.update({
   id: '/estoque',
   path: '/estoque',
@@ -118,6 +124,7 @@ export interface FileRoutesByFullPath {
   '/app/dados': typeof AppDadosRoute
   '/app/documentos': typeof AppDocumentosRoute
   '/app/equipamentos': typeof AppEquipamentosRoute
+  '/app/estatisticas': typeof AppEstatisticasRoute
   '/app/estoque': typeof AppEstoqueRoute
   '/app/inventario': typeof AppInventarioRoute
   '/app/lancar': typeof AppLancarRoute
@@ -135,6 +142,7 @@ export interface FileRoutesByTo {
   '/app/dados': typeof AppDadosRoute
   '/app/documentos': typeof AppDocumentosRoute
   '/app/equipamentos': typeof AppEquipamentosRoute
+  '/app/estatisticas': typeof AppEstatisticasRoute
   '/app/estoque': typeof AppEstoqueRoute
   '/app/inventario': typeof AppInventarioRoute
   '/app/lancar': typeof AppLancarRoute
@@ -154,6 +162,7 @@ export interface FileRoutesById {
   '/app/dados': typeof AppDadosRoute
   '/app/documentos': typeof AppDocumentosRoute
   '/app/equipamentos': typeof AppEquipamentosRoute
+  '/app/estatisticas': typeof AppEstatisticasRoute
   '/app/estoque': typeof AppEstoqueRoute
   '/app/inventario': typeof AppInventarioRoute
   '/app/lancar': typeof AppLancarRoute
@@ -174,6 +183,7 @@ export interface FileRouteTypes {
     | '/app/dados'
     | '/app/documentos'
     | '/app/equipamentos'
+    | '/app/estatisticas'
     | '/app/estoque'
     | '/app/inventario'
     | '/app/lancar'
@@ -191,6 +201,7 @@ export interface FileRouteTypes {
     | '/app/dados'
     | '/app/documentos'
     | '/app/equipamentos'
+    | '/app/estatisticas'
     | '/app/estoque'
     | '/app/inventario'
     | '/app/lancar'
@@ -209,6 +220,7 @@ export interface FileRouteTypes {
     | '/app/dados'
     | '/app/documentos'
     | '/app/equipamentos'
+    | '/app/estatisticas'
     | '/app/estoque'
     | '/app/inventario'
     | '/app/lancar'
@@ -289,6 +301,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppEquipamentosRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/estatisticas': {
+      id: '/app/estatisticas'
+      path: '/estatisticas'
+      fullPath: '/app/estatisticas'
+      preLoaderRoute: typeof AppEstatisticasRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/estoque': {
       id: '/app/estoque'
       path: '/estoque'
@@ -348,6 +367,7 @@ interface AppRouteChildren {
   AppDadosRoute: typeof AppDadosRoute
   AppDocumentosRoute: typeof AppDocumentosRoute
   AppEquipamentosRoute: typeof AppEquipamentosRoute
+  AppEstatisticasRoute: typeof AppEstatisticasRoute
   AppEstoqueRoute: typeof AppEstoqueRoute
   AppInventarioRoute: typeof AppInventarioRoute
   AppLancarRoute: typeof AppLancarRoute
@@ -365,6 +385,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppDadosRoute: AppDadosRoute,
   AppDocumentosRoute: AppDocumentosRoute,
   AppEquipamentosRoute: AppEquipamentosRoute,
+  AppEstatisticasRoute: AppEstatisticasRoute,
   AppEstoqueRoute: AppEstoqueRoute,
   AppInventarioRoute: AppInventarioRoute,
   AppLancarRoute: AppLancarRoute,
