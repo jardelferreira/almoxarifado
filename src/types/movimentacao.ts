@@ -25,4 +25,10 @@ export interface Movimentacao {
 
   /** Toda movimentação pertence ao estoque de uma equipe. */
   equipe_id: ID;
+
+  /** Documento que contextualiza a movimentação, quando houver. */
+  documento_id?: ID | null | undefined;
+
+  /** Item específico do documento que originou a movimentação, quando houver. */
+  documento_item_id?: ID | null | undefined;
 }

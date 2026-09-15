@@ -31,6 +31,35 @@ export function estoqueDoProduto(movs: Movimentacao[], produtoId: string, equipe
     .reduce((acc, m) => acc + efeito(m), 0);
 }
 
+export interface HistoricoEstoqueItem {
+  movimentacao: Movimentacao;
+  saldoAnterior: number;
+  efeito: number;
+  saldoPosterior: number;
+}
+
+/** Reconstrói cronologicamente o saldo de uma posição produto + equipe. */
+export function historicoEstoque(
+  movs: Movimentacao[],
+  produtoId: string,
+  equipeId: string,
+): HistoricoEstoqueItem[] {
+  const historico = movs
+    .filter((m) => m.produto_id === produtoId && m.equipe_id === equipeId)
+    .sort((a, b) => {
+      const data = a.data.localeCompare(b.data);
+      return data !== 0 ? data : a.id.localeCompare(b.id);
+    });
+
+  let saldo = 0;
+  return historico.map((movimentacao) => {
+    const saldoAnterior = saldo;
+    const valor = efeito(movimentacao);
+    saldo += valor;
+    return { movimentacao, saldoAnterior, efeito: valor, saldoPosterior: saldo };
+  });
+}
+
 export function montarEstoque(
   produtos: Produto[],
   movs: Movimentacao[],

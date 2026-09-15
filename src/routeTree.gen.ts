@@ -14,12 +14,16 @@ import { Route as AppRouteImport } from './routes/app'
 import { Route as AppIndexRouteImport } from './routes/app.index'
 import { Route as AppApropriacoesRouteImport } from './routes/app.apropriacoes'
 import { Route as AppCadastrosRouteImport } from './routes/app.cadastros'
+import { Route as AppConfiguracoesRouteImport } from './routes/app.configuracoes'
 import { Route as AppDadosRouteImport } from './routes/app.dados'
+import { Route as AppDocumentosRouteImport } from './routes/app.documentos'
 import { Route as AppEquipamentosRouteImport } from './routes/app.equipamentos'
 import { Route as AppEstoqueRouteImport } from './routes/app.estoque'
+import { Route as AppInventarioRouteImport } from './routes/app.inventario'
 import { Route as AppLancarRouteImport } from './routes/app.lancar'
 import { Route as AppMovimentacoesRouteImport } from './routes/app.movimentacoes'
 import { Route as AppMovimentacoesEquipamentosRouteImport } from './routes/app.movimentacoes-equipamentos'
+import { Route as AppRecebimentosRouteImport } from './routes/app.recebimentos'
 import { Route as AppRelatoriosEquipamentosRouteImport } from './routes/app.relatorios-equipamentos'
 
 const IndexRoute = IndexRouteImport.update({
@@ -47,9 +51,19 @@ const AppCadastrosRoute = AppCadastrosRouteImport.update({
   path: '/cadastros',
   getParentRoute: () => AppRoute,
 } as any)
+const AppConfiguracoesRoute = AppConfiguracoesRouteImport.update({
+  id: '/configuracoes',
+  path: '/configuracoes',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppDadosRoute = AppDadosRouteImport.update({
   id: '/dados',
   path: '/dados',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppDocumentosRoute = AppDocumentosRouteImport.update({
+  id: '/documentos',
+  path: '/documentos',
   getParentRoute: () => AppRoute,
 } as any)
 const AppEquipamentosRoute = AppEquipamentosRouteImport.update({
@@ -60,6 +74,11 @@ const AppEquipamentosRoute = AppEquipamentosRouteImport.update({
 const AppEstoqueRoute = AppEstoqueRouteImport.update({
   id: '/estoque',
   path: '/estoque',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppInventarioRoute = AppInventarioRouteImport.update({
+  id: '/inventario',
+  path: '/inventario',
   getParentRoute: () => AppRoute,
 } as any)
 const AppLancarRoute = AppLancarRouteImport.update({
@@ -78,6 +97,11 @@ const AppMovimentacoesEquipamentosRoute =
     path: '/movimentacoes-equipamentos',
     getParentRoute: () => AppRoute,
   } as any)
+const AppRecebimentosRoute = AppRecebimentosRouteImport.update({
+  id: '/recebimentos',
+  path: '/recebimentos',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppRelatoriosEquipamentosRoute =
   AppRelatoriosEquipamentosRouteImport.update({
     id: '/relatorios-equipamentos',
@@ -90,12 +114,16 @@ export interface FileRoutesByFullPath {
   '/app': typeof AppRouteWithChildren
   '/app/apropriacoes': typeof AppApropriacoesRoute
   '/app/cadastros': typeof AppCadastrosRoute
+  '/app/configuracoes': typeof AppConfiguracoesRoute
   '/app/dados': typeof AppDadosRoute
+  '/app/documentos': typeof AppDocumentosRoute
   '/app/equipamentos': typeof AppEquipamentosRoute
   '/app/estoque': typeof AppEstoqueRoute
+  '/app/inventario': typeof AppInventarioRoute
   '/app/lancar': typeof AppLancarRoute
   '/app/movimentacoes': typeof AppMovimentacoesRoute
   '/app/movimentacoes-equipamentos': typeof AppMovimentacoesEquipamentosRoute
+  '/app/recebimentos': typeof AppRecebimentosRoute
   '/app/relatorios-equipamentos': typeof AppRelatoriosEquipamentosRoute
   '/app/': typeof AppIndexRoute
 }
@@ -103,12 +131,16 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/app/apropriacoes': typeof AppApropriacoesRoute
   '/app/cadastros': typeof AppCadastrosRoute
+  '/app/configuracoes': typeof AppConfiguracoesRoute
   '/app/dados': typeof AppDadosRoute
+  '/app/documentos': typeof AppDocumentosRoute
   '/app/equipamentos': typeof AppEquipamentosRoute
   '/app/estoque': typeof AppEstoqueRoute
+  '/app/inventario': typeof AppInventarioRoute
   '/app/lancar': typeof AppLancarRoute
   '/app/movimentacoes': typeof AppMovimentacoesRoute
   '/app/movimentacoes-equipamentos': typeof AppMovimentacoesEquipamentosRoute
+  '/app/recebimentos': typeof AppRecebimentosRoute
   '/app/relatorios-equipamentos': typeof AppRelatoriosEquipamentosRoute
   '/app': typeof AppIndexRoute
 }
@@ -118,12 +150,16 @@ export interface FileRoutesById {
   '/app': typeof AppRouteWithChildren
   '/app/apropriacoes': typeof AppApropriacoesRoute
   '/app/cadastros': typeof AppCadastrosRoute
+  '/app/configuracoes': typeof AppConfiguracoesRoute
   '/app/dados': typeof AppDadosRoute
+  '/app/documentos': typeof AppDocumentosRoute
   '/app/equipamentos': typeof AppEquipamentosRoute
   '/app/estoque': typeof AppEstoqueRoute
+  '/app/inventario': typeof AppInventarioRoute
   '/app/lancar': typeof AppLancarRoute
   '/app/movimentacoes': typeof AppMovimentacoesRoute
   '/app/movimentacoes-equipamentos': typeof AppMovimentacoesEquipamentosRoute
+  '/app/recebimentos': typeof AppRecebimentosRoute
   '/app/relatorios-equipamentos': typeof AppRelatoriosEquipamentosRoute
   '/app/': typeof AppIndexRoute
 }
@@ -134,12 +170,16 @@ export interface FileRouteTypes {
     | '/app'
     | '/app/apropriacoes'
     | '/app/cadastros'
+    | '/app/configuracoes'
     | '/app/dados'
+    | '/app/documentos'
     | '/app/equipamentos'
     | '/app/estoque'
+    | '/app/inventario'
     | '/app/lancar'
     | '/app/movimentacoes'
     | '/app/movimentacoes-equipamentos'
+    | '/app/recebimentos'
     | '/app/relatorios-equipamentos'
     | '/app/'
   fileRoutesByTo: FileRoutesByTo
@@ -147,12 +187,16 @@ export interface FileRouteTypes {
     | '/'
     | '/app/apropriacoes'
     | '/app/cadastros'
+    | '/app/configuracoes'
     | '/app/dados'
+    | '/app/documentos'
     | '/app/equipamentos'
     | '/app/estoque'
+    | '/app/inventario'
     | '/app/lancar'
     | '/app/movimentacoes'
     | '/app/movimentacoes-equipamentos'
+    | '/app/recebimentos'
     | '/app/relatorios-equipamentos'
     | '/app'
   id:
@@ -161,12 +205,16 @@ export interface FileRouteTypes {
     | '/app'
     | '/app/apropriacoes'
     | '/app/cadastros'
+    | '/app/configuracoes'
     | '/app/dados'
+    | '/app/documentos'
     | '/app/equipamentos'
     | '/app/estoque'
+    | '/app/inventario'
     | '/app/lancar'
     | '/app/movimentacoes'
     | '/app/movimentacoes-equipamentos'
+    | '/app/recebimentos'
     | '/app/relatorios-equipamentos'
     | '/app/'
   fileRoutesById: FileRoutesById
@@ -213,11 +261,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCadastrosRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/configuracoes': {
+      id: '/app/configuracoes'
+      path: '/configuracoes'
+      fullPath: '/app/configuracoes'
+      preLoaderRoute: typeof AppConfiguracoesRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/dados': {
       id: '/app/dados'
       path: '/dados'
       fullPath: '/app/dados'
       preLoaderRoute: typeof AppDadosRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/documentos': {
+      id: '/app/documentos'
+      path: '/documentos'
+      fullPath: '/app/documentos'
+      preLoaderRoute: typeof AppDocumentosRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/equipamentos': {
@@ -232,6 +294,13 @@ declare module '@tanstack/react-router' {
       path: '/estoque'
       fullPath: '/app/estoque'
       preLoaderRoute: typeof AppEstoqueRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/inventario': {
+      id: '/app/inventario'
+      path: '/inventario'
+      fullPath: '/app/inventario'
+      preLoaderRoute: typeof AppInventarioRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/lancar': {
@@ -255,6 +324,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppMovimentacoesEquipamentosRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/recebimentos': {
+      id: '/app/recebimentos'
+      path: '/recebimentos'
+      fullPath: '/app/recebimentos'
+      preLoaderRoute: typeof AppRecebimentosRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/relatorios-equipamentos': {
       id: '/app/relatorios-equipamentos'
       path: '/relatorios-equipamentos'
@@ -268,12 +344,16 @@ declare module '@tanstack/react-router' {
 interface AppRouteChildren {
   AppApropriacoesRoute: typeof AppApropriacoesRoute
   AppCadastrosRoute: typeof AppCadastrosRoute
+  AppConfiguracoesRoute: typeof AppConfiguracoesRoute
   AppDadosRoute: typeof AppDadosRoute
+  AppDocumentosRoute: typeof AppDocumentosRoute
   AppEquipamentosRoute: typeof AppEquipamentosRoute
   AppEstoqueRoute: typeof AppEstoqueRoute
+  AppInventarioRoute: typeof AppInventarioRoute
   AppLancarRoute: typeof AppLancarRoute
   AppMovimentacoesRoute: typeof AppMovimentacoesRoute
   AppMovimentacoesEquipamentosRoute: typeof AppMovimentacoesEquipamentosRoute
+  AppRecebimentosRoute: typeof AppRecebimentosRoute
   AppRelatoriosEquipamentosRoute: typeof AppRelatoriosEquipamentosRoute
   AppIndexRoute: typeof AppIndexRoute
 }
@@ -281,12 +361,16 @@ interface AppRouteChildren {
 const AppRouteChildren: AppRouteChildren = {
   AppApropriacoesRoute: AppApropriacoesRoute,
   AppCadastrosRoute: AppCadastrosRoute,
+  AppConfiguracoesRoute: AppConfiguracoesRoute,
   AppDadosRoute: AppDadosRoute,
+  AppDocumentosRoute: AppDocumentosRoute,
   AppEquipamentosRoute: AppEquipamentosRoute,
   AppEstoqueRoute: AppEstoqueRoute,
+  AppInventarioRoute: AppInventarioRoute,
   AppLancarRoute: AppLancarRoute,
   AppMovimentacoesRoute: AppMovimentacoesRoute,
   AppMovimentacoesEquipamentosRoute: AppMovimentacoesEquipamentosRoute,
+  AppRecebimentosRoute: AppRecebimentosRoute,
   AppRelatoriosEquipamentosRoute: AppRelatoriosEquipamentosRoute,
   AppIndexRoute: AppIndexRoute,
 }

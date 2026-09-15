@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
+import { useLiveQuery } from "dexie-react-hooks";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,8 +13,10 @@ import { Combobox } from "@/components/common/Combobox";
 import { useDados, useProjetoAtivoId } from "@/hooks/useAppData";
 import { repo } from "@/services/repo";
 import { estoqueDoProduto } from "@/services/estoque";
+import { configuracoesRepo } from "@/services/configuracoes-repo";
+import { getDB } from "@/db/db";
 import { formatarData, hoje, num } from "@/utils/format";
-import type { Movimentacao, MovimentacaoTipo } from "@/types";
+import type { Documento, Movimentacao, MovimentacaoTipo } from "@/types";
 
 export const Route = createFileRoute("/app/lancar")({
   ssr: false,
@@ -109,9 +112,21 @@ function Formulario({ modo }: { modo: string }) {
   const cfg = CONFIG[modo]!;
   const [projetoId] = useProjetoAtivoId();
   const dados = useDados(projetoId);
+  const configuracao = useLiveQuery(
+    () => (projetoId ? configuracoesRepo.obter(projetoId) : undefined),
+    [projetoId],
+  );
+  const documentos = useLiveQuery(
+    () =>
+      projetoId
+        ? getDB().documentos.where("projeto_id").equals(projetoId).toArray()
+        : Promise.resolve<Documento[]>([]),
+    [projetoId],
+  );
   const [data, setData] = useState(hoje());
   const [produtoId, setProdutoId] = useState<string | null>(null);
   const [equipeId, setEquipeId] = useState<string | null>(null);
+  const [equipeDestinoId, setEquipeDestinoId] = useState<string | null>(null);
   const [quantidade, setQuantidade] = useState("");
   const [funcionarioId, setFuncionarioId] = useState<string | null>(null);
   const [empresaId, setEmpresaId] = useState<string | null>(null);
@@ -121,6 +136,7 @@ function Formulario({ modo }: { modo: string }) {
   const [respDestinoId, setRespDestinoId] = useState<string | null>(null);
   const [sinal, setSinal] = useState<1 | -1>(1);
   const [observacao, setObservacao] = useState("");
+  const [documentoId, setDocumentoId] = useState<string | null>(null);
 
   const produtos = useMemo(() => (dados?.produtos ?? []).filter((p) => p.ativo), [dados]);
 
@@ -158,6 +174,8 @@ function Formulario({ modo }: { modo: string }) {
     setProdutoId(null);
     setQuantidade("");
     setObservacao("");
+    setDocumentoId(null);
+    setEquipeDestinoId(null);
   };
 
   const salvar = async () => {
@@ -181,26 +199,24 @@ function Formulario({ modo }: { modo: string }) {
       toast.error("Informe a data");
       return;
     }
-    if (cfg.tipo === "TRANSFERENCIA" && (!localId || !localDestinoId)) {
-      toast.error("Informe local de origem e destino");
+    if (cfg.tipo === "TRANSFERENCIA" && (!equipeDestinoId || !localId || !localDestinoId)) {
+      toast.error("Informe equipe e local de origem e destino");
       return;
     }
-    if (cfg.tipo === "ENTRADA") {
-      const empresa = dados.empresas.find((e) => e.id === empresaId);
-      if (!empresa || empresa.tipo !== "FORNECEDOR") {
-        toast.error("Selecione uma empresa do tipo fornecedor");
-        return;
-      }
-    }
-    if (cfg.tipo === "SAIDA") {
-      const empresa = dados.empresas.find((e) => e.id === funcionario?.empresa_id);
-      if (empresa?.tipo === "FORNECEDOR") {
-        toast.error("Saídas não podem ser vinculadas a um fornecedor");
-        return;
-      }
+    if (cfg.tipo === "TRANSFERENCIA" && equipeId === equipeDestinoId && localId === localDestinoId) {
+      toast.error("A origem e o destino da transferência devem ser diferentes.");
+      return;
     }
     if (cfg.tipo === "AJUSTE" && !observacao.trim()) {
       toast.error("Informe o motivo do ajuste");
+      return;
+    }
+    if (documentoObrigatorio && !documentoId) {
+      toast.error("Selecione o documento exigido para esta operação");
+      return;
+    }
+    if (documentoId && !documentoSelecionado) {
+      toast.error("O documento selecionado não está disponível para esta operação");
       return;
     }
     if (resultante < 0 && cfg.tipo !== "TRANSFERENCIA") {
@@ -226,6 +242,8 @@ function Formulario({ modo }: { modo: string }) {
       local_id: localId,
       equipe_id: equipeId,
       observacao: observacao.trim() || null,
+      documento_id: documentoObrigatorio ? documentoId : null,
+      documento_item_id: null,
     };
 
     if (cfg.tipo === "TRANSFERENCIA") {
@@ -241,20 +259,19 @@ function Formulario({ modo }: { modo: string }) {
         .filter(Boolean)
         .join(" | ");
 
-      await repo.saveMovimentacao({
-        ...base,
-        sinal: -1,
-        local_id: localId,
-        local_destino_id: localDestinoId,
-        funcionario_id: respOrigemId,
-        observacao: `Transferência para ${nomeDestino}. ${nota}`.trim(),
-      });
-      await repo.saveMovimentacao({
-        ...base,
-        sinal: 1,
-        local_id: localDestinoId,
-        funcionario_id: respDestinoId,
-        observacao: `Transferência de ${nomeOrigem}. ${nota}`.trim(),
+      await repo.registrarTransferencia({
+        projetoId,
+        produtoId,
+        quantidade: qtd,
+        equipeOrigemId: equipeId,
+        equipeDestinoId: equipeDestinoId!,
+        localOrigemId: localId,
+        localDestinoId,
+        responsavelOrigemId: respOrigemId,
+        responsavelDestinoId: respDestinoId,
+        documentoId: documentoObrigatorio ? documentoId : null,
+        data,
+        observacao: `Transferência: ${nomeOrigem} → ${nomeDestino}. ${nota}`.trim(),
       });
     } else {
       await repo.saveMovimentacao(base);
@@ -265,15 +282,18 @@ function Formulario({ modo }: { modo: string }) {
 
   const opt = <T extends { id: string; nome: string }>(arr: T[]) =>
     arr.map((x) => ({ value: x.id, label: x.nome }));
-  const funcAtivos = dados.funcionarios.filter((f) => {
-    if (f.status !== "ATIVO") return false;
-    const empresa = dados.empresas.find((e) => e.id === f.empresa_id);
-    return empresa?.tipo !== "FORNECEDOR";
-  });
-  const empAtivas = dados.empresas.filter(
-    (e) => e.ativo && (cfg.tipo === "ENTRADA" ? e.tipo === "FORNECEDOR" : true),
-  );
+  const funcAtivos = dados.funcionarios.filter((f) => f.status === "ATIVO");
+  const empAtivas = dados.empresas.filter((e) => e.ativo);
   const locAtivos = dados.locais.filter((l) => l.ativo);
+  const documentosDisponiveis = (documentos ?? []).filter((documento) => documento.status !== "CANCELADO");
+  const documentoObrigatorio = Boolean(
+    configuracao?.modulos.documentos &&
+      ((cfg.tipo === "ENTRADA" && configuracao.documentos.exigir_na_entrada) ||
+        (cfg.tipo === "SAIDA" && configuracao.documentos.exigir_na_saida) ||
+        (cfg.tipo === "TRANSFERENCIA" && configuracao.documentos.exigir_na_transferencia) ||
+        (cfg.tipo === "AJUSTE" && configuracao.documentos.exigir_no_ajuste)),
+  );
+  const documentoSelecionado = documentosDisponiveis.find((documento) => documento.id === documentoId);
 
   return (
     <div className="grid gap-4 lg:grid-cols-3">
@@ -404,7 +424,7 @@ function Formulario({ modo }: { modo: string }) {
 
           {cfg.campos.includes("empresa") && (
             <div className="space-y-1.5">
-              <Label>{cfg.tipo === "ENTRADA" ? "Fornecedor" : "Empresa"}</Label>
+              <Label>Empresa</Label>
               <Combobox
                 placeholder="Selecionar"
                 value={empresaId}
@@ -428,6 +448,17 @@ function Formulario({ modo }: { modo: string }) {
 
           {cfg.tipo === "TRANSFERENCIA" && (
             <>
+              <div className="space-y-1.5">
+                <Label>Equipe de destino</Label>
+                <Combobox
+                  placeholder="Selecionar equipe"
+                  value={equipeDestinoId}
+                  onChange={setEquipeDestinoId}
+                  opcoes={dados.equipes
+                    .filter((e) => e.ativo)
+                    .map((e) => ({ value: e.id, label: e.nome }))}
+                />
+              </div>
               <div className="space-y-1.5">
                 <Label>Local de origem</Label>
                 <Combobox
@@ -467,6 +498,36 @@ function Formulario({ modo }: { modo: string }) {
             </>
           )}
 
+          {documentoObrigatorio && (
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label>Documento (obrigatório)</Label>
+              <Combobox
+                placeholder="Selecionar documento"
+                vazio="Nenhum documento disponível"
+                value={documentoId}
+                onChange={setDocumentoId}
+                opcoes={documentosDisponiveis.map((documento) => {
+                  const empresa = documento.empresa_id
+                    ? dados.empresas.find((item) => item.id === documento.empresa_id)?.nome
+                    : undefined;
+                  return {
+                    value: documento.id,
+                    label: `${documento.numero} · ${documento.tipo.replace("_", " ")}`,
+                    hint: empresa ?? "Sem empresa",
+                  };
+                })}
+              />
+              <p className="text-xs text-muted-foreground">
+                A configuração do projeto exige um documento nesta operação.
+              </p>
+              {documentoSelecionado && (
+                <div className="rounded-lg border bg-muted/30 px-3 py-2 text-xs">
+                  <span className="font-medium">{documentoSelecionado.numero}</span> · {documentoSelecionado.tipo.replace("_", " ")}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="space-y-1.5 sm:col-span-2">
             <Label>{cfg.tipo === "AJUSTE" ? "Motivo / observação" : "Observação"}</Label>
             <Textarea rows={2} value={observacao} onChange={(e) => setObservacao(e.target.value)} />
@@ -498,10 +559,22 @@ function Formulario({ modo }: { modo: string }) {
 function FormularioDevolucao() {
   const [projetoId] = useProjetoAtivoId();
   const dados = useDados(projetoId);
+  const configuracao = useLiveQuery(
+    () => (projetoId ? configuracoesRepo.obter(projetoId) : undefined),
+    [projetoId],
+  );
+  const documentos = useLiveQuery(
+    () =>
+      projetoId
+        ? getDB().documentos.where("projeto_id").equals(projetoId).toArray()
+        : Promise.resolve<Documento[]>([]),
+    [projetoId],
+  );
   const [data, setData] = useState(hoje());
   const [origemId, setOrigemId] = useState<string | null>(null);
   const [quantidade, setQuantidade] = useState("");
   const [observacao, setObservacao] = useState("");
+  const [documentoId, setDocumentoId] = useState<string | null>(null);
 
   if (!dados || !projetoId) return <p className="text-sm text-muted-foreground">Carregando…</p>;
 
@@ -538,6 +611,10 @@ function FormularioDevolucao() {
   const atual = origem
     ? estoqueDoProduto(dados.movimentacoes, origem.produto_id, origem.equipe_id)
     : 0;
+  const documentoObrigatorio = Boolean(
+    configuracao?.modulos.documentos && configuracao.documentos.exigir_na_devolucao,
+  );
+  const documentosDisponiveis = (documentos ?? []).filter((documento) => documento.status !== "CANCELADO");
 
   const salvar = async () => {
     if (!origem) {
@@ -550,6 +627,10 @@ function FormularioDevolucao() {
     }
     if (qtd > maximo) {
       toast.error(`A devolução não pode passar de ${num(maximo)} ${unidade?.sigla ?? ""}`);
+      return;
+    }
+    if (documentoObrigatorio && !documentoId) {
+      toast.error("Selecione o documento exigido para esta devolução");
       return;
     }
     await repo.saveMovimentacao({
@@ -565,6 +646,8 @@ function FormularioDevolucao() {
       local_id: origem.local_id ?? null,
       equipe_id: origem.equipe_id,
       movimentacao_origem_id: origem.id,
+      documento_id: documentoObrigatorio ? documentoId : null,
+      documento_item_id: null,
       observacao:
         `Devolução da saída de ${formatarData(origem.data)} (${nomeFunc(origem.funcionario_id)}). ${observacao.trim()}`.trim(),
     });
@@ -572,6 +655,7 @@ function FormularioDevolucao() {
     setOrigemId(null);
     setQuantidade("");
     setObservacao("");
+    setDocumentoId(null);
   };
 
   return (
@@ -629,6 +713,25 @@ function FormularioDevolucao() {
             <Label>Data</Label>
             <Input type="date" value={data} onChange={(e) => setData(e.target.value)} />
           </div>
+
+          {documentoObrigatorio && (
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label>Documento (obrigatório)</Label>
+              <Combobox
+                placeholder="Selecionar documento"
+                vazio="Nenhum documento disponível"
+                value={documentoId}
+                onChange={setDocumentoId}
+                opcoes={documentosDisponiveis.map((documento) => ({
+                  value: documento.id,
+                  label: `${documento.numero} · ${documento.tipo.replace("_", " ")}`,
+                }))}
+              />
+              <p className="text-xs text-muted-foreground">
+                A configuração do projeto exige um documento nesta operação.
+              </p>
+            </div>
+          )}
 
           <div className="space-y-1.5 sm:col-span-2">
             <Label>Observação</Label>

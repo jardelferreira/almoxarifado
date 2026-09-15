@@ -6,6 +6,7 @@ import {
   ChevronRight,
   ClipboardList,
   Database,
+  FileText,
   HardHat,
   LayoutDashboard,
   ListChecks,
@@ -22,12 +23,15 @@ import {
   FileChartLine,
   LayoutList,
   FileClock,
+  Settings,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useOnline, useProjetoAtivoId } from "@/hooks/useAppData";
 import { inicializarProjeto } from "@/services/projeto-inicializacao";
+import { configuracoesRepo } from "@/services/configuracoes-repo";
+import type { Configuracao } from "@/types";
 import { useLiveQuery } from "dexie-react-hooks";
 import { getDB } from "@/db/db";
 import { Button } from "@/components/ui/button";
@@ -43,24 +47,28 @@ type NavGroup = {
   label: string;
   icon: typeof Boxes;
   items: NavItem[];
+  // Chave em `configuracao.modulos` que controla se este grupo aparece na navegação.
+  // Grupos sem essa chave ficam sempre visíveis.
+  modulo?: keyof Configuracao["modulos"];
 };
 
 const navGroups: NavGroup[] = [
   {
     label: "Almoxarifado",
     icon: Boxes,
+    modulo: "materiais",
     items: [
       { to: "/app", label: "Dashboard", icon: LayoutDashboard, exact: true },
       { to: "/app/lancar", label: "Lançar", icon: ArrowLeftRight },
       { to: "/app/movimentacoes", label: "Movimentações", icon: FileClock },
       { to: "/app/estoque", label: "Estoque", icon: Warehouse },
       { to: "/app/cadastros", label: "Cadastros", icon: Settings2 },
-      { to: "/app/dados", label: "Dados", icon: Database },
     ],
   },
   {
     label: "Equipamentos",
     icon: Wrench,
+    modulo: "equipamentos",
     items: [
       { to: "/app/equipamentos", label: "Equipamentos", icon: LayoutList },
       { to: "/app/apropriacoes", label: "Apropriações", icon: UserCheck },
@@ -68,12 +76,22 @@ const navGroups: NavGroup[] = [
       { to: "/app/relatorios-equipamentos", label: "Relatorios", icon: FileChartLine },
     ],
   },
+  {
+    label: "Documentos",
+    icon: FileText,
+    modulo: "documentos",
+    items: [
+      { to: "/app/documentos", label: "Documentos", icon: FileText, exact: true },
+    ],
+  },
 ];
 
 function Navigation({
+  groups,
   expanded,
   onNavigate,
 }: {
+  groups: NavGroup[];
   expanded: boolean;
   onNavigate?: () => void;
 }) {
@@ -83,7 +101,7 @@ function Navigation({
   return (
     <nav aria-label="Navegação principal" className="flex-1 overflow-y-auto px-2 py-3">
       <div className="space-y-4">
-        {navGroups.map((group) => {
+        {groups.map((group) => {
           const GroupIcon = group.icon;
 
           return (
@@ -118,6 +136,7 @@ function Navigation({
                       "group relative flex min-h-10 items-center rounded-md text-sm font-medium",
                       "text-sidebar-foreground/80 transition-colors duration-150",
                       "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                      "outline-none focus-visible:ring-2 focus-visible:ring-sidebar-primary focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar",
                       expanded ? "gap-3 px-3" : "justify-center px-2",
                     ].join(" ")}
                     activeProps={{
@@ -125,12 +144,13 @@ function Navigation({
                         "group relative flex min-h-10 items-center rounded-md text-sm font-medium",
                         "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm",
                         "before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-sidebar-primary",
+                        "outline-none focus-visible:ring-2 focus-visible:ring-sidebar-primary focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar",
                         expanded ? "gap-3 px-3" : "justify-center px-2",
                       ].join(" "),
                     }}
                   >
                     <item.icon
-                      className="size-[18px] shrink-0"
+                      className="size-[18px] shrink-0 transition-transform duration-150 group-hover:translate-x-0.5"
                       aria-hidden="true"
                     />
                     {expanded && <span className="truncate">{item.label}</span>}
@@ -185,6 +205,18 @@ export function AppShell({ children }: { children: ReactNode }) {
     [projetoId],
   );
 
+  const configuracao = useLiveQuery(
+    () => (projetoId ? configuracoesRepo.obter(projetoId) : undefined),
+    [projetoId],
+  );
+
+  // Enquanto a configuração ainda não carregou, mantemos todos os grupos visíveis
+  // para não "piscar" a navegação. Depois de carregada, um grupo só some se o
+  // módulo correspondente estiver explicitamente desativado.
+  const gruposVisiveis = navGroups.filter(
+    (group) => !group.modulo || !configuracao || configuracao.modulos[group.modulo] !== false,
+  );
+
   useEffect(() => {
     if (!projetoId) return;
 
@@ -195,8 +227,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div className="min-h-screen bg-background">
       {/* Navegação desktop: recolhível para preservar a área útil. */}
       <aside
-        className={`fixed inset-y-0 left-0 z-30 hidden flex-col bg-sidebar text-sidebar-foreground shadow-sm transition-[width] duration-200 ease-out md:flex ${
-            sidebarAberta ? "w-60" : "w-16"
+        className={`fixed inset-y-0 left-0 z-30 hidden flex-col bg-sidebar text-sidebar-foreground shadow-sm transition-[width] duration-200 ease-out md:flex ${sidebarAberta ? "w-60" : "w-16"
           }`}
       >
         <div
@@ -230,23 +261,30 @@ export function AppShell({ children }: { children: ReactNode }) {
             title={sidebarAberta ? "Recolher menu" : "Expandir menu"}
           >
             {sidebarAberta ? (
-              <ChevronLeft className="size-4" />
+              <ChevronLeft className="size-4 transition-transform duration-200" />
             ) : (
-              <ChevronRight className="size-4" />
+              <ChevronRight className="size-4 transition-transform duration-200" />
             )}
           </Button>
         </div>
 
-        <Navigation expanded={sidebarAberta} />
+        <Navigation groups={gruposVisiveis} expanded={sidebarAberta} />
 
         <div
           className={`border-t border-sidebar-border p-3 text-xs ${sidebarAberta ? "" : "flex justify-center"
             }`}
         >
-          <div className="flex items-center gap-2 text-sidebar-foreground/80">
+          <div
+            className="flex items-center gap-2 text-sidebar-foreground/80"
+            role="status"
+            aria-live="polite"
+          >
             {online ? (
               <>
-                <Wifi className="size-3.5 shrink-0 text-success" />
+                <span className="relative flex size-3.5 shrink-0 items-center justify-center">
+                  <span className="absolute size-2 animate-ping rounded-full bg-success/60" />
+                  <Wifi className="relative size-3.5 text-success" />
+                </span>
                 {sidebarAberta && <span>Online</span>}
               </>
             ) : (
@@ -258,7 +296,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
           {sidebarAberta && (
             <p className="mt-1 text-sidebar-foreground/55">
-              Dados salvos neste dispositivo
+              {online ? "Dados salvos neste dispositivo" : "Sincroniza ao reconectar"}
             </p>
           )}
         </div>
@@ -299,15 +337,20 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
 
         <Navigation
+          groups={gruposVisiveis}
           expanded
           onNavigate={() => setMobileMenuAberto(false)}
         />
 
         <div className="border-t border-sidebar-border p-3 text-xs">
-          <div className="flex items-center gap-2 text-sidebar-foreground/80">
+          <div className="flex items-center gap-2 text-sidebar-foreground/80" role="status" aria-live="polite">
             {online ? (
               <>
-                <Wifi className="size-3.5 text-success" /> Online
+                <span className="relative flex size-3.5 items-center justify-center">
+                  <span className="absolute size-2 animate-ping rounded-full bg-success/60" />
+                  <Wifi className="relative size-3.5 text-success" />
+                </span>
+                Online
               </>
             ) : (
               <>
@@ -316,7 +359,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             )}
           </div>
           <p className="mt-1 text-sidebar-foreground/55">
-            Dados salvos neste dispositivo
+            {online ? "Dados salvos neste dispositivo" : "Sincroniza ao reconectar"}
           </p>
         </div>
       </aside>
@@ -345,14 +388,60 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
           </div>
 
-          <Button
-            variant="outline"
-            size="sm"
-            className="shrink-0"
-            onClick={() => navigate({ to: "/" })}
-          >
-            Trocar projeto
-          </Button>
+          <div className="flex shrink-0 items-center gap-2">
+            <div
+              className="hidden items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground lg:flex"
+              role="status"
+              aria-live="polite"
+              title={online ? "Conectado" : "Sem conexão — dados salvos localmente"}
+            >
+              {online ? (
+                <>
+                  <span className="relative flex size-2.5 items-center justify-center">
+                    <span className="absolute size-2 animate-ping rounded-full bg-success/60" />
+                    <span className="relative size-1.5 rounded-full bg-success" />
+                  </span>
+                  Online
+                </>
+              ) : (
+                <>
+                  <WifiOff className="size-3.5 text-primary" />
+                  Offline
+                </>
+              )}
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate({ to: "/" })}
+              className="outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            >
+              Trocar projeto
+            </Button>
+            <Link
+              to="/app/dados"
+              className="inline-flex h-9 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm font-medium outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              activeProps={{
+                className: "inline-flex h-9 items-center gap-2 rounded-md border border-primary/30 bg-primary/10 px-3 text-sm font-medium text-primary outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+              }}
+              title="Dados, backup e exportação"
+            >
+              <Database className="size-4" aria-hidden="true" />
+              <span className="hidden sm:inline">Dados</span>
+            </Link>
+            <Link
+              to="/app/configuracoes"
+              className="inline-flex h-9 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm font-medium outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              activeProps={{
+                className: "inline-flex h-9 items-center gap-2 rounded-md border border-primary/30 bg-primary/10 px-3 text-sm font-medium text-primary outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+              }}
+              title="Configurações"
+            >
+              <Settings className="size-4" aria-hidden="true" />
+              <span className="hidden sm:inline">Configurações</span>
+            </Link>
+
+          </div>
         </header>
 
         <main className="p-3 sm:p-4 md:p-6">{children}</main>
