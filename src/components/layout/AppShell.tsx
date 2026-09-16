@@ -24,6 +24,7 @@ import {
   LayoutList,
   FileClock,
   Settings,
+  ChartColumn,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useState, useEffect } from "react";
@@ -70,6 +71,7 @@ const navGroups: NavGroup[] = [
         visivel: (configuracao) => configuracao?.inventario.habilitado !== false,
       },
       { to: "/app/cadastros", label: "Cadastros", icon: Settings2 },
+      { to: "/app/estatisticas", label: "Estatísticas", icon: ChartColumn },
     ],
   },
   {
