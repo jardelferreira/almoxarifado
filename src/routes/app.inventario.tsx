@@ -60,7 +60,7 @@ function imprimirInventario(
     const produto = produtoMap.get(item.produto_id);
     const unidade = produto?.unidade_id ? (unidadeMap.get(produto.unidade_id)?.sigla ?? "") : "";
     const contado = item.quantidade_contada == null ? "" : fmt(item.quantidade_contada);
-    const sistema = modo === "CONCLUIDO" ? fmt(item.quantidade_sistema) : "";
+    const sistema = fmt(item.quantidade_sistema);
     const diferenca = modo === "CONCLUIDO" && item.quantidade_contada != null ? fmt(item.quantidade_contada - item.quantidade_sistema) : "";
     return `<tr><td>${produto?.codigo ?? ""}</td><td>${produto?.nome ?? "Produto"}</td><td>${equipeMap.get(item.equipe_id) ?? "—"}</td><td>${unidade}</td><td class="num">${sistema}</td><td class="num">${contado}</td><td class="num">${diferenca}</td><td></td></tr>`;
   }).join("");

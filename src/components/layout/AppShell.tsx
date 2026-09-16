@@ -1,6 +1,5 @@
 import {
   Activity,
-  BarChart3,
   ArrowLeftRight,
   Boxes,
   ChevronLeft,
@@ -42,6 +41,7 @@ type NavItem = {
   label: string;
   icon: typeof LayoutDashboard;
   exact?: boolean;
+  visivel?: (configuracao?: Configuracao) => boolean;
 };
 
 type NavGroup = {
@@ -63,7 +63,12 @@ const navGroups: NavGroup[] = [
       { to: "/app/lancar", label: "Lançar", icon: ArrowLeftRight },
       { to: "/app/movimentacoes", label: "Movimentações", icon: FileClock },
       { to: "/app/estoque", label: "Estoque", icon: Warehouse },
-      { to: "/app/estatisticas", label: "Estatísticas", icon: BarChart3 },
+      {
+        to: "/app/inventario",
+        label: "Inventário",
+        icon: ClipboardList,
+        visivel: (configuracao) => configuracao?.inventario.habilitado !== false,
+      },
       { to: "/app/cadastros", label: "Cadastros", icon: Settings2 },
     ],
   },
@@ -91,11 +96,13 @@ const navGroups: NavGroup[] = [
 function Navigation({
   groups,
   expanded,
+  configuracao,
   onNavigate,
 }: {
   groups: NavGroup[];
   expanded: boolean;
-  onNavigate?: () => void;
+  configuracao?: Configuracao | undefined;
+  onNavigate?: (() => void) | undefined;
 }) {
 
   // const db = getDB(); 
@@ -126,7 +133,7 @@ function Navigation({
               </div>
 
               <div className="space-y-1">
-                {group.items.map((item) => (
+                {group.items.filter((item) => item.visivel ? item.visivel(configuracao) : true).map((item) => (
                   <Link
                     key={item.to}
                     to={item.to}
@@ -270,7 +277,11 @@ export function AppShell({ children }: { children: ReactNode }) {
           </Button>
         </div>
 
-        <Navigation groups={gruposVisiveis} expanded={sidebarAberta} />
+        <Navigation
+          groups={gruposVisiveis}
+          expanded={sidebarAberta}
+          configuracao={configuracao}
+        />
 
         <div
           className={`border-t border-sidebar-border p-3 text-xs ${sidebarAberta ? "" : "flex justify-center"
@@ -341,6 +352,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <Navigation
           groups={gruposVisiveis}
           expanded
+          configuracao={configuracao}
           onNavigate={() => setMobileMenuAberto(false)}
         />
 
