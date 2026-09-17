@@ -24,23 +24,26 @@ export function Combobox({
   onChange,
   placeholder = "Selecionar…",
   vazio = "Nada encontrado",
+  disabled = false,
 }: {
   opcoes: Opcao[];
   value: string | null;
   onChange: (v: string | null) => void;
   placeholder?: string;
   vazio?: string;
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const atual = opcoes.find((o) => o.value === value);
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={disabled ? false : open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
           variant="outline"
           role="combobox"
           className="w-full justify-between font-normal"
+          disabled={disabled}
         >
           <span className={cn("truncate", !atual && "text-muted-foreground")}>
             {atual ? atual.label : placeholder}
@@ -48,8 +51,9 @@ export function Combobox({
           <ChevronsUpDown className="size-4 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
-        <Command>
+      {!disabled && (
+        <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+          <Command>
           <CommandInput placeholder="Pesquisar…" />
           <CommandList>
             <CommandEmpty>{vazio}</CommandEmpty>
@@ -87,8 +91,9 @@ export function Combobox({
               ))}
             </CommandGroup>
           </CommandList>
-        </Command>
-      </PopoverContent>
+          </Command>
+        </PopoverContent>
+      )}
     </Popover>
   );
 }

@@ -85,20 +85,19 @@ const PAGINA = 25;
 function formatarDataMovimentacao(valor?: string | null) {
   if (!valor) return "—";
 
-  const data = valor.slice(0, 10);
-  const partes = data.split("-");
-
-  if (partes.length !== 3 || partes.some((parte) => !parte)) {
-    return valor;
+  // Registros legados podem possuir apenas a data; nesse caso não inventamos horário.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(valor)) {
+    const [ano, mes, dia] = valor.split("-");
+    return `${dia}/${mes}/${ano}`;
   }
 
-  const [ano, mes, dia] = partes;
-  const dataFormatada = `${dia}/${mes}/${ano}`;
+  const data = new Date(valor);
+  if (Number.isNaN(data.getTime())) return valor;
 
-  const horaMatch = valor.match(/T(\d{2}):(\d{2})/);
-  if (!horaMatch) return dataFormatada;
-
-  return `${dataFormatada} ${horaMatch[1]}:${horaMatch[2]}`;
+  return new Intl.DateTimeFormat("pt-BR", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(data);
 }
 
 function dataParaFiltro(valor?: string | null) {

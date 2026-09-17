@@ -69,7 +69,7 @@ import {
   SEM_EQUIPE_ID,
   SEM_RESPONSAVEL_ID,
 } from "@/services/estatisticas-materiais";
-import { num } from "@/utils/format";
+import { formatarData, num } from "@/utils/format";
 import { PrintReport } from "@/components/estatisticas/PrintReport";
 import {
   ChartCard,
@@ -1821,10 +1821,20 @@ const AbaConsumo = memo(function AbaConsumo({
                   </div>
                 ) : null}
 
-                <p className="rounded-lg border bg-muted/30 p-3 text-xs leading-relaxed text-muted-foreground">
-                  A estimativa usa somente saídas do período e o estoque físico atual. Sem consumo suficiente, tendência e
-                  cobertura permanecem indeterminadas.
-                </p>
+                <div className="rounded-lg border bg-muted/30 p-3 text-xs leading-relaxed text-muted-foreground">
+                  {produtoAnalise.periodoEfetivoConsumo ? (
+                    <p>
+                      Período efetivo de consumo: {formatarData(produtoAnalise.periodoEfetivoConsumo.de)} até {formatarData(produtoAnalise.periodoEfetivoConsumo.ate)}.
+                      {produtoAnalise.intervaloMedioSaidasDias !== null
+                        ? ` Intervalo médio entre saídas: ${num(produtoAnalise.intervaloMedioSaidasDias)} dia(s).`
+                        : ""}
+                    </p>
+                  ) : null}
+                  <p className={produtoAnalise.periodoEfetivoConsumo ? "mt-1" : undefined}>
+                    A estimativa usa somente saídas do período e o estoque físico atual. Sem consumo suficiente, tendência e
+                    cobertura permanecem indeterminadas.
+                  </p>
+                </div>
               </div>
             ) : (
               <EmptyState

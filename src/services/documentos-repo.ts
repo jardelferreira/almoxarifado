@@ -25,6 +25,19 @@ function validarQuantidade(quantidade: number): void {
   }
 }
 
+async function validarEquipeDestino(
+  projetoId: string,
+  equipeId?: string | null,
+): Promise<void> {
+  if (!equipeId) return;
+  const equipe = await getDB().equipes.get(equipeId);
+  if (!equipe) throw new Error("Equipe destino não encontrada.");
+  if (equipe.projeto_id !== projetoId) {
+    throw new Error("A equipe destino não pertence ao projeto do documento.");
+  }
+  if (!equipe.ativo) throw new Error("A equipe destino está inativa.");
+}
+
 function calcularStatus(totalDocumentado: number, totalLancado: number): DocumentoStatus {
   if (totalLancado <= Number.EPSILON) return "PENDENTE";
   if (totalLancado >= totalDocumentado - Number.EPSILON) return "CONCLUIDO";
@@ -61,14 +74,16 @@ export const documentosRepo = {
       atualizado_em: agora,
     };
 
-    const itensCriados: DocumentoItem[] = itens.map((item) => {
+    for (const item of itens) {
       validarQuantidade(item.quantidade);
-      return {
-        ...item,
-        id: uid(),
-        documento_id: documento.id,
-      };
-    });
+      await validarEquipeDestino(projetoId, item.equipe_destino_id);
+    }
+
+    const itensCriados: DocumentoItem[] = itens.map((item) => ({
+      ...item,
+      id: uid(),
+      documento_id: documento.id,
+    }));
 
     const db = getDB();
     await db.transaction("rw", db.documentos, db.documento_itens, async () => {
@@ -221,6 +236,7 @@ export const documentosRepo = {
     }
 
     validarQuantidade(dados.quantidade);
+    await validarEquipeDestino(documento.projeto_id, dados.equipe_destino_id);
 
     const item: DocumentoItem = {
       ...dados,
@@ -246,13 +262,21 @@ export const documentosRepo = {
       throw new Error("Não é possível editar itens de um documento cancelado.");
     }
 
+    const lancada = await this.quantidadeLancada(itemId);
+
     if (dados.quantidade !== undefined) {
       validarQuantidade(dados.quantidade);
-      const lancada = await this.quantidadeLancada(itemId);
       if (dados.quantidade + Number.EPSILON < lancada) {
         throw new Error(
           `A quantidade documentada não pode ser menor que a quantidade já lançada (${lancada}).`,
         );
+      }
+    }
+
+    if (dados.equipe_destino_id !== undefined) {
+      await validarEquipeDestino(documento.projeto_id, dados.equipe_destino_id);
+      if (lancada > Number.EPSILON && dados.equipe_destino_id !== item.equipe_destino_id) {
+        throw new Error("A equipe destino não pode ser alterada depois que o item já foi lançado no estoque.");
       }
     }
 

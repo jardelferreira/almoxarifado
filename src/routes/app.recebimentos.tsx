@@ -199,7 +199,7 @@ function RecebimentosPage() {
         documentoItemId: itemSelecionado.id,
         equipeId,
         quantidade: valor,
-        data: new Date(`${data}T12:00:00`).toISOString(),
+        data,
         localId,
         observacao: observacao.trim() || null,
       });

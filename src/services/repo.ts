@@ -1,5 +1,6 @@
 import { getDB, uid } from "@/db/db";
 import { configuracoesRepo } from "@/services/configuracoes-repo";
+import { normalizarDataHoraLocal } from "@/utils/format";
 import type {
   Categoria,
   Empresa,
@@ -549,6 +550,7 @@ export const repo = {
     const mov: Movimentacao = {
       ...m,
       id: m.id ?? uid(),
+      data: normalizarDataHoraLocal(m.data) ?? m.data,
     };
 
     await db.movimentacoes.put(mov);
@@ -623,7 +625,7 @@ export const repo = {
       throw new Error(`Quantidade insuficiente na equipe de origem "${equipeOrigem.nome}". Disponível: ${saldoOrigem}.`);
     }
 
-    const agora = new Date().toISOString();
+    const dataMovimentacao = normalizarDataHoraLocal(data) ?? data;
     const origemId = uid();
     const destinoId = uid();
     const nota = observacao?.trim() || null;
@@ -631,7 +633,7 @@ export const repo = {
     const origem: Movimentacao = {
       id: origemId,
       projeto_id: projetoId,
-      data,
+      data: dataMovimentacao,
       tipo: "TRANSFERENCIA",
       produto_id: produtoId,
       quantidade,
@@ -650,7 +652,7 @@ export const repo = {
     const destino: Movimentacao = {
       id: destinoId,
       projeto_id: projetoId,
-      data,
+      data: dataMovimentacao,
       tipo: "TRANSFERENCIA",
       produto_id: produtoId,
       quantidade,

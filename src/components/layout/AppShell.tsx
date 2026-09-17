@@ -110,7 +110,7 @@ function Navigation({
   // const db = getDB(); 
   // db.movimentacoes_equipamentos.clear()
   return (
-    <nav aria-label="Navegação principal" className="flex-1 overflow-y-auto px-2 py-3">
+    <nav aria-label="Navegação principal" className="sidebar-scrollbar flex-1 overflow-y-auto px-2 py-3">
       <div className="space-y-4">
         {groups.map((group) => {
           const GroupIcon = group.icon;

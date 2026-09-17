@@ -144,9 +144,10 @@ export function useDados(projetoId: string | null) {
         produtos,
         equipes,
         equipeMembros,
-        movimentacoes: movimentacoes.sort((a, b) =>
-          a.data < b.data ? 1 : -1,
-        ),
+        movimentacoes: movimentacoes.sort((a, b) => {
+          const data = b.data.localeCompare(a.data);
+          return data !== 0 ? data : b.id.localeCompare(a.id);
+        }),
       };
     },
     [projetoId],

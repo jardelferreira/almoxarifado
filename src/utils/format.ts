@@ -21,3 +21,36 @@ export function hoje() {
 export function num(v: number) {
   return new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 }).format(v);
 }
+
+
+/**
+ * Converte uma data de negócio sem horário (YYYY-MM-DD) para um instante
+ * baseado no relógio local do computador. O retorno é ISO UTC, permitindo
+ * que a exibição converta o instante novamente para o fuso local do usuário.
+ */
+export function normalizarDataHoraLocal(data?: string | null, agora = new Date()) {
+  if (!data) return data ?? null;
+
+  const dataMatch = data.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dataMatch) {
+    const [, ano, mes, dia] = dataMatch;
+    const local = new Date(
+      Number(ano),
+      Number(mes) - 1,
+      Number(dia),
+      agora.getHours(),
+      agora.getMinutes(),
+      agora.getSeconds(),
+      agora.getMilliseconds(),
+    );
+    return local.toISOString();
+  }
+
+  // ISO sem timezone: trata como horário local antes de normalizar para UTC.
+  const semFuso = data.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?)$/);
+  if (semFuso) {
+    return new Date(data).toISOString();
+  }
+
+  return data;
+}

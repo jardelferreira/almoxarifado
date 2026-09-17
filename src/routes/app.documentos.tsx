@@ -118,6 +118,7 @@ type ItemForm = {
   descricao: string;
   quantidade: string;
   valor_unitario: string;
+  equipe_destino_id: string | null;
 };
 
 const documentoInicial: DocumentoForm = {
@@ -136,6 +137,7 @@ const itemInicial: ItemForm = {
   descricao: "",
   quantidade: "1",
   valor_unitario: "",
+  equipe_destino_id: null,
 };
 
 function StatusBadge({ status }: { status: DocumentoStatus }) {
@@ -350,6 +352,7 @@ function DocumentosPage() {
         quantidade,
         valor_unitario: itemForm.valor_unitario ? Number(itemForm.valor_unitario) : null,
         valor_total: itemForm.valor_unitario ? Number(itemForm.valor_unitario) * quantidade : null,
+        equipe_destino_id: itemForm.equipe_destino_id,
       });
       setItemAberto(false);
       setItemForm(itemInicial);
@@ -405,7 +408,21 @@ function DocumentosPage() {
         return;
       }
       setQuantidadeLancamento(String(saldo.quantidadePendente));
-      setEquipeLancamento(dados?.equipes.find((equipe) => equipe.ativo)?.id ?? null);
+      const equipeDestino = item.equipe_destino_id
+        ? dados?.equipes.find((equipe) => equipe.id === item.equipe_destino_id && equipe.ativo)?.id ?? null
+        : dados?.equipes.find((equipe) =>
+            equipe.ativo &&
+            equipe.nome
+              .trim()
+              .normalize("NFD")
+              .replace(/[\u0300-\u036f]/g, "")
+              .toLocaleLowerCase("pt-BR") === "almoxarifado",
+          )?.id ?? null;
+      if (!equipeDestino) {
+        toast.error(item.equipe_destino_id ? "A equipe destino definida no item não está disponível." : "Cadastre uma equipe ativa chamada Almoxarifado para receber itens sem equipe destino.");
+        return;
+      }
+      setEquipeLancamento(equipeDestino);
       setLocalLancamento(null);
       setLancamentoAberto(item);
     } catch (error) {
@@ -897,6 +914,7 @@ function DocumentosPage() {
                       <tr>
                         <th className="px-4 py-3">Produto / descrição</th>
                         <th className="px-4 py-3 text-right">Documentado</th>
+                        <th className="px-4 py-3">Equipe destino</th>
                         <th className="px-4 py-3 text-right">Lançado</th>
                         <th className="px-4 py-3 text-right">Pendente</th>
                         <th className="w-32 px-4 py-3" />
@@ -925,6 +943,7 @@ function DocumentosPage() {
                               {produto && produto.nome !== item.descricao && <p className="text-xs text-muted-foreground">{item.descricao}</p>}
                             </td>
                             <td className="num px-4 py-3 text-right">{formatarNumero(item.quantidade)} {(unidadeMap.get(produto?.unidade_id ?? "")?.sigla ?? "")}</td>
+                            <td className="px-4 py-3 text-sm">{equipeMap.get(item.equipe_destino_id ?? "") ?? <span className="text-muted-foreground">Almoxarifado (padrão)</span>}</td>
                             <td className="num px-4 py-3 text-right">{formatarNumero(lancada)} {obterUnidadeProduto(item.produto_id)?.sigla ?? ""}</td>
                             <td className="num px-4 py-3 text-right font-semibold">{formatarNumero(pendente)} {obterUnidadeProduto(item.produto_id)?.sigla ?? ""}</td>
                             <td className="px-4 py-3">
@@ -970,6 +989,10 @@ function DocumentosPage() {
                               Sem unidade
                             </Badge>
                           )}
+                        </div>
+                        <div className="mt-2 rounded-lg border bg-muted/20 px-3 py-2 text-xs">
+                          <span className="text-muted-foreground">Equipe destino: </span>
+                          <span className="font-medium">{equipeMap.get(item.equipe_destino_id ?? "") ?? "Almoxarifado (padrão)"}</span>
                         </div>
                         <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
                           <div><p className="text-muted-foreground">Documentado</p><p className="mt-0.5 font-semibold">{formatarNumero(item.quantidade)} {obterUnidadeProduto(item.produto_id)?.sigla ?? ""}</p></div>
@@ -1241,6 +1264,21 @@ function DocumentosPage() {
               </div>
             </section>
 
+            <section className="rounded-2xl border bg-muted/20 p-4 sm:p-5">
+              <div className="space-y-1.5">
+                <Label>Equipe destino <span className="font-normal text-muted-foreground">(opcional)</span></Label>
+                <Combobox
+                  placeholder="Sem definição — usa Almoxarifado"
+                  value={itemForm.equipe_destino_id}
+                  onChange={(value) => setItemForm((atual) => ({ ...atual, equipe_destino_id: value }))}
+                  opcoes={dados.equipes.filter((equipe) => equipe.ativo).map((equipe) => ({ value: equipe.id, label: equipe.nome }))}
+                />
+                <p className="text-xs leading-5 text-muted-foreground">
+                  Quando definida, esta equipe receberá o item no lançamento. Sem definição, o sistema direcionará automaticamente para a equipe <strong className="font-semibold text-foreground">Almoxarifado</strong>.
+                </p>
+              </div>
+            </section>
+
             <section className="space-y-5">
               <div className="space-y-1.5">
                 <Label>Descrição do item</Label>
@@ -1307,13 +1345,12 @@ function DocumentosPage() {
                 <Input type="number" min="0.0001" step="any" value={quantidadeLancamento} onChange={(e) => setQuantidadeLancamento(e.target.value)} />
               </div>
               <div className="space-y-1.5">
-                <Label>Equipe de estoque</Label>
-                <Combobox
-                  placeholder="Selecione a equipe"
-                  value={equipeLancamento}
-                  onChange={setEquipeLancamento}
-                  opcoes={dados.equipes.filter((equipe) => equipe.ativo).map((equipe) => ({ value: equipe.id, label: equipe.nome }))}
-                />
+                <Label>Equipe destino</Label>
+                <div className="rounded-lg border bg-muted/20 px-3 py-2.5 text-sm font-medium">
+                  {dados.equipes.find((equipe) => equipe.id === equipeLancamento)?.nome ?? "—"}
+                  {!lancamentoAberto.equipe_destino_id && equipeLancamento ? " (padrão)" : ""}
+                </div>
+                <p className="text-xs text-muted-foreground">Destino definido no item da nota e não pode ser alterado durante o recebimento.</p>
               </div>
               <div className="space-y-1.5">
                 <Label>Local</Label>

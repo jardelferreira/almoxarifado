@@ -34,6 +34,8 @@ export type ProdutoEstatistica = {
   diasAteMinimo: number | null;
   dataEstimadaRuptura: string | null;
   dataEstimadaMinimo: string | null;
+  periodoEfetivoConsumo: PeriodoEstatisticas | null;
+  intervaloMedioSaidasDias: number | null;
   abaixoDoMinimo: boolean;
   semConsumo: boolean;
 };
@@ -685,6 +687,67 @@ export function calcularComparacaoPorResponsavel(
     .slice(0, Math.max(1, limite));
 }
 
+export type PeriodoEfetivoConsumo = PeriodoEstatisticas & {
+  intervaloMedioSaidasDias: number | null;
+};
+
+function calcularPeriodoEfetivoConsumoDatas(
+  datasSaida: Iterable<string>,
+  periodo: PeriodoEstatisticas,
+): PeriodoEfetivoConsumo | null {
+  const diasSaida = [...new Set(datasSaida)].sort();
+  if (!diasSaida.length) return null;
+
+  let intervaloMedioSaidasDias: number | null = null;
+  let ate = periodo.ate;
+
+  if (diasSaida.length >= 2) {
+    const intervalos = diasSaida
+      .slice(1)
+      .map((data, index) => {
+        const dataAnterior = diasSaida[index];
+        if (!dataAnterior) return null;
+
+        const inicio = parseData(dataAnterior);
+        const fim = parseData(data);
+        if (Number.isNaN(inicio.getTime()) || Number.isNaN(fim.getTime())) return null;
+        return Math.max(0, Math.round((fim.getTime() - inicio.getTime()) / DAY_MS));
+      })
+      .filter((valor): valor is number => valor !== null);
+
+    if (intervalos.length) {
+      const mediaBruta = intervalos.reduce((total, valor) => total + valor, 0) / intervalos.length;
+      intervaloMedioSaidasDias = Math.max(1, Math.round(mediaBruta));
+      const ultimaDataSaida = diasSaida[diasSaida.length - 1];
+      if (ultimaDataSaida) {
+        const fimProjetado = adicionarDias(ultimaDataSaida, intervaloMedioSaidasDias);
+        if (fimProjetado && fimProjetado < ate) ate = fimProjetado;
+      }
+    }
+  }
+
+  const primeiraDataSaida = diasSaida[0];
+  if (!primeiraDataSaida) return null;
+
+  return {
+    de: primeiraDataSaida,
+    ate,
+    intervaloMedioSaidasDias,
+  };
+}
+
+function calcularPeriodoEfetivoConsumo(
+  movimentacoesProduto: Movimentacao[],
+  periodo: PeriodoEstatisticas,
+): PeriodoEfetivoConsumo | null {
+  return calcularPeriodoEfetivoConsumoDatas(
+    filtrarMovimentacoesPeriodo(movimentacoesProduto, periodo)
+      .filter((movimentacao) => movimentacao.tipo === "SAIDA")
+      .map((movimentacao) => movimentacao.data.slice(0, 10)),
+    periodo,
+  );
+}
+
 export function adicionarDias(dataISO: string, dias: number): string {
   const data = parseData(dataISO);
   if (Number.isNaN(data.getTime())) return "";
@@ -790,12 +853,11 @@ export function calcularProdutosEstatisticas(
   movimentacoes: Movimentacao[],
   periodo: PeriodoEstatisticas,
 ): ProdutoEstatistica[] {
-  const porProduto = new Map<string, { estoqueAtual: number; consumoPeriodo: number }>();
+  const porProduto = new Map<string, { estoqueAtual: number; consumoPeriodo: number; diasSaida: Set<string> }>();
   for (const produto of produtos) {
-    porProduto.set(produto.id, { estoqueAtual: 0, consumoPeriodo: 0 });
+    porProduto.set(produto.id, { estoqueAtual: 0, consumoPeriodo: 0, diasSaida: new Set<string>() });
   }
 
-  const diasPeriodo = diferencaDiasPeriodo(periodo);
   for (const movimentacao of movimentacoes) {
     const atual = porProduto.get(movimentacao.produto_id);
     if (!atual) continue;
@@ -805,12 +867,15 @@ export function calcularProdutosEstatisticas(
       case "DEVOLUCAO":
         atual.estoqueAtual += movimentacao.quantidade;
         break;
-      case "SAIDA":
+      case "SAIDA": {
         atual.estoqueAtual -= movimentacao.quantidade;
-        if (movimentacao.data.slice(0, 10) >= periodo.de && movimentacao.data.slice(0, 10) <= periodo.ate) {
+        const data = movimentacao.data.slice(0, 10);
+        if (data >= periodo.de && data <= periodo.ate) {
           atual.consumoPeriodo += movimentacao.quantidade;
+          atual.diasSaida.add(data);
         }
         break;
+      }
       case "AJUSTE":
       case "TRANSFERENCIA":
         atual.estoqueAtual += (movimentacao.sinal ?? 1) * movimentacao.quantidade;
@@ -819,7 +884,10 @@ export function calcularProdutosEstatisticas(
   }
 
   return produtos.map((produto) => {
-    const atual = porProduto.get(produto.id) ?? { estoqueAtual: 0, consumoPeriodo: 0 };
+    const atual = porProduto.get(produto.id) ?? { estoqueAtual: 0, consumoPeriodo: 0, diasSaida: new Set<string>() };
+    const periodoEfetivo = calcularPeriodoEfetivoConsumoDatas(atual.diasSaida, periodo);
+    const periodoCalculo = periodoEfetivo ?? periodo;
+    const diasPeriodo = diferencaDiasPeriodo(periodoCalculo);
     const consumoMedioDiario = atual.consumoPeriodo / diasPeriodo;
     const consumoMedioSemanal = consumoMedioDiario * 7;
     const consumoMedioMensal = consumoMedioDiario * 30.4375;
@@ -827,8 +895,9 @@ export function calcularProdutosEstatisticas(
     const coberturaDias = consumoMedioDiario > 0 ? Math.max(0, atual.estoqueAtual) / consumoMedioDiario : null;
     const saldoAcimaDoMinimo = Math.max(0, atual.estoqueAtual - estoqueMinimo);
     const diasAteMinimo = consumoMedioDiario > 0 ? saldoAcimaDoMinimo / consumoMedioDiario : null;
-    const dataEstimadaRuptura = coberturaDias === null ? null : adicionarDias(periodo.ate, coberturaDias);
-    const dataEstimadaMinimo = diasAteMinimo === null ? null : adicionarDias(periodo.ate, diasAteMinimo);
+    const baseData = periodoCalculo.ate;
+    const dataEstimadaRuptura = coberturaDias === null ? null : adicionarDias(baseData, coberturaDias);
+    const dataEstimadaMinimo = diasAteMinimo === null ? null : adicionarDias(baseData, diasAteMinimo);
 
     return {
       produtoId: produto.id,
@@ -841,8 +910,12 @@ export function calcularProdutosEstatisticas(
       consumoMedioMensal: Number(consumoMedioMensal.toFixed(4)),
       coberturaDias: coberturaDias === null ? null : Number(coberturaDias.toFixed(1)),
       diasAteMinimo: diasAteMinimo === null ? null : Number(diasAteMinimo.toFixed(1)),
-      dataEstimadaRuptura: coberturaDias !== null && atual.estoqueAtual > 0 ? dataEstimadaRuptura : null,
-      dataEstimadaMinimo: diasAteMinimo !== null && atual.estoqueAtual > estoqueMinimo ? dataEstimadaMinimo : null,
+      dataEstimadaRuptura:
+        coberturaDias !== null && atual.estoqueAtual > 0 ? dataEstimadaRuptura : null,
+      dataEstimadaMinimo:
+        diasAteMinimo !== null && atual.estoqueAtual > estoqueMinimo ? dataEstimadaMinimo : null,
+      periodoEfetivoConsumo: periodoEfetivo ? { de: periodoEfetivo.de, ate: periodoEfetivo.ate } : null,
+      intervaloMedioSaidasDias: periodoEfetivo?.intervaloMedioSaidasDias ?? null,
       abaixoDoMinimo: atual.estoqueAtual < estoqueMinimo,
       semConsumo: atual.consumoPeriodo <= 0,
     };
@@ -1207,7 +1280,7 @@ export function calcularProdutoEstatistica(
   movimentacoes: Movimentacao[],
   periodo: PeriodoEstatisticas,
 ): ProdutoEstatistica {
-  const movsProduto = movimentacoes.filter((m) => m.produto_id === produto.id);
+  const movsProduto = movimentacoes.filter((movimentacao) => movimentacao.produto_id === produto.id);
   const estoqueAtual = movsProduto.reduce((saldo, movimentacao) => {
     switch (movimentacao.tipo) {
       case "ENTRADA":
@@ -1223,11 +1296,13 @@ export function calcularProdutoEstatistica(
     }
   }, 0);
 
+  const periodoEfetivo = calcularPeriodoEfetivoConsumo(movsProduto, periodo);
+  const periodoCalculo = periodoEfetivo ?? periodo;
   const movsPeriodo = filtrarMovimentacoesPeriodo(movsProduto, periodo);
   const consumoPeriodo = movsPeriodo
-    .filter((m) => m.tipo === "SAIDA")
+    .filter((movimentacao) => movimentacao.tipo === "SAIDA")
     .reduce((total, movimentacao) => total + movimentacao.quantidade, 0);
-  const diasPeriodo = diferencaDiasPeriodo(periodo);
+  const diasPeriodo = diferencaDiasPeriodo(periodoCalculo);
   const consumoMedioDiario = consumoPeriodo / diasPeriodo;
   const consumoMedioSemanal = consumoMedioDiario * 7;
   const consumoMedioMensal = consumoMedioDiario * 30.4375;
@@ -1237,9 +1312,8 @@ export function calcularProdutoEstatistica(
   const saldoAcimaDoMinimo = Math.max(0, estoqueAtual - estoqueMinimo);
   const diasAteMinimo = consumoMedioDiario > 0 ? saldoAcimaDoMinimo / consumoMedioDiario : null;
 
-  const baseData = parseData(periodo.ate);
-  const dataEstimadaRuptura = coberturaDias === null ? null : adicionarDias(periodo.ate, coberturaDias);
-  const dataEstimadaMinimo = diasAteMinimo === null ? null : adicionarDias(periodo.ate, diasAteMinimo);
+  const dataEstimadaRuptura = coberturaDias === null ? null : adicionarDias(periodoCalculo.ate, coberturaDias);
+  const dataEstimadaMinimo = diasAteMinimo === null ? null : adicionarDias(periodoCalculo.ate, diasAteMinimo);
 
   return {
     produtoId: produto.id,
@@ -1253,11 +1327,11 @@ export function calcularProdutoEstatistica(
     coberturaDias: coberturaDias === null ? null : Number(coberturaDias.toFixed(1)),
     diasAteMinimo: diasAteMinimo === null ? null : Number(diasAteMinimo.toFixed(1)),
     dataEstimadaRuptura:
-      baseData && coberturaDias !== null && estoqueAtual > 0 ? dataEstimadaRuptura : null,
+      coberturaDias !== null && estoqueAtual > 0 ? dataEstimadaRuptura : null,
     dataEstimadaMinimo:
-      baseData && diasAteMinimo !== null && estoqueAtual > estoqueMinimo
-        ? dataEstimadaMinimo
-        : null,
+      diasAteMinimo !== null && estoqueAtual > estoqueMinimo ? dataEstimadaMinimo : null,
+    periodoEfetivoConsumo: periodoEfetivo ? { de: periodoEfetivo.de, ate: periodoEfetivo.ate } : null,
+    intervaloMedioSaidasDias: periodoEfetivo?.intervaloMedioSaidasDias ?? null,
     abaixoDoMinimo: estoqueAtual < estoqueMinimo,
     semConsumo: consumoPeriodo <= 0,
   };

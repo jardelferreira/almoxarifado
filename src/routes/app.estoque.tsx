@@ -39,6 +39,7 @@ import { formatarData, num } from "@/utils/format";
 
 type Busca = { produto?: string };
 type FiltrosEstoque = {
+  produtoId: string;
   equipeId: string;
   categoriaId: string;
   unidadeId: string;
@@ -118,7 +119,7 @@ function EstoquePage() {
   const [detalhe, setDetalhe] = useState<string | null>(produtoParam ?? null);
   const [equipeId, setEquipeId] = useState<string | null>(null);
   const [filtros, setFiltros] = useState<FiltrosEstoque>({
-    equipeId: "", categoriaId: "", unidadeId: "", status: "", saldo: "",
+    produtoId: "", equipeId: "", categoriaId: "", unidadeId: "", status: "", saldo: "COM_ESTOQUE",
   });
   const [historicoFiltros, setHistoricoFiltros] = useState({
     de: "", ate: "", tipo: "", funcionarioId: "", documentoId: "",
@@ -143,6 +144,7 @@ function EstoquePage() {
       .filter((i) => !termo || [
         i.produto.nome, i.produto.codigo, i.produto.marca, i.produto.modelo,
       ].filter(Boolean).join(" ").toLocaleLowerCase("pt-BR").includes(termo))
+      .filter((i) => !filtros.produtoId || i.produto.id === filtros.produtoId)
       .filter((i) => !filtros.equipeId || i.equipe.id === filtros.equipeId)
       .filter((i) => !filtros.categoriaId || i.produto.categoria_id === filtros.categoriaId)
       .filter((i) => !filtros.unidadeId || i.produto.unidade_id === filtros.unidadeId)
@@ -150,6 +152,17 @@ function EstoquePage() {
       .filter((i) => !filtros.saldo || (filtros.saldo === "ZERADO" ? i.estoque === 0 : i.estoque > 0))
       .sort((a, b) => a.produto.nome.localeCompare(b.produto.nome));
   }, [itens, q, filtros]);
+
+  const quantidadeFiltrada = useMemo(() => {
+    const produtoIds = new Set(filtrados.map((item) => item.produto.id));
+    if (produtoIds.size !== 1) return null;
+    const produtoId = produtoIds.values().next().value as string | undefined;
+    if (!produtoId) return null;
+    const quantidade = filtrados.reduce((total, item) => total + item.estoque, 0);
+    const produto = dados?.produtos.find((item) => item.id === produtoId);
+    const unidade = dados?.unidades.find((item) => item.id === produto?.unidade_id);
+    return { quantidade, unidade: unidade?.sigla ?? "" };
+  }, [dados?.produtos, dados?.unidades, filtrados]);
 
   const item = itens.find((i) => i.produto.id === detalhe && (!equipeId || i.equipe.id === equipeId));
 
@@ -174,7 +187,7 @@ function EstoquePage() {
   const documentoMap = useMemo(() => new Map((documentos ?? []).map((d) => [d.id, d])), [documentos]);
   const localMap = useMemo(() => new Map(dados?.locais.map((l) => [l.id, l]) ?? []), [dados?.locais]);
 
-  const limparFiltros = () => setFiltros({ equipeId: "", categoriaId: "", unidadeId: "", status: "", saldo: "" });
+  const limparFiltros = () => setFiltros({ produtoId: "", equipeId: "", categoriaId: "", unidadeId: "", status: "", saldo: "COM_ESTOQUE" });
   const limparHistorico = () => setHistoricoFiltros({ de: "", ate: "", tipo: "", funcionarioId: "", documentoId: "" });
 
   const imprimirEstoque = () => {
@@ -218,6 +231,7 @@ function EstoquePage() {
           ["Produtos", new Set(filtrados.map(i=>i.produto.id)).size, "produtos distintos"],
           ["Abaixo do mínimo", filtrados.filter(i=>i.baixo).length, "precisam de atenção"],
           ["Estoque zerado", filtrados.filter(i=>i.estoque===0).length, "posições sem saldo"],
+          ["Quantidade", quantidadeFiltrada ? `${num(quantidadeFiltrada.quantidade)} ${quantidadeFiltrada.unidade}`.trim() : "—", quantidadeFiltrada ? "produto selecionado" : "selecione um produto para quantificar"],
         ].map(([label, value, description]) => (
           <Card key={label as string} className="overflow-hidden border-border/70 shadow-sm">
             <CardContent className="p-4">
@@ -241,7 +255,7 @@ function EstoquePage() {
             </Button>
           </div>
 
-          <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+          <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-8">
             <div className="space-y-1.5 xl:col-span-2">
               <Label className="text-xs">Pesquisa</Label>
               <div className="relative">
@@ -250,6 +264,7 @@ function EstoquePage() {
               </div>
             </div>
             {[
+              ["Produto", "produtoId", dados.produtos.filter(p=>p.ativo).map(p=>({value:p.id,label:p.nome}))],
               ["Equipe", "equipeId", dados.equipes.filter(e=>e.ativo).map(e=>({value:e.id,label:e.nome}))],
               ["Categoria", "categoriaId", dados.categorias.map(c=>({value:c.id,label:c.nome}))],
               ["Unidade", "unidadeId", dados.unidades.map(u=>({value:u.id,label:u.sigla}))],

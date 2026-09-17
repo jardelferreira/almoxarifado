@@ -574,6 +574,14 @@ function CadastrosPage() {
                     onChange={(v) =>
                       setEditando({ ...editando, item: { ...editando.item, funcao: v } })
                     }
+                    sugestoes={[
+                      ...new Map(
+                        dados.funcionarios
+                          .map((funcionario) => funcionario.funcao?.trim() ?? "")
+                          .filter(Boolean)
+                          .map((funcao) => [funcao.toLocaleLowerCase("pt-BR"), funcao] as const),
+                      ).values(),
+                    ].sort((a, b) => a.localeCompare(b, "pt-BR"))}
                   />
                   <div className="space-y-1.5">
                     <Label>Empresa</Label>
@@ -727,17 +735,30 @@ function Campo({
   value,
   onChange,
   className,
+  sugestoes,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   className?: string;
+  sugestoes?: string[];
 }) {
   const id = `campo-${label.toLowerCase().replace(/[^a-z]+/g, "-")}`;
+  const listaId = sugestoes?.length ? `${id}-sugestoes` : undefined;
   return (
     <div className={`space-y-1.5 ${className ?? ""}`}>
       <Label htmlFor={id}>{label}</Label>
-      <Input id={id} value={value} onChange={(e) => onChange(e.target.value)} />
+      <Input
+        id={id}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        list={listaId}
+      />
+      {listaId ? (
+        <datalist id={listaId}>
+          {sugestoes?.map((sugestao) => <option key={sugestao} value={sugestao} />)}
+        </datalist>
+      ) : null}
     </div>
   );
 }

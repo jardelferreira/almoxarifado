@@ -1,6 +1,7 @@
 import { getDB, uid } from "@/db/db";
 import type { DocumentoItem, Movimentacao } from "@/types";
 import { documentosRepo } from "./documentos-repo";
+import { normalizarDataHoraLocal } from "@/utils/format";
 
 export interface LancarDocumentoItemDados {
   projetoId: string;
@@ -115,7 +116,7 @@ export const documentoEstoqueService = {
         const movimentacao: Movimentacao = {
           id: uid(),
           projeto_id: dados.projetoId,
-          data: dados.data ?? new Date().toISOString(),
+          data: normalizarDataHoraLocal(dados.data) ?? new Date().toISOString(),
           tipo: "ENTRADA",
           produto_id: item.produto_id,
           quantidade: dados.quantidade,

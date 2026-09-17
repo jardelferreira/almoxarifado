@@ -36,6 +36,8 @@ export interface DocumentoItem {
   quantidade: number;
   valor_unitario?: number | null;
   valor_total?: number | null;
+  /** Equipe que receberá o item quando ele for lançado no estoque. */
+  equipe_destino_id?: ID | null;
 }
 
 export type DocumentoReferenciaTipo = "REFERENCIA";
