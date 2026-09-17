@@ -26,6 +26,7 @@ import { Route as AppMovimentacoesRouteImport } from './routes/app.movimentacoes
 import { Route as AppMovimentacoesEquipamentosRouteImport } from './routes/app.movimentacoes-equipamentos'
 import { Route as AppRecebimentosRouteImport } from './routes/app.recebimentos'
 import { Route as AppRelatoriosEquipamentosRouteImport } from './routes/app.relatorios-equipamentos'
+import { Route as AppEstatisticasRelatorioRouteImport } from './routes/app.estatisticas.relatorio'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -114,6 +115,12 @@ const AppRelatoriosEquipamentosRoute =
     path: '/relatorios-equipamentos',
     getParentRoute: () => AppRoute,
   } as any)
+const AppEstatisticasRelatorioRoute =
+  AppEstatisticasRelatorioRouteImport.update({
+    id: '/relatorio',
+    path: '/relatorio',
+    getParentRoute: () => AppEstatisticasRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -124,7 +131,7 @@ export interface FileRoutesByFullPath {
   '/app/dados': typeof AppDadosRoute
   '/app/documentos': typeof AppDocumentosRoute
   '/app/equipamentos': typeof AppEquipamentosRoute
-  '/app/estatisticas': typeof AppEstatisticasRoute
+  '/app/estatisticas': typeof AppEstatisticasRouteWithChildren
   '/app/estoque': typeof AppEstoqueRoute
   '/app/inventario': typeof AppInventarioRoute
   '/app/lancar': typeof AppLancarRoute
@@ -133,6 +140,7 @@ export interface FileRoutesByFullPath {
   '/app/recebimentos': typeof AppRecebimentosRoute
   '/app/relatorios-equipamentos': typeof AppRelatoriosEquipamentosRoute
   '/app/': typeof AppIndexRoute
+  '/app/estatisticas/relatorio': typeof AppEstatisticasRelatorioRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -142,7 +150,7 @@ export interface FileRoutesByTo {
   '/app/dados': typeof AppDadosRoute
   '/app/documentos': typeof AppDocumentosRoute
   '/app/equipamentos': typeof AppEquipamentosRoute
-  '/app/estatisticas': typeof AppEstatisticasRoute
+  '/app/estatisticas': typeof AppEstatisticasRouteWithChildren
   '/app/estoque': typeof AppEstoqueRoute
   '/app/inventario': typeof AppInventarioRoute
   '/app/lancar': typeof AppLancarRoute
@@ -151,6 +159,7 @@ export interface FileRoutesByTo {
   '/app/recebimentos': typeof AppRecebimentosRoute
   '/app/relatorios-equipamentos': typeof AppRelatoriosEquipamentosRoute
   '/app': typeof AppIndexRoute
+  '/app/estatisticas/relatorio': typeof AppEstatisticasRelatorioRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -162,7 +171,7 @@ export interface FileRoutesById {
   '/app/dados': typeof AppDadosRoute
   '/app/documentos': typeof AppDocumentosRoute
   '/app/equipamentos': typeof AppEquipamentosRoute
-  '/app/estatisticas': typeof AppEstatisticasRoute
+  '/app/estatisticas': typeof AppEstatisticasRouteWithChildren
   '/app/estoque': typeof AppEstoqueRoute
   '/app/inventario': typeof AppInventarioRoute
   '/app/lancar': typeof AppLancarRoute
@@ -171,6 +180,7 @@ export interface FileRoutesById {
   '/app/recebimentos': typeof AppRecebimentosRoute
   '/app/relatorios-equipamentos': typeof AppRelatoriosEquipamentosRoute
   '/app/': typeof AppIndexRoute
+  '/app/estatisticas/relatorio': typeof AppEstatisticasRelatorioRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -192,6 +202,7 @@ export interface FileRouteTypes {
     | '/app/recebimentos'
     | '/app/relatorios-equipamentos'
     | '/app/'
+    | '/app/estatisticas/relatorio'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -210,6 +221,7 @@ export interface FileRouteTypes {
     | '/app/recebimentos'
     | '/app/relatorios-equipamentos'
     | '/app'
+    | '/app/estatisticas/relatorio'
   id:
     | '__root__'
     | '/'
@@ -229,6 +241,7 @@ export interface FileRouteTypes {
     | '/app/recebimentos'
     | '/app/relatorios-equipamentos'
     | '/app/'
+    | '/app/estatisticas/relatorio'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -357,8 +370,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppRelatoriosEquipamentosRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/estatisticas/relatorio': {
+      id: '/app/estatisticas/relatorio'
+      path: '/relatorio'
+      fullPath: '/app/estatisticas/relatorio'
+      preLoaderRoute: typeof AppEstatisticasRelatorioRouteImport
+      parentRoute: typeof AppEstatisticasRoute
+    }
   }
 }
+
+interface AppEstatisticasRouteChildren {
+  AppEstatisticasRelatorioRoute: typeof AppEstatisticasRelatorioRoute
+}
+
+const AppEstatisticasRouteChildren: AppEstatisticasRouteChildren = {
+  AppEstatisticasRelatorioRoute: AppEstatisticasRelatorioRoute,
+}
+
+const AppEstatisticasRouteWithChildren = AppEstatisticasRoute._addFileChildren(
+  AppEstatisticasRouteChildren,
+)
 
 interface AppRouteChildren {
   AppApropriacoesRoute: typeof AppApropriacoesRoute
@@ -367,7 +399,7 @@ interface AppRouteChildren {
   AppDadosRoute: typeof AppDadosRoute
   AppDocumentosRoute: typeof AppDocumentosRoute
   AppEquipamentosRoute: typeof AppEquipamentosRoute
-  AppEstatisticasRoute: typeof AppEstatisticasRoute
+  AppEstatisticasRoute: typeof AppEstatisticasRouteWithChildren
   AppEstoqueRoute: typeof AppEstoqueRoute
   AppInventarioRoute: typeof AppInventarioRoute
   AppLancarRoute: typeof AppLancarRoute
@@ -385,7 +417,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppDadosRoute: AppDadosRoute,
   AppDocumentosRoute: AppDocumentosRoute,
   AppEquipamentosRoute: AppEquipamentosRoute,
-  AppEstatisticasRoute: AppEstatisticasRoute,
+  AppEstatisticasRoute: AppEstatisticasRouteWithChildren,
   AppEstoqueRoute: AppEstoqueRoute,
   AppInventarioRoute: AppInventarioRoute,
   AppLancarRoute: AppLancarRoute,
