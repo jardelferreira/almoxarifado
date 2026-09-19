@@ -45,6 +45,9 @@ import { num } from "@/utils/format";
 import type { Movimentacao } from "@/types";
 
 export const Route = createFileRoute("/app/movimentacoes")({
+  validateSearch: (search: Record<string, unknown>): MovimentacoesBusca => ({
+    produto: typeof search["produto"] === "string" ? search["produto"] : undefined,
+  }),
   ssr: false,
   head: () => ({
     meta: [
@@ -64,6 +67,8 @@ export const Route = createFileRoute("/app/movimentacoes")({
   }),
   component: MovimentacoesPage,
 });
+
+type MovimentacoesBusca = { produto: string | undefined };
 
 const TIPOS = [
   "ENTRADA",
@@ -85,19 +90,20 @@ const PAGINA = 25;
 function formatarDataMovimentacao(valor?: string | null) {
   if (!valor) return "—";
 
-  // Registros legados podem possuir apenas a data; nesse caso não inventamos horário.
-  if (/^\d{4}-\d{2}-\d{2}$/.test(valor)) {
-    const [ano, mes, dia] = valor.split("-");
-    return `${dia}/${mes}/${ano}`;
+  const data = valor.slice(0, 10);
+  const partes = data.split("-");
+
+  if (partes.length !== 3 || partes.some((parte) => !parte)) {
+    return valor;
   }
 
-  const data = new Date(valor);
-  if (Number.isNaN(data.getTime())) return valor;
+  const [ano, mes, dia] = partes;
+  const dataFormatada = `${dia}/${mes}/${ano}`;
 
-  return new Intl.DateTimeFormat("pt-BR", {
-    dateStyle: "short",
-    timeStyle: "short",
-  }).format(data);
+  const horaMatch = valor.match(/T(\d{2}):(\d{2})/);
+  if (!horaMatch) return dataFormatada;
+
+  return `${dataFormatada} ${horaMatch[1]}:${horaMatch[2]}`;
 }
 
 function dataParaFiltro(valor?: string | null) {
@@ -253,12 +259,13 @@ function abrirImpressao(titulo: string, html: string) {
 }
 
 export function MovimentacoesPage() {
+  const { produto: produtoParam } = Route.useSearch();
   const [projetoId] = useProjetoAtivoId();
   const dados = useDados(projetoId);
 
   const [q, setQ] = useState("");
   const [tipo, setTipo] = useState<string | null>(null);
-  const [produtoId, setProdutoId] = useState<string | null>(null);
+  const [produtoId, setProdutoId] = useState<string | null>(produtoParam ?? null);
   const [funcionarioId, setFuncionarioId] = useState<string | null>(null);
   const [empresaId, setEmpresaId] = useState<string | null>(null);
   const [localId, setLocalId] = useState<string | null>(null);

@@ -24,8 +24,10 @@ import { Route as AppInventarioRouteImport } from './routes/app.inventario'
 import { Route as AppLancarRouteImport } from './routes/app.lancar'
 import { Route as AppMovimentacoesRouteImport } from './routes/app.movimentacoes'
 import { Route as AppMovimentacoesEquipamentosRouteImport } from './routes/app.movimentacoes-equipamentos'
+import { Route as AppProdutoRouteImport } from './routes/app.produto'
 import { Route as AppRecebimentosRouteImport } from './routes/app.recebimentos'
 import { Route as AppRelatoriosEquipamentosRouteImport } from './routes/app.relatorios-equipamentos'
+import { Route as AppVigiaRouteImport } from './routes/app.vigia'
 import { Route as AppEstatisticasRelatorioRouteImport } from './routes/app.estatisticas.relatorio'
 
 const IndexRoute = IndexRouteImport.update({
@@ -104,6 +106,11 @@ const AppMovimentacoesEquipamentosRoute =
     path: '/movimentacoes-equipamentos',
     getParentRoute: () => AppRoute,
   } as any)
+const AppProdutoRoute = AppProdutoRouteImport.update({
+  id: '/produto',
+  path: '/produto',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppRecebimentosRoute = AppRecebimentosRouteImport.update({
   id: '/recebimentos',
   path: '/recebimentos',
@@ -115,6 +122,11 @@ const AppRelatoriosEquipamentosRoute =
     path: '/relatorios-equipamentos',
     getParentRoute: () => AppRoute,
   } as any)
+const AppVigiaRoute = AppVigiaRouteImport.update({
+  id: '/vigia',
+  path: '/vigia',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppEstatisticasRelatorioRoute =
   AppEstatisticasRelatorioRouteImport.update({
     id: '/relatorio',
@@ -137,8 +149,10 @@ export interface FileRoutesByFullPath {
   '/app/lancar': typeof AppLancarRoute
   '/app/movimentacoes': typeof AppMovimentacoesRoute
   '/app/movimentacoes-equipamentos': typeof AppMovimentacoesEquipamentosRoute
+  '/app/produto': typeof AppProdutoRoute
   '/app/recebimentos': typeof AppRecebimentosRoute
   '/app/relatorios-equipamentos': typeof AppRelatoriosEquipamentosRoute
+  '/app/vigia': typeof AppVigiaRoute
   '/app/': typeof AppIndexRoute
   '/app/estatisticas/relatorio': typeof AppEstatisticasRelatorioRoute
 }
@@ -156,8 +170,10 @@ export interface FileRoutesByTo {
   '/app/lancar': typeof AppLancarRoute
   '/app/movimentacoes': typeof AppMovimentacoesRoute
   '/app/movimentacoes-equipamentos': typeof AppMovimentacoesEquipamentosRoute
+  '/app/produto': typeof AppProdutoRoute
   '/app/recebimentos': typeof AppRecebimentosRoute
   '/app/relatorios-equipamentos': typeof AppRelatoriosEquipamentosRoute
+  '/app/vigia': typeof AppVigiaRoute
   '/app': typeof AppIndexRoute
   '/app/estatisticas/relatorio': typeof AppEstatisticasRelatorioRoute
 }
@@ -177,8 +193,10 @@ export interface FileRoutesById {
   '/app/lancar': typeof AppLancarRoute
   '/app/movimentacoes': typeof AppMovimentacoesRoute
   '/app/movimentacoes-equipamentos': typeof AppMovimentacoesEquipamentosRoute
+  '/app/produto': typeof AppProdutoRoute
   '/app/recebimentos': typeof AppRecebimentosRoute
   '/app/relatorios-equipamentos': typeof AppRelatoriosEquipamentosRoute
+  '/app/vigia': typeof AppVigiaRoute
   '/app/': typeof AppIndexRoute
   '/app/estatisticas/relatorio': typeof AppEstatisticasRelatorioRoute
 }
@@ -199,8 +217,10 @@ export interface FileRouteTypes {
     | '/app/lancar'
     | '/app/movimentacoes'
     | '/app/movimentacoes-equipamentos'
+    | '/app/produto'
     | '/app/recebimentos'
     | '/app/relatorios-equipamentos'
+    | '/app/vigia'
     | '/app/'
     | '/app/estatisticas/relatorio'
   fileRoutesByTo: FileRoutesByTo
@@ -218,8 +238,10 @@ export interface FileRouteTypes {
     | '/app/lancar'
     | '/app/movimentacoes'
     | '/app/movimentacoes-equipamentos'
+    | '/app/produto'
     | '/app/recebimentos'
     | '/app/relatorios-equipamentos'
+    | '/app/vigia'
     | '/app'
     | '/app/estatisticas/relatorio'
   id:
@@ -238,8 +260,10 @@ export interface FileRouteTypes {
     | '/app/lancar'
     | '/app/movimentacoes'
     | '/app/movimentacoes-equipamentos'
+    | '/app/produto'
     | '/app/recebimentos'
     | '/app/relatorios-equipamentos'
+    | '/app/vigia'
     | '/app/'
     | '/app/estatisticas/relatorio'
   fileRoutesById: FileRoutesById
@@ -356,6 +380,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppMovimentacoesEquipamentosRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/produto': {
+      id: '/app/produto'
+      path: '/produto'
+      fullPath: '/app/produto'
+      preLoaderRoute: typeof AppProdutoRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/recebimentos': {
       id: '/app/recebimentos'
       path: '/recebimentos'
@@ -368,6 +399,13 @@ declare module '@tanstack/react-router' {
       path: '/relatorios-equipamentos'
       fullPath: '/app/relatorios-equipamentos'
       preLoaderRoute: typeof AppRelatoriosEquipamentosRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/vigia': {
+      id: '/app/vigia'
+      path: '/vigia'
+      fullPath: '/app/vigia'
+      preLoaderRoute: typeof AppVigiaRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/estatisticas/relatorio': {
@@ -405,8 +443,10 @@ interface AppRouteChildren {
   AppLancarRoute: typeof AppLancarRoute
   AppMovimentacoesRoute: typeof AppMovimentacoesRoute
   AppMovimentacoesEquipamentosRoute: typeof AppMovimentacoesEquipamentosRoute
+  AppProdutoRoute: typeof AppProdutoRoute
   AppRecebimentosRoute: typeof AppRecebimentosRoute
   AppRelatoriosEquipamentosRoute: typeof AppRelatoriosEquipamentosRoute
+  AppVigiaRoute: typeof AppVigiaRoute
   AppIndexRoute: typeof AppIndexRoute
 }
 
@@ -423,8 +463,10 @@ const AppRouteChildren: AppRouteChildren = {
   AppLancarRoute: AppLancarRoute,
   AppMovimentacoesRoute: AppMovimentacoesRoute,
   AppMovimentacoesEquipamentosRoute: AppMovimentacoesEquipamentosRoute,
+  AppProdutoRoute: AppProdutoRoute,
   AppRecebimentosRoute: AppRecebimentosRoute,
   AppRelatoriosEquipamentosRoute: AppRelatoriosEquipamentosRoute,
+  AppVigiaRoute: AppVigiaRoute,
   AppIndexRoute: AppIndexRoute,
 }
 

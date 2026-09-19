@@ -22,6 +22,7 @@ import type {
   DocumentoReferencia,
   Inventario,
   InventarioItem,
+  InteligenciaAcao,
 } from "@/types";
 
 export class AlmoxarifadoDB extends Dexie {
@@ -47,6 +48,7 @@ export class AlmoxarifadoDB extends Dexie {
   documento_referencias!: Table<DocumentoReferencia, string>;
   inventarios!: Table<Inventario, string>;
   inventario_itens!: Table<InventarioItem, string>;
+  inteligencia_acoes!: Table<InteligenciaAcao, string>;
 
   constructor() {
     super("almoxarifado");
@@ -489,6 +491,52 @@ export class AlmoxarifadoDB extends Dexie {
         "id, inventario_id, produto_id, equipe_id, quantidade_sistema, quantidade_contada, [inventario_id+produto_id+equipe_id]",
     });
 
+    /**
+     * Versão 13
+     *
+     * Registra o ciclo de vida das recomendações inteligentes: acompanhamento,
+     * execução e resultado. O histórico é operacional e permanece local ao projeto.
+     */
+    this.version(13).stores({
+      projetos: "id, codigo, nome, status",
+      categorias: "id, nome, ativo",
+      categorias_equipamentos: "id, projeto_id, nome, ativo",
+      unidades: "id, sigla, ativo",
+      empresas: "id, projeto_id, nome, tipo, ativo",
+      funcionarios:
+        "id, projeto_id, nome, matricula, empresa_id, encarregado_id, equipe_raiz_id, status",
+      locais:
+        "id, projeto_id, nome, codigo, local_pai_id, ativo",
+      produtos:
+        "id, projeto_id, nome, codigo, categoria_id, unidade_id, ativo",
+      movimentacoes:
+        "id, projeto_id, data, tipo, produto_id, funcionario_id, encarregado_id, empresa_id, local_id, equipe_id, documento_id, documento_item_id",
+      equipes: "id, projeto_id, nome, ativo",
+      equipe_membros:
+        "id, equipe_id, funcionario_id, [equipe_id+funcionario_id]",
+      arquivos: "id, projeto_id, criado_em, tipo, mime_type",
+      equipamentos:
+        "id, projeto_id, categoria_id, nome, tipo_controle, ativo",
+      estoque_equipamentos:
+        "id, projeto_id, equipamento_id, empresa_id, equipe_id, identificacao, serial, patrimonio, status",
+      apropriacoes:
+        "id, estoque_equipamento_id, funcionario_id, [estoque_equipamento_id+funcionario_id]",
+      movimentacoes_equipamentos:
+        "id, projeto_id, estoque_equipamento_id, tipo, data, tipo_origem, origem_id, tipo_destino, destino_id",
+      configuracoes: "id, projeto_id",
+      documentos:
+        "id, projeto_id, tipo, numero, serie, empresa_id, status, data_emissao",
+      documento_itens:
+        "id, documento_id, produto_id",
+      documento_referencias:
+        "id, projeto_id, documento_id, documento_referenciado_id, [documento_id+documento_referenciado_id]",
+      inventarios:
+        "id, projeto_id, equipe_id, status, data_abertura, data_encerramento, responsavel_id",
+      inventario_itens:
+        "id, inventario_id, produto_id, equipe_id, quantidade_sistema, quantidade_contada, [inventario_id+produto_id+equipe_id]",
+      inteligencia_acoes:
+        "id, projeto_id, chave, assinatura, origem, tipo, produto_id, equipe_id, referencia_id, status, registrada_em, [projeto_id+chave]",
+    });
   }
 }
 

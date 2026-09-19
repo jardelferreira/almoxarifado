@@ -12,13 +12,16 @@ import { Badge } from "@/components/ui/badge";
 import { Combobox } from "@/components/common/Combobox";
 import { useDados, useProjetoAtivoId } from "@/hooks/useAppData";
 import { repo } from "@/services/repo";
-import { estoqueDoProduto, estoquePorProduto } from "@/services/estoque";
+import { estoqueDoProduto } from "@/services/estoque";
 import { configuracoesRepo } from "@/services/configuracoes-repo";
 import { getDB } from "@/db/db";
 import { formatarData, hoje, num } from "@/utils/format";
 import type { Documento, Movimentacao, MovimentacaoTipo } from "@/types";
 
 export const Route = createFileRoute("/app/lancar")({
+  validateSearch: (search: Record<string, unknown>): LancarBusca => ({
+    produto: typeof search["produto"] === "string" ? search["produto"] : undefined,
+  }),
   ssr: false,
   head: () => ({
     meta: [
@@ -37,6 +40,8 @@ export const Route = createFileRoute("/app/lancar")({
   }),
   component: LancarPage,
 });
+
+type LancarBusca = { produto: string | undefined };
 
 type Campo = "funcionario" | "empresa" | "local" | "sinal";
 
@@ -78,6 +83,7 @@ const CONFIG: Record<
 };
 
 function LancarPage() {
+  const { produto: produtoParam } = Route.useSearch();
   return (
     <div className="space-y-5">
       <div>
@@ -96,7 +102,7 @@ function LancarPage() {
         </TabsList>
         {Object.keys(CONFIG).map((k) => (
           <TabsContent key={k} value={k}>
-            {k === "devolucao" ? <FormularioDevolucao /> : <Formulario modo={k} />}
+            {k === "devolucao" ? <FormularioDevolucao /> : <Formulario modo={k} produtoInicial={produtoParam ?? null} />}
           </TabsContent>
         ))}
       </Tabs>
@@ -108,7 +114,7 @@ function LancarPage() {
 /* Formulário padrão (saída, entrada, ajuste, transferência)          */
 /* ------------------------------------------------------------------ */
 
-function Formulario({ modo }: { modo: string }) {
+function Formulario({ modo, produtoInicial }: { modo: string; produtoInicial: string | null }) {
   const cfg = CONFIG[modo]!;
   const [projetoId] = useProjetoAtivoId();
   const dados = useDados(projetoId);
@@ -124,7 +130,7 @@ function Formulario({ modo }: { modo: string }) {
     [projetoId],
   );
   const [data, setData] = useState(hoje());
-  const [produtoId, setProdutoId] = useState<string | null>(null);
+  const [produtoId, setProdutoId] = useState<string | null>(produtoInicial);
   const [equipeId, setEquipeId] = useState<string | null>(null);
   const [equipeDestinoId, setEquipeDestinoId] = useState<string | null>(null);
   const [quantidade, setQuantidade] = useState("");
@@ -139,20 +145,6 @@ function Formulario({ modo }: { modo: string }) {
   const [documentoId, setDocumentoId] = useState<string | null>(null);
 
   const produtos = useMemo(() => (dados?.produtos ?? []).filter((p) => p.ativo), [dados]);
-  const produtosDisponiveisSaida = useMemo(() => {
-    if (!dados || cfg.tipo !== "SAIDA" || !equipeId) return [];
-    const estoquePorProdutoAtual = estoquePorProduto(dados.movimentacoes, equipeId);
-    const unidadePorId = new Map(dados.unidades.map((unidade) => [unidade.id, unidade.sigla]));
-
-    return produtos
-      .map((produto) => ({ produto, estoque: Math.max(0, estoquePorProdutoAtual.get(produto.id) ?? 0) }))
-      .filter((item) => item.estoque > 0)
-      .map(({ produto, estoque }) => ({
-        value: produto.id,
-        label: produto.nome,
-        hint: `${num(estoque)} ${unidadePorId.get(produto.unidade_id) ?? ""}`.trim(),
-      }));
-  }, [cfg.tipo, dados, equipeId, produtos]);
 
   if (!dados || !projetoId) return <p className="text-sm text-muted-foreground">Carregando…</p>;
 
@@ -341,25 +333,18 @@ function Formulario({ modo }: { modo: string }) {
           <div className="space-y-1.5 sm:col-span-2">
             <Label>1. Produto</Label>
             <Combobox
-              placeholder={cfg.tipo === "SAIDA" && !equipeId ? "Selecione a equipe primeiro" : "Selecionar produto"}
+              placeholder="Selecionar produto"
               value={produtoId}
               onChange={(v) => {
                 setProdutoId(v);
                 setQuantidade("");
               }}
-              disabled={cfg.tipo === "SAIDA" && !equipeId}
-              opcoes={cfg.tipo === "SAIDA" ? produtosDisponiveisSaida : produtos.map((p) => ({
+              opcoes={produtos.map((p) => ({
                 value: p.id,
                 label: p.nome,
                 hint: dados.unidades.find((u) => u.id === p.unidade_id)?.sigla,
               }))}
             />
-            {cfg.tipo === "SAIDA" && !equipeId ? (
-              <p className="text-xs text-muted-foreground">Selecione a equipe responsável para listar somente os produtos com saldo disponível.</p>
-            ) : null}
-            {cfg.tipo === "SAIDA" && equipeId && produtosDisponiveisSaida.length === 0 ? (
-              <p className="text-xs text-muted-foreground">Nenhum produto com saldo disponível nesta equipe.</p>
-            ) : null}
             {produto && (
               <p className="text-xs text-muted-foreground">
                 Disponível:{" "}
@@ -426,6 +411,8 @@ function Formulario({ modo }: { modo: string }) {
                   value={funcionarioId}
                   onChange={(v) => {
                     setFuncionarioId(v);
+                    const equipeRaiz = dados.funcionarios.find((f) => f.id === v)?.equipe_raiz_id;
+                    if (equipeRaiz) setEquipeId(equipeRaiz);
                   }}
                   opcoes={opt(funcAtivos)}
                 />

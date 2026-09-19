@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import * as XLSX from "xlsx";
@@ -39,7 +39,6 @@ import { formatarData, num } from "@/utils/format";
 
 type Busca = { produto?: string };
 type FiltrosEstoque = {
-  produtoId: string;
   equipeId: string;
   categoriaId: string;
   unidadeId: string;
@@ -119,7 +118,7 @@ function EstoquePage() {
   const [detalhe, setDetalhe] = useState<string | null>(produtoParam ?? null);
   const [equipeId, setEquipeId] = useState<string | null>(null);
   const [filtros, setFiltros] = useState<FiltrosEstoque>({
-    produtoId: "", equipeId: "", categoriaId: "", unidadeId: "", status: "", saldo: "COM_ESTOQUE",
+    equipeId: "", categoriaId: "", unidadeId: "", status: "", saldo: "",
   });
   const [historicoFiltros, setHistoricoFiltros] = useState({
     de: "", ate: "", tipo: "", funcionarioId: "", documentoId: "",
@@ -144,7 +143,6 @@ function EstoquePage() {
       .filter((i) => !termo || [
         i.produto.nome, i.produto.codigo, i.produto.marca, i.produto.modelo,
       ].filter(Boolean).join(" ").toLocaleLowerCase("pt-BR").includes(termo))
-      .filter((i) => !filtros.produtoId || i.produto.id === filtros.produtoId)
       .filter((i) => !filtros.equipeId || i.equipe.id === filtros.equipeId)
       .filter((i) => !filtros.categoriaId || i.produto.categoria_id === filtros.categoriaId)
       .filter((i) => !filtros.unidadeId || i.produto.unidade_id === filtros.unidadeId)
@@ -152,17 +150,6 @@ function EstoquePage() {
       .filter((i) => !filtros.saldo || (filtros.saldo === "ZERADO" ? i.estoque === 0 : i.estoque > 0))
       .sort((a, b) => a.produto.nome.localeCompare(b.produto.nome));
   }, [itens, q, filtros]);
-
-  const quantidadeFiltrada = useMemo(() => {
-    const produtoIds = new Set(filtrados.map((item) => item.produto.id));
-    if (produtoIds.size !== 1) return null;
-    const produtoId = produtoIds.values().next().value as string | undefined;
-    if (!produtoId) return null;
-    const quantidade = filtrados.reduce((total, item) => total + item.estoque, 0);
-    const produto = dados?.produtos.find((item) => item.id === produtoId);
-    const unidade = dados?.unidades.find((item) => item.id === produto?.unidade_id);
-    return { quantidade, unidade: unidade?.sigla ?? "" };
-  }, [dados?.produtos, dados?.unidades, filtrados]);
 
   const item = itens.find((i) => i.produto.id === detalhe && (!equipeId || i.equipe.id === equipeId));
 
@@ -187,7 +174,7 @@ function EstoquePage() {
   const documentoMap = useMemo(() => new Map((documentos ?? []).map((d) => [d.id, d])), [documentos]);
   const localMap = useMemo(() => new Map(dados?.locais.map((l) => [l.id, l]) ?? []), [dados?.locais]);
 
-  const limparFiltros = () => setFiltros({ produtoId: "", equipeId: "", categoriaId: "", unidadeId: "", status: "", saldo: "COM_ESTOQUE" });
+  const limparFiltros = () => setFiltros({ equipeId: "", categoriaId: "", unidadeId: "", status: "", saldo: "" });
   const limparHistorico = () => setHistoricoFiltros({ de: "", ate: "", tipo: "", funcionarioId: "", documentoId: "" });
 
   const imprimirEstoque = () => {
@@ -231,7 +218,6 @@ function EstoquePage() {
           ["Produtos", new Set(filtrados.map(i=>i.produto.id)).size, "produtos distintos"],
           ["Abaixo do mínimo", filtrados.filter(i=>i.baixo).length, "precisam de atenção"],
           ["Estoque zerado", filtrados.filter(i=>i.estoque===0).length, "posições sem saldo"],
-          ["Quantidade", quantidadeFiltrada ? `${num(quantidadeFiltrada.quantidade)} ${quantidadeFiltrada.unidade}`.trim() : "—", quantidadeFiltrada ? "produto selecionado" : "selecione um produto para quantificar"],
         ].map(([label, value, description]) => (
           <Card key={label as string} className="overflow-hidden border-border/70 shadow-sm">
             <CardContent className="p-4">
@@ -255,7 +241,7 @@ function EstoquePage() {
             </Button>
           </div>
 
-          <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-8">
+          <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
             <div className="space-y-1.5 xl:col-span-2">
               <Label className="text-xs">Pesquisa</Label>
               <div className="relative">
@@ -264,7 +250,6 @@ function EstoquePage() {
               </div>
             </div>
             {[
-              ["Produto", "produtoId", dados.produtos.filter(p=>p.ativo).map(p=>({value:p.id,label:p.nome}))],
               ["Equipe", "equipeId", dados.equipes.filter(e=>e.ativo).map(e=>({value:e.id,label:e.nome}))],
               ["Categoria", "categoriaId", dados.categorias.map(c=>({value:c.id,label:c.nome}))],
               ["Unidade", "unidadeId", dados.unidades.map(u=>({value:u.id,label:u.sigla}))],
@@ -363,7 +348,7 @@ function EstoquePage() {
               <div className="rounded-2xl border p-4"><div className="mb-3 flex items-center gap-2"><BarChart3 className="size-4"/><p className="font-semibold">Resumo do período</p></div><div className="grid gap-x-8 gap-y-3 sm:grid-cols-2">{TIPOS.map(tipo=>{const total=historico.filter(h=>h.movimentacao.tipo===tipo).reduce((s,h)=>s+h.efeito,0);return <div key={tipo} className="flex items-center justify-between text-sm"><span className="text-muted-foreground">{tipo}</span><span className="num font-semibold">{total>0?"+":""}{num(total)} {item.unidade?.sigla??""}</span></div>})}</div></div>
               <div className="rounded-2xl border bg-primary/5 p-4"><div className="flex items-start gap-3"><History className="mt-0.5 size-5 shrink-0"/><div><p className="font-semibold">Saldo calculado</p><p className="mt-1 text-sm text-muted-foreground">O saldo é calculado exclusivamente a partir das movimentações existentes.</p></div></div></div>
             </div>
-          </div></div><div className="shrink-0 border-t bg-background/95 px-5 py-3 backdrop-blur sm:px-7"><div className="flex items-center justify-between gap-3"><div className="hidden items-center gap-2 text-xs text-muted-foreground sm:flex"><Users className="size-4"/>Equipe: {item.equipe.nome}<span>·</span><MapPin className="size-4"/>Posição de estoque</div><Button variant="outline" onClick={()=>setDetalhe(null)}>Fechar</Button></div></div></> : <div className="p-6 text-sm text-muted-foreground">A posição de estoque não foi encontrada.</div>}
+          </div></div><div className="shrink-0 border-t bg-background/95 px-5 py-3 backdrop-blur sm:px-7"><div className="flex items-center justify-between gap-3"><div className="hidden items-center gap-2 text-xs text-muted-foreground sm:flex"><Users className="size-4"/>Equipe: {item.equipe.nome}<span>·</span><MapPin className="size-4"/>Posição de estoque</div><div className="flex items-center gap-2"><Button asChild variant="outline"><Link to="/app/produto" search={{ produto: item.produto.id }}>Abrir perfil</Link></Button><Button variant="outline" onClick={()=>setDetalhe(null)}>Fechar</Button></div></div></div></> : <div className="p-6 text-sm text-muted-foreground">A posição de estoque não foi encontrada.</div>}
         </DialogContent>
       </Dialog>
     </div>

@@ -36,6 +36,8 @@ export const inventarioRepo = {
     estoques: EstoqueInventario[];
     responsavelId?: string | null;
     observacao?: string | null;
+    /** Permite que o fluxo inteligente abra um inventário parcial geral quando a configuração permitir. */
+    modoRecomendado?: boolean;
   }): Promise<Inventario> {
     const db = getDB();
     const config = await configuracoesRepo.obter(args.projetoId);
@@ -93,8 +95,8 @@ export const inventarioRepo = {
     }
 
     if (!args.equipeId) {
-      if (selecionados.length !== disponiveis.length) {
-        throw new Error("O inventário geral deve incluir todos os itens de estoque do projeto.");
+      if (!config.inventario.permitir_inventario_parcial && selecionados.length !== disponiveis.length) {
+        throw new Error(args.modoRecomendado ? "A configuração não permite inventário parcial para o escopo recomendado." : "O inventário geral deve incluir todos os itens de estoque do projeto.");
       }
     } else if (!config.inventario.permitir_inventario_parcial && selecionados.length !== disponiveis.filter((e) => e.equipeId === args.equipeId).length) {
       throw new Error("A configuração exige inventário completo. Todos os itens do estoque da equipe devem ser incluídos.");

@@ -25,6 +25,8 @@ import {
   FileClock,
   Settings,
   ChartColumn,
+  ShieldAlert,
+  Sparkles,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useState, useEffect } from "react";
@@ -61,9 +63,11 @@ const navGroups: NavGroup[] = [
     modulo: "materiais",
     items: [
       { to: "/app", label: "Dashboard", icon: LayoutDashboard, exact: true },
+      { to: "/app/vigia", label: "Vigia", icon: ShieldAlert },
       { to: "/app/lancar", label: "Lançar", icon: ArrowLeftRight },
       { to: "/app/movimentacoes", label: "Movimentações", icon: FileClock },
       { to: "/app/estoque", label: "Estoque", icon: Warehouse },
+      { to: "/app/produto", label: "Perfil do produto", icon: Sparkles },
       {
         to: "/app/inventario",
         label: "Inventário",

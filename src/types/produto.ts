@@ -12,5 +12,7 @@ export interface Produto {
   marca?: string | null | undefined;
   modelo?: string | null | undefined;
   estoque_minimo: number;
+  /** Participa das sugestões automáticas de reposição. Ausente em dados legados = ativo. */
+  inteligencia_reposicao?: boolean | null | undefined;
   ativo: boolean;
 }

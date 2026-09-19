@@ -13,3 +13,5 @@ export * from "./equipamento";
 export * from "./configuracao";
 export * from "./documento";
 export * from "./inventario";
+
+export * from "./inteligencia";

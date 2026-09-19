@@ -3,14 +3,20 @@ import { useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { toast } from "sonner";
 import {
+  AlertTriangle,
   ArrowRight,
   CheckCircle2,
   ClipboardCheck,
   ClipboardList,
+  Clock3,
   History,
+  ListFilter,
   Plus,
   Printer,
   Search,
+  ShieldAlert,
+  Sparkles,
+  TrendingUp,
   XCircle,
 } from "lucide-react";
 
@@ -22,12 +28,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { AcompanhamentoInteligencia } from "@/components/inteligencia/AcompanhamentoInteligencia";
 import { Combobox } from "@/components/common/Combobox";
 import { getDB } from "@/db/db";
 import { useProjetoAtivoId } from "@/hooks/useAppData";
 import { configuracoesRepo } from "@/services/configuracoes-repo";
 import { inventarioRepo } from "@/services/inventario-repo";
 import { inventarioService, type InferenciaInventario } from "@/services/inventario-service";
+import { inteligenciaRepo } from "@/services/inteligencia-repo";
+import { calcularAcuracidadeInventarios, calcularPlanoInventarioInteligente, criarPeriodoPadrao, type PlanoInventarioInteligente } from "@/services/estatisticas-materiais";
 import type { Inventario, InventarioItem } from "@/types";
 
 export const Route = createFileRoute("/app/inventario")({
@@ -82,15 +91,16 @@ export function InventarioPage() {
   const db = getDB();
   const dados = useLiveQuery(async () => {
     if (!projetoId) return null;
-    const [inventarios, equipes, funcionarios, produtos, unidades, movimentacoes] = await Promise.all([
+    const [inventarios, equipes, funcionarios, produtos, unidades, movimentacoes, inventarioItens] = await Promise.all([
       inventarioRepo.listar(projetoId),
       db.equipes.where("projeto_id").equals(projetoId).toArray(),
       db.funcionarios.where("projeto_id").equals(projetoId).toArray(),
       db.produtos.where("projeto_id").equals(projetoId).toArray(),
       db.unidades.toArray(),
       db.movimentacoes.where("projeto_id").equals(projetoId).toArray(),
+      db.inventario_itens.toArray(),
     ]);
-    return { inventarios, equipes, funcionarios, produtos, unidades, movimentacoes };
+    return { inventarios, equipes, funcionarios, produtos, unidades, movimentacoes, inventarioItens };
   }, [projetoId]);
   const config = useLiveQuery(() => (projetoId ? configuracoesRepo.obter(projetoId) : undefined), [projetoId]);
 
@@ -109,6 +119,12 @@ export function InventarioPage() {
   const [inferenciaAberta, setInferenciaAberta] = useState(false);
   const [inferencia, setInferencia] = useState<InferenciaInventario[]>([]);
   const [carregandoInferencia, setCarregandoInferencia] = useState(false);
+  const [modoRecomendado, setModoRecomendado] = useState(false);
+  const [mostrarTodasRecomendadas, setMostrarTodasRecomendadas] = useState(false);
+  const [statusFiltro, setStatusFiltro] = useState<"TODOS" | "CONCLUIDO" | "CANCELADO">("TODOS");
+  const [equipeFiltro, setEquipeFiltro] = useState("");
+  const [deFiltro, setDeFiltro] = useState("");
+  const [ateFiltro, setAteFiltro] = useState("");
 
   const equipeMap = useMemo(() => new Map((dados?.equipes ?? []).map((e) => [e.id, e.nome])), [dados?.equipes]);
   const funcionarioMap = useMemo(() => new Map((dados?.funcionarios ?? []).map((f) => [f.id, f.nome])), [dados?.funcionarios]);
@@ -143,6 +159,51 @@ export function InventarioPage() {
       });
   }, [dados, equipeId, equipeMap]);
 
+  const planoInventario = useMemo<PlanoInventarioInteligente>(() => {
+    if (!dados) return { periodo: criarPeriodoPadrao(30), posicoesAnalisadas: 0, posicoesComInventarioAberto: 0, equipesEnvolvidas: 0, altas: 0, medias: 0, acompanhar: 0, itens: [], criterios: [] };
+    return calcularPlanoInventarioInteligente(dados.produtos, dados.movimentacoes, dados.equipes, dados.inventarios, dados.inventarioItens, criarPeriodoPadrao(30));
+  }, [dados]);
+
+  const resumoAcuracidade = useMemo(() => (dados ? calcularAcuracidadeInventarios(dados.inventarios, dados.inventarioItens, 8) : null), [dados]);
+
+  const inventariosAbertos = useMemo(
+    () => (dados?.inventarios ?? []).filter((inventario) => inventario.status === "ABERTO").sort((a, b) => b.data_abertura.localeCompare(a.data_abertura)),
+    [dados?.inventarios],
+  );
+
+  const historicoInventarios = useMemo(() => {
+    const termo = busca.trim().toLowerCase();
+    return (dados?.inventarios ?? [])
+      .filter((inventario) => inventario.status !== "ABERTO")
+      .filter((inventario) => statusFiltro === "TODOS" || inventario.status === statusFiltro)
+      .filter((inventario) => !equipeFiltro || inventario.equipe_id === equipeFiltro)
+      .filter((inventario) => {
+        const data = (inventario.data_encerramento ?? inventario.data_abertura).slice(0, 10);
+        return (!deFiltro || data >= deFiltro) && (!ateFiltro || data <= ateFiltro);
+      })
+      .filter((inventario) => {
+        if (!termo) return true;
+        const alvo = `${equipeMap.get(inventario.equipe_id ?? "") ?? ""} ${funcionarioMap.get(inventario.responsavel_id ?? "") ?? ""} ${inventario.observacao ?? ""}`.toLowerCase();
+        return alvo.includes(termo);
+      })
+      .sort((a, b) => (b.data_encerramento ?? b.data_abertura).localeCompare(a.data_encerramento ?? a.data_abertura));
+  }, [dados?.inventarios, busca, statusFiltro, equipeFiltro, deFiltro, ateFiltro, equipeMap, funcionarioMap]);
+
+  const progressoInventariosAbertos = useMemo(() => {
+    const mapa = new Map<string, { total: number; contados: number; divergencias: number }>();
+    for (const inventario of inventariosAbertos) mapa.set(inventario.id, { total: 0, contados: 0, divergencias: 0 });
+    for (const item of dados?.inventarioItens ?? []) {
+      const atual = mapa.get(item.inventario_id);
+      if (!atual) continue;
+      atual.total += 1;
+      if (item.quantidade_contada != null) {
+        atual.contados += 1;
+        if (Math.abs(item.quantidade_contada - item.quantidade_sistema) > Number.EPSILON) atual.divergencias += 1;
+      }
+    }
+    return mapa;
+  }, [dados?.inventarioItens, inventariosAbertos]);
+
   const estoquesFiltradosNovo = useMemo(() => {
     const termo = produtoBusca.trim().toLowerCase();
     if (!termo) return estoquesDisponiveis;
@@ -154,6 +215,8 @@ export function InventarioPage() {
   }, [produtoBusca, estoquesDisponiveis, produtoMap, equipeMap]);
 
   const abrirNovo = () => {
+    setModoRecomendado(false);
+    setMostrarTodasRecomendadas(false);
     setEquipeId(null);
     setResponsavelId(null);
     setProdutoBusca("");
@@ -174,6 +237,20 @@ export function InventarioPage() {
     setNovoAberto(true);
   };
 
+  const abrirNovoRecomendado = () => {
+    if (!dados || !planoInventario.itens.length) return;
+    setMostrarTodasRecomendadas(true);
+    const ids = planoInventario.itens.map((item) => `${item.produtoId}:${item.equipeId}`);
+    const equipes = [...new Set(planoInventario.itens.map((item) => item.equipeId))];
+    setModoRecomendado(true);
+    setResponsavelId(null);
+    setProdutoBusca("");
+    setObservacao("Inventário recomendado pelo Vigia de Inventário.");
+    setEstoqueIds(ids);
+    setEquipeId(equipes.length === 1 ? (equipes[0] ?? null) : null);
+    setNovoAberto(true);
+  };
+
   const trocarEquipeInventario = (novaEquipeId: string | null) => {
     setEquipeId(novaEquipeId);
     setProdutoBusca("");
@@ -181,6 +258,15 @@ export function InventarioPage() {
       setEstoqueIds([]);
       return;
     }
+
+    if (modoRecomendado) {
+      const idsRecomendados = planoInventario.itens
+        .filter((item) => !novaEquipeId || item.equipeId === novaEquipeId)
+        .map((item) => `${item.produtoId}:${item.equipeId}`);
+      setEstoqueIds(idsRecomendados);
+      return;
+    }
+
     const ids = dados.movimentacoes
       .map((m) => `${m.produto_id}:${m.equipe_id}`)
       .filter((key, index, arr) => arr.indexOf(key) === index)
@@ -219,7 +305,30 @@ export function InventarioPage() {
         }),
         responsavelId,
         observacao,
+        modoRecomendado,
       });
+
+      if (modoRecomendado) {
+        try {
+          const prioridade = planoInventario.altas > 0 ? "alta" : planoInventario.medias > 0 ? "media" : "info";
+          const chavePlano = [...estoqueIds].sort().join("|");
+          await inteligenciaRepo.iniciar({
+            projetoId,
+            chave: `inventario:plano:${planoInventario.periodo.de}:${planoInventario.periodo.ate}:${chavePlano}`,
+            assinatura: "INVENTARIO:PLANO_RECOMENDADO",
+            origem: "INVENTARIO",
+            tipo: "PLANO_RECOMENDADO",
+            prioridade,
+            titulo: "Inventário recomendado pelo motor de prioridade",
+            descricao: `${estoqueIds.length} posição(ões) foram selecionadas para conferência e transformadas em um inventário real após revisão manual.`,
+            regra: "Plano de conferência baseado em risco de saldo, estoque mínimo, cobertura, atividade e histórico de inventário.",
+            referenciaId: inventario.id,
+          });
+        } catch {
+          toast.warning("Inventário aberto, mas não foi possível registrar o acompanhamento da recomendação.");
+        }
+      }
+
       setNovoAberto(false);
       toast.success("Inventário aberto.");
       await carregarDetalhe(inventario);
@@ -251,6 +360,11 @@ export function InventarioPage() {
     try {
       setSalvando(true);
       const resultado = await inventarioService.encerrar(selecionado.id);
+      const feedback = resultado.diferencas > 0 ? "CONFIRMADO" : "NAO_CONFIRMADO";
+      const detalhe = resultado.diferencas > 0
+        ? `${resultado.diferencas} posição(ões) apresentaram divergência na conferência física.`
+        : "A conferência não encontrou divergências entre sistema e contagem nas posições contadas.";
+      await inteligenciaRepo.concluirPorReferencia("INVENTARIO", selecionado.id, feedback, detalhe);
       setRevisaoAberta(false);
       setSelecionado(null);
       setItens([]);
@@ -317,31 +431,75 @@ export function InventarioPage() {
   if (!config || !dados) return <p className="text-sm text-muted-foreground">Carregando inventário…</p>;
   if (!config.inventario.habilitado) return <Card><CardContent className="p-8 text-center"><ClipboardList className="mx-auto size-10 text-muted-foreground" /><p className="mt-3 font-medium">Inventário desabilitado</p><p className="mt-1 text-sm text-muted-foreground">Habilite o inventário nas Configurações do projeto.</p></CardContent></Card>;
 
-  const filtrados = dados.inventarios.filter((i) => {
-    const alvo = `${equipeMap.get(i.equipe_id ?? "") ?? ""} ${funcionarioMap.get(i.responsavel_id ?? "") ?? ""} ${i.observacao ?? ""}`.toLowerCase();
-    return alvo.includes(busca.toLowerCase());
-  });
   const contados = itens.filter((i) => i.quantidade_contada != null).length;
   const diferencas = itens.filter((i) => i.quantidade_contada != null && Math.abs((i.quantidade_contada ?? 0) - i.quantidade_sistema) > Number.EPSILON).length;
+  const recomendados = planoInventario.itens;
+  const equipesRecomendadas = new Set(recomendados.map((item) => item.equipeId));
+  const escopoRecomendadoCompleto = !config.inventario.permitir_inventario_parcial && equipesRecomendadas.size === 1
+    ? estoquesDisponiveis.filter((item) => item.equipeId === [...equipesRecomendadas][0]).length === recomendados.length
+    : false;
+  const recomendadosSelecionaveis = config.inventario.permitir_inventario_parcial || escopoRecomendadoCompleto;
+  const ultimoInventario = resumoAcuracidade?.ultimoInventario ?? null;
+  const recomendadosVisiveis = mostrarTodasRecomendadas ? recomendados : recomendados.slice(0, 9);
+
   return (
-    <div className="space-y-5">
-      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div><div className="flex items-center gap-2"><ClipboardCheck className="size-7 text-primary" /><h1 className="font-display text-3xl font-bold uppercase">Inventário</h1></div><p className="mt-1 text-sm text-muted-foreground">Contagem física do estoque com ajuste auditável.</p></div>
-        <Button onClick={abrirNovo}><Plus className="mr-2 size-4" />Novo inventário</Button>
+    <div className="space-y-7 pb-10">
+      <header className="space-y-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <div className="flex items-center gap-2"><ClipboardCheck className="size-7 text-primary" /><h1 className="font-display text-3xl font-bold uppercase">Inventário</h1></div>
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">Conferência física orientada por prioridade, com execução assistida e histórico auditável. A inteligência recomenda; o almoxarife confirma.</p>
+          </div>
+          <div className="flex gap-2"><Button variant="outline" onClick={() => document.getElementById("inventarios-historico")?.scrollIntoView({ behavior: "smooth", block: "start" })}><History className="mr-2 size-4" />Histórico</Button><Button onClick={abrirNovo}><Plus className="mr-2 size-4" />Novo inventário</Button></div>
+        </div>
       </header>
 
-      <Card className="rounded-2xl"><CardHeader><div className="relative"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input className="pl-9" placeholder="Equipe, responsável ou observação…" value={busca} onChange={(e) => setBusca(e.target.value)} /></div></CardHeader></Card>
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Card className={inventariosAbertos.length ? "border-amber-200 bg-amber-50/60" : ""}><CardContent className="p-4"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Em andamento</p><p className="mt-1 text-2xl font-semibold">{inventariosAbertos.length}</p><p className="mt-1 text-xs text-muted-foreground">Inventários abertos aguardando contagem.</p></CardContent></Card>
+        <Card className={recomendados.length ? "border-red-200 bg-red-50/50" : ""}><CardContent className="p-4"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Posições prioritárias</p><p className="mt-1 text-2xl font-semibold">{recomendados.length}</p><p className="mt-1 text-xs text-muted-foreground">{planoInventario.altas} alta · {planoInventario.medias} média · {planoInventario.acompanhar} acompanhar</p></CardContent></Card>
+        <Card><CardContent className="p-4"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Último inventário</p><p className="mt-1 text-lg font-semibold">{ultimoInventario ? dataFmt(ultimoInventario.data) : "Ainda não há"}</p><p className="mt-1 text-xs text-muted-foreground">Acuracidade: {ultimoInventario ? `${fmt(ultimoInventario.acuracidadePorPosicoes)}%` : "—"}</p></CardContent></Card>
+        <Card className={ultimoInventario && ultimoInventario.itensDivergentes > 0 ? "border-amber-200 bg-amber-50/60" : ""}><CardContent className="p-4"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Divergências recentes</p><p className="mt-1 text-2xl font-semibold">{ultimoInventario?.itensDivergentes ?? 0}</p><p className="mt-1 text-xs text-muted-foreground">Posições divergentes no último inventário concluído.</p></CardContent></Card>
+      </section>
 
-      <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-        {filtrados.map((inventario) => <Card key={inventario.id} className="cursor-pointer rounded-2xl transition hover:border-primary/40" onClick={() => void carregarDetalhe(inventario)}><CardContent className="space-y-4 p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold">{equipeMap.get(inventario.equipe_id ?? "") ?? "Inventário geral"}</p><p className="text-xs text-muted-foreground">Aberto em {dataFmt(inventario.data_abertura)}</p></div>{statusBadge(inventario.status)}</div><div className="text-sm"><p className="text-muted-foreground">Responsável</p><p>{funcionarioMap.get(inventario.responsavel_id ?? "") ?? "Não informado"}</p></div>{inventario.observacao ? <p className="line-clamp-2 text-sm text-muted-foreground">{inventario.observacao}</p> : null}</CardContent></Card>)}
-      </div>
-      {filtrados.length === 0 && <Card><CardContent className="p-10 text-center text-sm text-muted-foreground">Nenhum inventário encontrado.</CardContent></Card>}
+      <section className="rounded-2xl border border-sidebar-primary/20 bg-sidebar-primary/[0.03] p-5 shadow-sm">
+        <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+          <div>
+            <div className="flex items-center gap-2"><span className="flex size-10 items-center justify-center rounded-xl bg-sidebar-primary/10 text-sidebar-primary"><Sparkles className="size-5" /></span><div><p className="font-display text-sm font-semibold uppercase tracking-wide">Plano de inventário recomendado</p><p className="text-xs text-muted-foreground">Transforma sinais de estoque e histórico físico em uma fila de conferência executável.</p></div></div>
+            <div className="mt-4 flex flex-wrap gap-2 text-xs"><Badge variant="outline" className="border-red-200 bg-red-50 text-red-700"><ShieldAlert className="mr-1 size-3.5" />{planoInventario.altas} alta</Badge><Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700">{planoInventario.medias} média</Badge><Badge variant="outline">{planoInventario.equipesEnvolvidas} equipe(s) envolvida(s)</Badge><Badge variant="outline">Janela: {planoInventario.periodo.de.split("-").reverse().join("/")} → {planoInventario.periodo.ate.split("-").reverse().join("/")}</Badge></div>
+          </div>
+          <div className="flex shrink-0 flex-col gap-2 sm:flex-row"><Button onClick={abrirNovoRecomendado} disabled={!recomendados.length || !recomendadosSelecionaveis}><ClipboardCheck className="mr-2 size-4" />Criar inventário recomendado</Button><Button variant="outline" onClick={() => document.getElementById("inventario-posicoes-recomendadas")?.scrollIntoView({ behavior: "smooth", block: "start" })} disabled={!recomendados.length}><ListFilter className="mr-2 size-4" />Revisar posições</Button></div>
+        </div>
+        {!recomendadosSelecionaveis && recomendados.length ? <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800"><p className="font-semibold">O plano recomendado não pode ser aberto diretamente com a configuração atual.</p><p className="mt-1">O projeto exige inventário completo, mas a recomendação contém apenas parte das posições ou envolve mais de uma equipe. Use “Revisar posições” para analisar o plano ou habilite inventário parcial nas configurações.</p></div> : null}
+        <div id="inventario-posicoes-recomendadas" className="mt-5 scroll-mt-6">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+            <span>{recomendados.length ? `Mostrando ${recomendadosVisiveis.length} de ${recomendados.length} posição(ões) recomendada(s).` : "Nenhuma posição recomendada."}</span>
+            {recomendados.length > 9 ? (
+              <Button type="button" size="sm" variant="ghost" onClick={() => setMostrarTodasRecomendadas((atual) => !atual)}>
+                {mostrarTodasRecomendadas ? "Mostrar resumo" : `Ver todas as ${recomendados.length} posições`}
+              </Button>
+            ) : null}
+          </div>
+          <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
+            {recomendadosVisiveis.map((item) => { const produto = produtoMap.get(item.produtoId); const unidade = unidadeMap.get(produto?.unidade_id ?? "")?.sigla ?? ""; const equipe = equipeMap.get(item.equipeId) ?? "Equipe"; return <Card key={`${item.produtoId}:${item.equipeId}`} className="border bg-background shadow-none"><CardContent className="p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate font-semibold">{produto?.nome ?? "Produto"}</p><p className="text-xs text-muted-foreground">{equipe} · {fmt(item.estoqueAtual)} {unidade}</p></div><Badge variant="outline" className={item.prioridade === "alta" ? "border-red-200 bg-red-50 text-red-700" : item.prioridade === "media" ? "border-amber-200 bg-amber-50 text-amber-700" : "border-slate-200 bg-slate-50 text-slate-700"}>{item.prioridade === "alta" ? "Alta" : item.prioridade === "media" ? "Média" : "Acompanhar"}</Badge></div><div className="mt-3 grid grid-cols-2 gap-2 text-xs"><div><p className="text-muted-foreground">Pontuação</p><p className="font-semibold">{item.pontos} pontos</p></div><div><p className="text-muted-foreground">Cobertura</p><p className="font-semibold">{item.coberturaDias == null ? "—" : `${fmt(item.coberturaDias)} dias`}</p></div><div><p className="text-muted-foreground">Saídas</p><p className="font-semibold">{item.saidas30Dias} / 30d</p></div><div><p className="text-muted-foreground">Inventário</p><p className="font-semibold">{item.diasDesdeInventario == null ? "Nunca" : `${item.diasDesdeInventario} dias`}</p></div></div><div className="mt-3 flex flex-wrap gap-1">{item.motivos.slice(0, 3).map((motivo) => <Badge key={motivo.codigo} variant="secondary" className="font-normal">{motivo.label} · +{motivo.pontos}</Badge>)}</div></CardContent></Card>; })}
+            {!recomendados.length ? <Card className="border-dashed lg:col-span-2 xl:col-span-3"><CardContent className="flex min-h-28 items-center gap-3 p-5 text-sm text-muted-foreground"><CheckCircle2 className="size-5 text-emerald-600" />Nenhuma posição atingiu o limite mínimo de recomendação. O inventário manual continua disponível.</CardContent></Card> : null}
+          </div>
+        </div>
+        <details className="mt-5 rounded-xl border bg-background/80 p-4"><summary className="cursor-pointer text-sm font-semibold">Como o sistema prioriza</summary><div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">{planoInventario.criterios.map((criterio) => <div key={criterio.label} className="rounded-lg border bg-muted/20 p-3"><div className="flex items-center justify-between gap-2"><span className="text-sm font-medium">{criterio.label}</span><Badge variant="outline">{criterio.pontos}</Badge></div><p className="mt-1 text-xs text-muted-foreground">{criterio.condicao}</p></div>)}</div><p className="mt-3 text-xs text-muted-foreground">Alta = 6+ pontos · Média = 3–5 · Acompanhar = 1–2. Posições já incluídas em inventário aberto saem da recomendação.</p></details>
+      </section>
+
+      <section className="space-y-3"><div className="flex items-end justify-between gap-3"><div><h2 className="font-display text-lg font-semibold uppercase">Inventários em andamento</h2><p className="mt-1 text-sm text-muted-foreground">O que já está em execução ganha prioridade sobre novas recomendações.</p></div><Badge variant="outline">{inventariosAbertos.length}</Badge></div>{inventariosAbertos.length ? <div className="grid gap-3 lg:grid-cols-2">{inventariosAbertos.map((inventario) => { const progresso = progressoInventariosAbertos.get(inventario.id) ?? { total: 0, contados: 0, divergencias: 0 }; const pct = progresso.total ? (progresso.contados / progresso.total) * 100 : 0; return <Card key={inventario.id} className="cursor-pointer border-amber-200 bg-amber-50/40 shadow-sm transition hover:border-amber-300" onClick={() => void carregarDetalhe(inventario)}><CardContent className="p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold">{inventario.equipe_id ? (equipeMap.get(inventario.equipe_id) ?? "Equipe") : "Inventário geral"}</p><p className="text-xs text-muted-foreground">Responsável: {funcionarioMap.get(inventario.responsavel_id ?? "") ?? "Não informado"} · {dataFmt(inventario.data_abertura)}</p></div>{statusBadge(inventario.status)}</div><div className="mt-4"><div className="flex items-center justify-between text-xs"><span>{progresso.contados} / {progresso.total} posições contadas</span><span>{fmt(pct)}%</span></div><div className="mt-2 h-2 overflow-hidden rounded-full bg-amber-100"><div className="h-full rounded-full bg-amber-500" style={{ width: `${Math.min(100, pct)}%` }} /></div></div><div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">{progresso.divergencias ? <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-800">{progresso.divergencias} divergência(s)</Badge> : <Badge variant="outline">Sem divergências registradas</Badge>}<span>Última atividade: {dataFmt(inventario.atualizado_em)}</span></div><div className="mt-4 flex justify-end"><Button size="sm" variant="outline">Continuar inventário<ArrowRight className="ml-2 size-3.5" /></Button></div></CardContent></Card>; })}</div> : <Card className="border-dashed"><CardContent className="p-8 text-center text-sm text-muted-foreground">Não há inventários abertos no momento.</CardContent></Card>}</section>
+
+      <section className="space-y-3">
+        <AcompanhamentoInteligencia projetoId={projetoId} origens={["INVENTARIO"]} compact />
+      </section>
+
+      <section id="inventarios-historico" className="space-y-3 scroll-mt-6"><div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between"><div><div className="flex items-center gap-2"><History className="size-5 text-sidebar-primary" /><h2 className="font-display text-lg font-semibold uppercase">Histórico de inventários</h2></div><p className="mt-1 text-sm text-muted-foreground">Concluídos e cancelados, com filtros próprios para auditoria e consulta.</p></div><Badge variant="outline">{historicoInventarios.length} registro(s)</Badge></div><Card><CardContent className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-5"><div className="xl:col-span-2"><Label>Buscar</Label><div className="relative mt-1.5"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input className="pl-9" placeholder="Responsável, equipe ou observação…" value={busca} onChange={(e) => setBusca(e.target.value)} /></div></div><div><Label>Status</Label><select className="mt-1.5 h-10 w-full rounded-md border bg-background px-3 text-sm" value={statusFiltro} onChange={(e) => setStatusFiltro(e.target.value as typeof statusFiltro)}><option value="TODOS">Todos</option><option value="CONCLUIDO">Concluídos</option><option value="CANCELADO">Cancelados</option></select></div><div><Label>Equipe</Label><select className="mt-1.5 h-10 w-full rounded-md border bg-background px-3 text-sm" value={equipeFiltro} onChange={(e) => setEquipeFiltro(e.target.value)}><option value="">Todas</option>{dados.equipes.filter((e) => e.ativo).map((e) => <option key={e.id} value={e.id}>{e.nome}</option>)}</select></div><div className="grid grid-cols-2 gap-2"><div><Label>De</Label><Input className="mt-1.5" type="date" value={deFiltro} onChange={(e) => setDeFiltro(e.target.value)} /></div><div><Label>Até</Label><Input className="mt-1.5" type="date" value={ateFiltro} onChange={(e) => setAteFiltro(e.target.value)} /></div></div></CardContent></Card>{historicoInventarios.length ? <div className="overflow-hidden rounded-2xl border bg-card"><div className="divide-y">{historicoInventarios.map((inventario) => { const resumo = dados.inventarioItens.filter((item) => item.inventario_id === inventario.id); const contadosHistorico = resumo.filter((item) => item.quantidade_contada != null).length; const divergentesHistorico = resumo.filter((item) => item.quantidade_contada != null && Math.abs((item.quantidade_contada ?? 0) - item.quantidade_sistema) > Number.EPSILON).length; return <button key={inventario.id} type="button" onClick={() => void carregarDetalhe(inventario)} className="flex w-full flex-col gap-3 px-4 py-4 text-left transition hover:bg-muted/30 md:flex-row md:items-center"><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="font-semibold">{inventario.equipe_id ? (equipeMap.get(inventario.equipe_id) ?? "Equipe") : "Inventário geral"}</p>{statusBadge(inventario.status)}</div><p className="mt-1 text-xs text-muted-foreground">{dataFmt(inventario.data_encerramento ?? inventario.data_abertura)} · responsável: {funcionarioMap.get(inventario.responsavel_id ?? "") ?? "Não informado"}</p></div><div className="grid grid-cols-3 gap-4 text-xs md:w-auto"><div><p className="text-muted-foreground">Posições</p><p className="font-semibold">{resumo.length}</p></div><div><p className="text-muted-foreground">Contadas</p><p className="font-semibold">{contadosHistorico}</p></div><div><p className="text-muted-foreground">Divergências</p><p className="font-semibold">{divergentesHistorico}</p></div></div><ArrowRight className="hidden size-4 text-muted-foreground md:block" /></button>; })}</div></div> : <Card className="border-dashed"><CardContent className="p-8 text-center text-sm text-muted-foreground">Nenhum inventário corresponde aos filtros atuais.</CardContent></Card>}</section>
 
       <Dialog open={novoAberto} onOpenChange={setNovoAberto}>
         <DialogContent className="flex max-h-[92vh] flex-col overflow-hidden p-0 sm:max-w-4xl">
           <DialogHeader className="shrink-0 border-b px-5 py-4 sm:px-6">
-            <DialogTitle>Abrir inventário</DialogTitle>
-            <p className="text-sm text-muted-foreground">A equipe é opcional. Sem equipe, o inventário considera o estoque completo do projeto; com equipe, considera somente o estoque daquela equipe.</p>
+            <DialogTitle>{modoRecomendado ? "Revisar inventário recomendado" : "Abrir inventário"}</DialogTitle>
+            <p className="text-sm text-muted-foreground">{modoRecomendado ? "As posições foram pré-selecionadas pelo motor de prioridade. Revise o escopo, equipe e responsável antes de confirmar." : "A equipe é opcional. Quando o inventário parcial estiver habilitado, você pode selecionar posições específicas; sem isso, o escopo segue as regras do projeto."}</p>
           </DialogHeader>
 
           <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6">
@@ -399,7 +557,7 @@ export function InventarioPage() {
                     size="sm"
                     variant="ghost"
                     onClick={() => setEstoqueIds([])}
-                    disabled={!estoqueIds.length || !config.inventario.permitir_inventario_parcial || !equipeId}
+                    disabled={!estoqueIds.length || !config.inventario.permitir_inventario_parcial}
                   >
                     Limpar
                   </Button>
@@ -418,7 +576,7 @@ export function InventarioPage() {
                       <label key={chave} className="flex cursor-pointer items-center gap-3 border-b p-3 last:border-0 hover:bg-muted/30">
                         <Checkbox
                           checked={marcado}
-                          disabled={!config.inventario.permitir_inventario_parcial || !equipeId}
+                          disabled={!config.inventario.permitir_inventario_parcial}
                           onCheckedChange={(checked) => setEstoqueIds((ids) => checked ? [...new Set([...ids, chave])] : ids.filter((id) => id !== chave))}
                         />
                         <span className="min-w-0 flex-1">
@@ -453,9 +611,7 @@ export function InventarioPage() {
                 <div className="rounded-lg bg-primary/10 px-3 py-2 text-sm font-semibold text-primary">
                   {estoqueIds.length} item(ns) selecionado(s)
                 </div>
-                {(!config.inventario.permitir_inventario_parcial || !equipeId) && estoquesDisponiveis.length > 0 ? (
-                  <span className="hidden text-xs text-muted-foreground sm:inline">Inventário completo do projeto</span>
-                ) : null}
+                {modoRecomendado ? <span className="hidden text-xs text-muted-foreground sm:inline">Escopo sugerido pela inteligência — revisão manual obrigatória</span> : (!config.inventario.permitir_inventario_parcial ? <span className="hidden text-xs text-muted-foreground sm:inline">Inventário completo conforme configuração</span> : null)}
               </div>
               <div className="flex gap-2">
                 <Button variant="outline" onClick={() => setNovoAberto(false)}>Cancelar</Button>

@@ -107,6 +107,7 @@ export type AnaliseReposicao = {
   reposicaoImediata: number;
   reposicaoPrioritaria: number;
   excluidosBaixaAtividade: number;
+  excluidosPorConfiguracao: number;
   itens: ItemReposicao[];
 };
 
@@ -134,6 +135,53 @@ export type DesvioConsumoEquipe = {
 
 /** Mínimo de registros de saída em pelo menos uma das janelas para análise de desvio. */
 export const MIN_SAIDAS_DESVIO_CONSUMO = 3;
+
+export type VigiaPrioridade = "alta" | "media" | "info";
+
+export type VigiaTipoAlerta =
+  | "REPOSICAO"
+  | "RISCO_COBERTURA"
+  | "DESVIO_PRODUTO"
+  | "DESVIO_EQUIPE"
+  | "QUALIDADE";
+
+export type VigiaAcao =
+  | "REPOSICAO"
+  | "PARAMETROS_PRODUTO"
+  | "RISCO_PRODUTO"
+  | "DESVIO_PRODUTO"
+  | "DESVIO_EQUIPE"
+  | "QUALIDADE";
+
+export type VigiaAlerta = {
+  id: string;
+  tipo: VigiaTipoAlerta;
+  prioridade: VigiaPrioridade;
+  titulo: string;
+  descricao: string;
+  indicador?: string | null;
+  regra?: string | null;
+  produtoId?: string | null;
+  equipeId?: string | null;
+  movimentacaoId?: string | null;
+  data?: string | null;
+  acaoPrincipal?: VigiaAcao;
+  acaoSecundaria?: VigiaAcao | null;
+};
+
+export type ResumoVigiaOperacional = {
+  periodo: PeriodoEstatisticas;
+  criticos: number;
+  atencao: number;
+  reposicoes: number;
+  reposicoesImediatas: number;
+  reposicoesExcluidasConfiguracao: number;
+  desvios: number;
+  alertasQualidade: number;
+  alertasQualidadeAltos: number;
+  alertas: VigiaAlerta[];
+};
+
 
 /** Variação absoluta mínima para que um desvio de consumo seja considerado relevante. */
 export const LIMIAR_DESVIO_CONSUMO_PERCENTUAL = 50;
@@ -1071,6 +1119,14 @@ export function calcularMapaRiscoCobertura(
   };
 }
 
+/**
+ * Produtos legados sem a propriedade permanecem participantes da inteligência.
+ * Somente o valor explícito `false` desativa as sugestões de reposição.
+ */
+export function participaInteligenciaReposicao(produto: Produto): boolean {
+  return produto.inteligencia_reposicao !== false;
+}
+
 export function calcularAnaliseReposicao(
   produtos: Produto[],
   movimentacoes: Movimentacao[],
@@ -1083,6 +1139,10 @@ export function calcularAnaliseReposicao(
   const alvoDias = Math.max(1, Math.trunc(diasAlvo));
   const minimoSaidas = Math.max(1, Math.trunc(minSaidas));
   const analises = analisesFornecidas ?? calcularProdutosEstatisticas(produtos, movimentacoes, periodo);
+  const analisesElegiveis = analises.filter((item) => participaInteligenciaReposicao(item.produto));
+  const analisesExcluidasPorConfiguracao = analises.filter(
+    (item) => !participaInteligenciaReposicao(item.produto),
+  );
   const movsPeriodo = filtrarMovimentacoesPeriodo(movimentacoes, periodo);
   const saidasPorProduto = new Map<string, number>();
 
@@ -1094,7 +1154,7 @@ export function calcularAnaliseReposicao(
     );
   }
 
-  const itens = analises
+  const itens = analisesElegiveis
     .filter((item) => (saidasPorProduto.get(item.produtoId) ?? 0) >= minimoSaidas)
     .map<ItemReposicao>((item) => {
       const consumoAlvo = item.consumoMedioDiario * alvoDias;
@@ -1130,7 +1190,10 @@ export function calcularAnaliseReposicao(
     totalItens: itens.length,
     reposicaoImediata: itens.filter((item) => item.prioridade === "imediata").length,
     reposicaoPrioritaria: itens.filter((item) => item.prioridade === "prioritaria").length,
-    excluidosBaixaAtividade: analises.filter((item) => (saidasPorProduto.get(item.produtoId) ?? 0) < minimoSaidas).length,
+    excluidosBaixaAtividade: analisesElegiveis.filter(
+      (item) => (saidasPorProduto.get(item.produtoId) ?? 0) < minimoSaidas,
+    ).length,
+    excluidosPorConfiguracao: analisesExcluidasPorConfiguracao.length,
     itens: itens.slice(0, Math.max(1, limite)),
   };
 }
@@ -2192,4 +2255,348 @@ export function calcularAcuracidadeInventarios(
     maioresDivergencias: divergencias.slice(0, limiteDivergencias),
     historico: historico.slice(0, 8),
   };
+}
+
+export type PlanoInventarioMotivo = {
+  codigo:
+    | "SALDO_RISCO"
+    | "ABAIXO_MINIMO"
+    | "COBERTURA_7"
+    | "COBERTURA_15"
+    | "SAIDAS_FREQUENTES"
+    | "NUNCA_INVENTARIADO"
+    | "INVENTARIO_ANTIGO";
+  label: string;
+  pontos: number;
+};
+
+export type PlanoInventarioItem = {
+  produtoId: string;
+  equipeId: string;
+  estoqueAtual: number;
+  estoqueMinimo: number;
+  coberturaDias: number | null;
+  saidas30Dias: number;
+  quantidadeSaida30Dias: number;
+  ultimoInventario: string | null;
+  diasDesdeInventario: number | null;
+  pontos: number;
+  prioridade: "alta" | "media" | "acompanhar";
+  motivos: PlanoInventarioMotivo[];
+};
+
+export type PlanoInventarioInteligente = {
+  periodo: PeriodoEstatisticas;
+  posicoesAnalisadas: number;
+  posicoesComInventarioAberto: number;
+  equipesEnvolvidas: number;
+  altas: number;
+  medias: number;
+  acompanhar: number;
+  itens: PlanoInventarioItem[];
+  criterios: Array<{ label: string; pontos: string; condicao: string }>;
+};
+
+function calcularEfeitoMovimentoLocal(movimentacao: Movimentacao): number {
+  if (movimentacao.tipo === "ENTRADA" || movimentacao.tipo === "DEVOLUCAO") return movimentacao.quantidade;
+  if (movimentacao.tipo === "SAIDA") return -movimentacao.quantidade;
+  return (movimentacao.sinal ?? 1) * movimentacao.quantidade;
+}
+
+function diferencaDiasLocal(inicio: string | null, fim = new Date()): number | null {
+  if (!inicio) return null;
+  const data = parseData(inicio);
+  if (Number.isNaN(data.getTime())) return null;
+  const hoje = new Date(fim.getFullYear(), fim.getMonth(), fim.getDate());
+  const base = new Date(data.getFullYear(), data.getMonth(), data.getDate());
+  return Math.max(0, Math.floor((hoje.getTime() - base.getTime()) / DAY_MS));
+}
+
+/** Motor único do plano de conferência física do inventário. */
+export function calcularPlanoInventarioInteligente(
+  produtos: Produto[],
+  movimentacoes: Movimentacao[],
+  equipes: Equipe[],
+  inventarios: Inventario[],
+  inventarioItens: InventarioItem[],
+  periodo: PeriodoEstatisticas = criarPeriodoPadrao(30),
+): PlanoInventarioInteligente {
+  const produtosAtivos = produtos.filter((produto) => produto.ativo);
+  const equipesAtivas = equipes.filter((equipe) => equipe.ativo);
+  const produtoMap = new Map(produtosAtivos.map((produto) => [produto.id, produto]));
+  const equipeMap = new Map(equipesAtivas.map((equipe) => [equipe.id, equipe]));
+  const concluidos = inventarios.filter((inventario) => inventario.status === "CONCLUIDO");
+  const abertos = new Set(inventarios.filter((inventario) => inventario.status === "ABERTO").map((inventario) => inventario.id));
+
+  const saldoPorPosicao = new Map<string, number>();
+  const saidasPorPosicao = new Map<string, { quantidade: number; registros: number }>();
+  const posicoes = new Set<string>();
+
+  for (const movimento of movimentacoes) {
+    if (!produtoMap.has(movimento.produto_id) || !equipeMap.has(movimento.equipe_id)) continue;
+    const chave = `${movimento.produto_id}:${movimento.equipe_id}`;
+    saldoPorPosicao.set(chave, (saldoPorPosicao.get(chave) ?? 0) + calcularEfeitoMovimentoLocal(movimento));
+    posicoes.add(chave);
+
+    if (movimento.tipo === "SAIDA" && movimento.data.slice(0, 10) >= periodo.de && movimento.data.slice(0, 10) <= periodo.ate) {
+      const atual = saidasPorPosicao.get(chave) ?? { quantidade: 0, registros: 0 };
+      atual.quantidade += movimento.quantidade;
+      atual.registros += 1;
+      saidasPorPosicao.set(chave, atual);
+    }
+  }
+
+  const ultimaPorPosicao = new Map<string, string>();
+  for (const item of inventarioItens) {
+    if (!abertos.has(item.inventario_id)) {
+      const inventario = concluidos.find((registro) => registro.id === item.inventario_id);
+      if (!inventario) continue;
+      const data = inventario.data_encerramento ?? inventario.data_abertura;
+      const chave = `${item.produto_id}:${item.equipe_id}`;
+      const anterior = ultimaPorPosicao.get(chave);
+      if (!anterior || data > anterior) ultimaPorPosicao.set(chave, data);
+      posicoes.add(chave);
+    }
+  }
+
+  const inventariadasAbertas = new Set<string>();
+  for (const inventario of inventarios) {
+    if (inventario.status !== "ABERTO") continue;
+    for (const item of inventarioItens) {
+      if (item.inventario_id === inventario.id) inventariadasAbertas.add(`${item.produto_id}:${item.equipe_id}`);
+    }
+  }
+
+  const itens = [...posicoes]
+    .map((chave) => {
+      const [produtoId = "", equipeId = ""] = chave.split(":");
+      const produto = produtoMap.get(produtoId);
+      const equipe = equipeMap.get(equipeId);
+      if (!produto || !equipe) return null;
+
+      const estoqueAtual = saldoPorPosicao.get(chave) ?? 0;
+      const estoqueMinimo = produto.estoque_minimo;
+      const saidas = saidasPorPosicao.get(chave) ?? { quantidade: 0, registros: 0 };
+      const coberturaDias = saidas.quantidade > 0 ? Math.max(0, estoqueAtual) / (saidas.quantidade / diferencaDiasPeriodo(periodo)) : null;
+      const ultimoInventario = ultimaPorPosicao.get(chave) ?? null;
+      const diasDesdeInventario = diferencaDiasLocal(ultimoInventario);
+      const motivos: PlanoInventarioMotivo[] = [];
+
+      if (estoqueAtual <= 0 && saidas.registros >= 3) motivos.push({ codigo: "SALDO_RISCO", label: "Saldo zerado/negativo com ≥ 3 saídas", pontos: 4 });
+      if (estoqueAtual < estoqueMinimo) motivos.push({ codigo: "ABAIXO_MINIMO", label: "Saldo abaixo do estoque mínimo", pontos: 3 });
+      if (coberturaDias != null && coberturaDias <= 7) motivos.push({ codigo: "COBERTURA_7", label: "Cobertura estimada até 7 dias", pontos: 3 });
+      else if (coberturaDias != null && coberturaDias <= 15) motivos.push({ codigo: "COBERTURA_15", label: "Cobertura estimada entre 8 e 15 dias", pontos: 2 });
+      if (saidas.registros >= 3) motivos.push({ codigo: "SAIDAS_FREQUENTES", label: "≥ 3 saídas no período", pontos: 2 });
+      if (!ultimoInventario) motivos.push({ codigo: "NUNCA_INVENTARIADO", label: "Posição nunca inventariada", pontos: 2 });
+      else if ((diasDesdeInventario ?? 0) >= 90) motivos.push({ codigo: "INVENTARIO_ANTIGO", label: "Último inventário há ≥ 90 dias", pontos: 2 });
+
+      const pontos = motivos.reduce((total, motivo) => total + motivo.pontos, 0);
+      const prioridade = pontos >= 6 ? "alta" : pontos >= 3 ? "media" : pontos >= 1 ? "acompanhar" : "acompanhar";
+      return {
+        produtoId,
+        equipeId,
+        estoqueAtual: Number(estoqueAtual.toFixed(4)),
+        estoqueMinimo: Number(estoqueMinimo.toFixed(4)),
+        coberturaDias: coberturaDias == null ? null : Number(coberturaDias.toFixed(1)),
+        saidas30Dias: saidas.registros,
+        quantidadeSaida30Dias: Number(saidas.quantidade.toFixed(4)),
+        ultimoInventario,
+        diasDesdeInventario,
+        pontos,
+        prioridade: prioridade as "alta" | "media" | "acompanhar",
+        motivos,
+      };
+    })
+    .filter((item): item is PlanoInventarioItem => item !== null)
+    .filter((item) => !inventariadasAbertas.has(`${item.produtoId}:${item.equipeId}`))
+    .filter((item) => item.pontos >= 1)
+    .sort((a, b) => b.pontos - a.pontos || (a.coberturaDias ?? Infinity) - (b.coberturaDias ?? Infinity));
+
+  return {
+    periodo,
+    posicoesAnalisadas: posicoes.size,
+    posicoesComInventarioAberto: inventariadasAbertas.size,
+    equipesEnvolvidas: new Set(itens.map((item) => item.equipeId)).size,
+    altas: itens.filter((item) => item.prioridade === "alta").length,
+    medias: itens.filter((item) => item.prioridade === "media").length,
+    acompanhar: itens.filter((item) => item.prioridade === "acompanhar").length,
+    itens,
+    criterios: [
+      { label: "Saldo em risco", pontos: "+4", condicao: "saldo ≤ 0 e pelo menos 3 saídas no período" },
+      { label: "Estoque mínimo", pontos: "+3", condicao: "saldo abaixo do estoque mínimo cadastrado" },
+      { label: "Cobertura crítica", pontos: "+3", condicao: "cobertura estimada ≤ 7 dias" },
+      { label: "Cobertura curta", pontos: "+2", condicao: "cobertura estimada entre 8 e 15 dias" },
+      { label: "Atividade", pontos: "+2", condicao: "pelo menos 3 saídas no período analisado" },
+      { label: "Sem inventário", pontos: "+2", condicao: "posição nunca inventariada" },
+      { label: "Inventário antigo", pontos: "+2", condicao: "último inventário concluído há 90 dias ou mais" },
+    ],
+  };
+}
+
+export function calcularVigiaOperacional(
+  produtos: Produto[],
+  movimentacoes: Movimentacao[],
+  equipes: Equipe[],
+  periodo: PeriodoEstatisticas,
+  opcoes: {
+    exigirDocumentoEntrada?: boolean;
+    documentosAtivos?: boolean;
+    exigirJustificativaAjuste?: boolean;
+    limiteAlertas?: number;
+  } = {},
+): ResumoVigiaOperacional {
+  const limite = Math.max(1, Math.trunc(opcoes.limiteAlertas ?? 16));
+  const analisesProdutos = calcularProdutosEstatisticas(produtos, movimentacoes, periodo);
+  const mapaRisco = calcularMapaRiscoCobertura(produtos, movimentacoes, periodo, 10, MIN_SAIDAS_MAPA_RISCO, analisesProdutos);
+  const reposicao = calcularAnaliseReposicao(produtos, movimentacoes, periodo, 30, 12, MIN_SAIDAS_MAPA_RISCO, analisesProdutos);
+  const desviosProdutos = calcularDesviosConsumoProdutos(produtos, movimentacoes, periodo, 8);
+  const desviosEquipes = calcularDesviosConsumoEquipes(movimentacoes, equipes, periodo, 8);
+  const documentosAtivos = opcoes.documentosAtivos === true;
+  const qualidade = calcularQualidadeEstoque(produtos, movimentacoes, equipes, periodo, {
+    exigirDocumentoEntrada: documentosAtivos && opcoes.exigirDocumentoEntrada === true,
+    exigirJustificativaAjuste: opcoes.exigirJustificativaAjuste === true,
+  });
+
+  const alertas: VigiaAlerta[] = [];
+  const idsComReposicao = new Set(reposicao.itens.map((item) => item.produtoId));
+
+  for (const item of reposicao.itens) {
+    alertas.push({
+      id: `reposicao:${item.produtoId}`,
+      tipo: "REPOSICAO",
+      prioridade: item.prioridade === "imediata" ? "alta" : "media",
+      titulo: item.prioridade === "imediata" ? `Reposição imediata: ${item.produto.nome}` : `Reposição prioritária: ${item.produto.nome}`,
+      descricao: `Estoque ${numVigia(item.estoqueAtual)} · consumo ${numVigia(item.consumoMedioDiario)}/dia · sugestão ${numVigia(item.quantidadeSugerida)}.`,
+      indicador: `Sugestão ${numVigia(item.quantidadeSugerida)} · cobertura ${item.coberturaDias == null ? "—" : `${numVigia(item.coberturaDias)} dias`}`,
+      regra: `Produto participante da inteligência · ≥ ${reposicao.minSaidas} saídas no período · alvo de ${reposicao.diasAlvo} dias.`,
+      produtoId: item.produtoId,
+      acaoPrincipal: "REPOSICAO",
+      acaoSecundaria: "PARAMETROS_PRODUTO",
+    });
+  }
+
+  for (const item of mapaRisco.itensPrioritarios) {
+    if (idsComReposicao.has(item.produtoId)) continue;
+    alertas.push({
+      id: `risco:${item.produtoId}`,
+      tipo: "RISCO_COBERTURA",
+      prioridade: item.faixa === "critico" ? "alta" : "media",
+      titulo: `${item.faixa === "critico" ? "Cobertura crítica" : "Cobertura em atenção"}: ${item.produto.nome}`,
+      descricao: `${numVigia(item.coberturaDias)} dias de cobertura · ${numVigia(item.estoqueAtual)} em estoque · ${numVigia(item.consumoMedioDiario)}/dia.`,
+      indicador: `${numVigia(item.coberturaDias)} dias de cobertura`,
+      regra: `Mapa de risco com mínimo de ${mapaRisco.minSaidas} saídas no período efetivo.`,
+      produtoId: item.produtoId,
+      acaoPrincipal: "RISCO_PRODUTO",
+      acaoSecundaria: "REPOSICAO",
+    });
+  }
+
+  for (const item of desviosProdutos) {
+    const variacao = item.variacaoPercentual == null ? "novo consumo" : `${item.variacaoPercentual > 0 ? "+" : ""}${numVigia(item.variacaoPercentual)}%`;
+    alertas.push({
+      id: `desvio-produto:${item.produtoId}`,
+      tipo: "DESVIO_PRODUTO",
+      prioridade: "media",
+      titulo: `Desvio de consumo: ${item.produto.nome}`,
+      descricao: `${variacao} nas saídas · atual ${item.saidasAtual} · anterior ${item.saidasAnterior}.`,
+      indicador: `${variacao} nas saídas`,
+      regra: `Desvio absoluto mínimo de ${LIMIAR_DESVIO_CONSUMO_PERCENTUAL}% entre as janelas comparadas.`,
+      produtoId: item.produtoId,
+      acaoPrincipal: "DESVIO_PRODUTO",
+    });
+  }
+
+  for (const item of desviosEquipes) {
+    const variacao = item.variacaoPercentual == null ? "novo consumo" : `${item.variacaoPercentual > 0 ? "+" : ""}${numVigia(item.variacaoPercentual)}%`;
+    alertas.push({
+      id: `desvio-equipe:${item.equipeId ?? "sem-equipe"}`,
+      tipo: "DESVIO_EQUIPE",
+      prioridade: "media",
+      titulo: `Desvio de consumo: ${item.equipe?.nome ?? "Sem equipe"}`,
+      descricao: `${variacao} nas saídas · atual ${item.saidasAtual} · anterior ${item.saidasAnterior}.`,
+      indicador: `${variacao} nas saídas`,
+      regra: `Desvio absoluto mínimo de ${LIMIAR_DESVIO_CONSUMO_PERCENTUAL}% entre as janelas comparadas.`,
+      equipeId: item.equipeId,
+      acaoPrincipal: "DESVIO_EQUIPE",
+    });
+  }
+
+  for (const alerta of qualidade.alertas) {
+    alertas.push({
+      id: `qualidade:${alerta.id}`,
+      tipo: "QUALIDADE",
+      prioridade: alerta.severidade === "alta" ? "alta" : alerta.severidade === "media" ? "media" : "info",
+      titulo: alerta.mensagem,
+      descricao: `${alerta.tipoMovimentacao.replaceAll("_", " ")} · movimentação ${alerta.movimentacaoId}`,
+      indicador: `Severidade ${alerta.severidade}`,
+      regra: alerta.comoCorrigir,
+      produtoId: alerta.produtoId,
+      equipeId: alerta.equipeId,
+      movimentacaoId: alerta.movimentacaoId,
+      data: alerta.data,
+      acaoPrincipal: "QUALIDADE",
+    });
+  }
+
+  const peso: Record<VigiaPrioridade, number> = { alta: 0, media: 1, info: 2 };
+  alertas.sort((a, b) => {
+    const prioridade = peso[a.prioridade] - peso[b.prioridade];
+    if (prioridade !== 0) return prioridade;
+    return a.titulo.localeCompare(b.titulo, "pt-BR");
+  });
+
+  return {
+    periodo,
+    criticos: mapaRisco.critico,
+    atencao: mapaRisco.atencao,
+    reposicoes: reposicao.totalItens,
+    reposicoesImediatas: reposicao.reposicaoImediata,
+    reposicoesExcluidasConfiguracao: reposicao.excluidosPorConfiguracao,
+    desvios: desviosProdutos.length + desviosEquipes.length,
+    alertasQualidade: qualidade.total,
+    alertasQualidadeAltos: qualidade.altas,
+    alertas: selecionarAlertasVigia(alertas, limite),
+  };
+}
+
+/**
+ * Mantém a fila limitada sem deixar uma única categoria ocupar todos os
+ * espaços disponíveis. Primeiro garante uma representação das categorias
+ * existentes e, depois, completa a fila pela prioridade já calculada.
+ */
+function selecionarAlertasVigia(alertas: VigiaAlerta[], limite: number): VigiaAlerta[] {
+  if (alertas.length <= limite) return alertas;
+
+  const tiposPreferenciais: VigiaTipoAlerta[] = [
+    "REPOSICAO",
+    "RISCO_COBERTURA",
+    "DESVIO_PRODUTO",
+    "DESVIO_EQUIPE",
+    "QUALIDADE",
+  ];
+
+  const selecionados: VigiaAlerta[] = [];
+  const idsSelecionados = new Set<string>();
+
+  for (const tipo of tiposPreferenciais) {
+    if (selecionados.length >= limite) break;
+    const alerta = alertas.find((item) => item.tipo === tipo);
+    if (!alerta) continue;
+    selecionados.push(alerta);
+    idsSelecionados.add(alerta.id);
+  }
+
+  for (const alerta of alertas) {
+    if (selecionados.length >= limite) break;
+    if (idsSelecionados.has(alerta.id)) continue;
+    selecionados.push(alerta);
+    idsSelecionados.add(alerta.id);
+  }
+
+  return selecionados;
+}
+
+function numVigia(valor: number | null | undefined): string {
+  if (valor == null || !Number.isFinite(valor)) return "—";
+  return new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 }).format(valor);
 }

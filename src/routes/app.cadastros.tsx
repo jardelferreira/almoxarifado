@@ -74,6 +74,7 @@ function CadastrosPage() {
         categoria_id: null,
         unidade_id: null,
         estoque_minimo: 0,
+        inteligencia_reposicao: true,
         ativo: true,
       },
       categorias: { nome: "", ativo: true },
@@ -117,6 +118,7 @@ function CadastrosPage() {
       }
 
       p.estoque_minimo = Number(p.estoque_minimo) || 0;
+      p.inteligencia_reposicao = p.inteligencia_reposicao !== false;
     }
 
     if (aba === "equipes") {
@@ -288,6 +290,7 @@ function CadastrosPage() {
                           <TableHead>Categoria</TableHead>
                           <TableHead>Unidade</TableHead>
                           <TableHead className="text-right">Est. mínimo</TableHead>
+                          <TableHead>Reposição inteligente</TableHead>
                         </>
                       )}
                       {aba === "unidades" && <TableHead>Descrição</TableHead>}
@@ -325,6 +328,11 @@ function CadastrosPage() {
                             </TableCell>
                             <TableCell className="num text-right">
                               {num(p.estoque_minimo)}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className={p.inteligencia_reposicao === false ? "border-muted-foreground/20 text-muted-foreground" : "border-sidebar-primary/30 bg-sidebar-primary/5 text-sidebar-primary"}>
+                                {p.inteligencia_reposicao === false ? "Desativada" : "Ativa"}
+                              </Badge>
                             </TableCell>
                             <Acoes
                               ativo={p.ativo}
@@ -506,6 +514,23 @@ function CadastrosPage() {
                       })
                     }
                   />
+                  <div className="flex items-start gap-3 rounded-lg border bg-muted/20 p-3 sm:col-span-2">
+                    <Switch
+                      checked={editando.item["inteligencia_reposicao"] !== false}
+                      onCheckedChange={(inteligencia_reposicao) =>
+                        setEditando({
+                          ...editando,
+                          item: { ...editando.item, inteligencia_reposicao },
+                        })
+                      }
+                    />
+                    <div className="space-y-0.5">
+                      <Label>Participa da inteligência de reposição</Label>
+                      <p className="text-xs leading-5 text-muted-foreground">
+                        Quando ativa, o Vigia pode sugerir reposição para este produto com base no consumo e no estoque mínimo.
+                      </p>
+                    </div>
+                  </div>
                   <div className="space-y-1.5">
                     <Label>Categoria</Label>
                     <Combobox
