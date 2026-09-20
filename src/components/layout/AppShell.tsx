@@ -1,32 +1,26 @@
 import {
-  Activity,
   ArrowLeftRight,
   Boxes,
+  ChartColumn,
   ChevronLeft,
   ChevronRight,
   ClipboardList,
   Database,
+  FileChartLine,
+  FileClock,
   FileText,
-  HardHat,
   LayoutDashboard,
-  ListChecks,
+  LayoutList,
   Menu,
-  PackagePlus,
-  PackageSearch,
+  Settings,
   Settings2,
+  ShieldAlert,
+  UserCheck,
   Warehouse,
   Wifi,
   WifiOff,
   Wrench,
-  UserCheck,
   X,
-  FileChartLine,
-  LayoutList,
-  FileClock,
-  Settings,
-  ChartColumn,
-  ShieldAlert,
-  Sparkles,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useState, useEffect } from "react";
@@ -44,6 +38,7 @@ type NavItem = {
   label: string;
   icon: typeof LayoutDashboard;
   exact?: boolean;
+  modulo?: keyof Configuracao["modulos"];
   visivel?: (configuracao?: Configuracao) => boolean;
 };
 
@@ -51,50 +46,65 @@ type NavGroup = {
   label: string;
   icon: typeof Boxes;
   items: NavItem[];
-  // Chave em `configuracao.modulos` que controla se este grupo aparece na navegação.
-  // Grupos sem essa chave ficam sempre visíveis.
-  modulo?: keyof Configuracao["modulos"];
 };
 
 const navGroups: NavGroup[] = [
   {
-    label: "Almoxarifado",
-    icon: Boxes,
-    modulo: "materiais",
+    label: "Operação",
+    icon: Warehouse,
     items: [
-      { to: "/app", label: "Dashboard", icon: LayoutDashboard, exact: true },
-      { to: "/app/vigia", label: "Vigia", icon: ShieldAlert },
-      { to: "/app/lancar", label: "Lançar", icon: ArrowLeftRight },
-      { to: "/app/movimentacoes", label: "Movimentações", icon: FileClock },
-      { to: "/app/estoque", label: "Estoque", icon: Warehouse },
-      { to: "/app/produto", label: "Perfil do produto", icon: Sparkles },
+      { to: "/app/lancar", label: "Lançar", icon: ArrowLeftRight, modulo: "materiais" },
+      { to: "/app/movimentacoes", label: "Movimentações", icon: FileClock, modulo: "materiais" },
+      { to: "/app/estoque", label: "Estoque", icon: Warehouse, modulo: "materiais" },
       {
         to: "/app/inventario",
         label: "Inventário",
         icon: ClipboardList,
+        modulo: "materiais",
         visivel: (configuracao) => configuracao?.inventario.habilitado !== false,
       },
-      { to: "/app/cadastros", label: "Cadastros", icon: Settings2 },
-      { to: "/app/estatisticas", label: "Estatísticas", icon: ChartColumn },
     ],
   },
   {
-    label: "Equipamentos",
-    icon: Wrench,
-    modulo: "equipamentos",
-    items: [
-      { to: "/app/equipamentos", label: "Equipamentos", icon: LayoutList },
-      { to: "/app/apropriacoes", label: "Apropriações", icon: UserCheck },
-      { to: "/app/movimentacoes-equipamentos", label: "Movimentações", icon: ArrowLeftRight },
-      { to: "/app/relatorios-equipamentos", label: "Relatorios", icon: FileChartLine },
-    ],
-  },
-  {
-    label: "Documentos",
+    label: "Documentação",
     icon: FileText,
-    modulo: "documentos",
     items: [
-      { to: "/app/documentos", label: "Documentos", icon: FileText, exact: true },
+      {
+        to: "/app/documentos",
+        label: "Documentos",
+        icon: FileText,
+        exact: true,
+        modulo: "documentos",
+      },
+    ],
+  },
+  {
+    label: "Recursos",
+    icon: Wrench,
+    items: [
+      { to: "/app/equipamentos", label: "Equipamentos", icon: LayoutList, modulo: "equipamentos" },
+      { to: "/app/apropriacoes", label: "Apropriações", icon: UserCheck, modulo: "equipamentos" },
+      {
+        to: "/app/movimentacoes-equipamentos",
+        label: "Movimentações",
+        icon: ArrowLeftRight,
+        modulo: "equipamentos",
+      },
+      {
+        to: "/app/relatorios-equipamentos",
+        label: "Relatórios",
+        icon: FileChartLine,
+        modulo: "equipamentos",
+      },
+      { to: "/app/cadastros", label: "Cadastros", icon: Settings2, modulo: "materiais" },
+    ],
+  },
+  {
+    label: "Inteligência",
+    icon: ShieldAlert,
+    items: [
+      { to: "/app/vigia", label: "Vigia Operacional", icon: ShieldAlert, modulo: "materiais" },
+      { to: "/app/estatisticas", label: "Estatísticas", icon: ChartColumn, modulo: "materiais" },
     ],
   },
 ];
@@ -110,13 +120,64 @@ function Navigation({
   configuracao?: Configuracao | undefined;
   onNavigate?: (() => void) | undefined;
 }) {
+  const dashboardItem: NavItem = {
+    to: "/app",
+    label: "Dashboard",
+    icon: LayoutDashboard,
+    exact: true,
+    modulo: "materiais",
+  };
 
-  // const db = getDB(); 
-  // db.movimentacoes_equipamentos.clear()
+  const itemVisivel = (item: NavItem) =>
+    (!item.modulo || !configuracao || configuracao.modulos[item.modulo] !== false) &&
+    (!item.visivel || item.visivel(configuracao));
+
+  const renderItem = (item: NavItem) => (
+    <Link
+      key={item.to}
+      to={item.to}
+      activeOptions={{ exact: item.exact ?? false }}
+      onClick={onNavigate}
+      title={!expanded ? item.label : undefined}
+      aria-label={!expanded ? item.label : undefined}
+      className={[
+        "group relative flex min-h-10 items-center rounded-md text-sm font-medium",
+        "text-sidebar-foreground/80 transition-colors duration-150",
+        "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+        "outline-none focus-visible:ring-2 focus-visible:ring-sidebar-primary focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar",
+        expanded ? "gap-3 px-3" : "justify-center px-2",
+      ].join(" ")}
+      activeProps={{
+        className: [
+          "group relative flex min-h-10 items-center rounded-md text-sm font-medium",
+          "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm",
+          "before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-sidebar-primary",
+          "outline-none focus-visible:ring-2 focus-visible:ring-sidebar-primary focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar",
+          expanded ? "gap-3 px-3" : "justify-center px-2",
+        ].join(" "),
+      }}
+    >
+      <item.icon
+        className="size-[18px] shrink-0 transition-transform duration-150 group-hover:translate-x-0.5"
+        aria-hidden="true"
+      />
+      {expanded && <span className="truncate">{item.label}</span>}
+    </Link>
+  );
+
   return (
     <nav aria-label="Navegação principal" className="sidebar-scrollbar flex-1 overflow-y-auto px-2 py-3">
       <div className="space-y-4">
+        {itemVisivel(dashboardItem) && (
+          <div className="mb-1 border-b border-sidebar-border pb-3">
+            {renderItem(dashboardItem)}
+          </div>
+        )}
+
         {groups.map((group) => {
+          const items = group.items.filter(itemVisivel);
+          if (items.length === 0) return null;
+
           const GroupIcon = group.icon;
 
           return (
@@ -139,70 +200,11 @@ function Navigation({
               </div>
 
               <div className="space-y-1">
-                {group.items.filter((item) => item.visivel ? item.visivel(configuracao) : true).map((item) => (
-                  <Link
-                    key={item.to}
-                    to={item.to}
-                    activeOptions={{ exact: item.exact ?? false }}
-                    onClick={onNavigate}
-                    title={!expanded ? item.label : undefined}
-                    aria-label={!expanded ? item.label : undefined}
-                    className={[
-                      "group relative flex min-h-10 items-center rounded-md text-sm font-medium",
-                      "text-sidebar-foreground/80 transition-colors duration-150",
-                      "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                      "outline-none focus-visible:ring-2 focus-visible:ring-sidebar-primary focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar",
-                      expanded ? "gap-3 px-3" : "justify-center px-2",
-                    ].join(" ")}
-                    activeProps={{
-                      className: [
-                        "group relative flex min-h-10 items-center rounded-md text-sm font-medium",
-                        "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm",
-                        "before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-sidebar-primary",
-                        "outline-none focus-visible:ring-2 focus-visible:ring-sidebar-primary focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar",
-                        expanded ? "gap-3 px-3" : "justify-center px-2",
-                      ].join(" "),
-                    }}
-                  >
-                    <item.icon
-                      className="size-[18px] shrink-0 transition-transform duration-150 group-hover:translate-x-0.5"
-                      aria-hidden="true"
-                    />
-                    {expanded && <span className="truncate">{item.label}</span>}
-                  </Link>
-                ))}
+                {items.map(renderItem)}
               </div>
             </section>
           );
         })}
-
-        <section aria-label="Outros módulos">
-          <div
-            className={[
-              "mb-2 flex items-center border-b border-sidebar-border pb-2",
-              expanded ? "gap-2 px-2" : "justify-center px-1",
-            ].join(" ")}
-          >
-            <Settings2 className="size-4 text-sidebar-foreground/35" aria-hidden="true" />
-            {expanded && (
-              <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-sidebar-foreground/35">
-                Outro módulo
-              </span>
-            )}
-          </div>
-
-          <div
-            className={[
-              "flex min-h-10 items-center rounded-md text-sm font-medium text-sidebar-foreground/30",
-              expanded ? "gap-3 px-3" : "justify-center px-2",
-            ].join(" ")}
-            title="Módulo futuro"
-            aria-label="Módulo futuro"
-          >
-            <Settings2 className="size-[18px] shrink-0" aria-hidden="true" />
-            {expanded && <span>Em breve</span>}
-          </div>
-        </section>
       </div>
     </nav>
   );
@@ -225,12 +227,9 @@ export function AppShell({ children }: { children: ReactNode }) {
     [projetoId],
   );
 
-  // Enquanto a configuração ainda não carregou, mantemos todos os grupos visíveis
-  // para não "piscar" a navegação. Depois de carregada, um grupo só some se o
-  // módulo correspondente estiver explicitamente desativado.
-  const gruposVisiveis = navGroups.filter(
-    (group) => !group.modulo || !configuracao || configuracao.modulos[group.modulo] !== false,
-  );
+  // A visibilidade é resolvida por item, permitindo que módulos diferentes
+  // compartilhem uma categoria sem criar grupos artificiais no menu.
+  const gruposVisiveis = navGroups;
 
   useEffect(() => {
     if (!projetoId) return;
