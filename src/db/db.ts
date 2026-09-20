@@ -23,6 +23,12 @@ import type {
   Inventario,
   InventarioItem,
   InteligenciaAcao,
+  ManutencaoEquipamento,
+  RegraConsumoEquipamento,
+  PerfilParametroCusto,
+  ConsumoEquipamento,
+  ManutencaoDocumento,
+  ApropriacaoFinanceiraEquipamento,
 } from "@/types";
 
 export class AlmoxarifadoDB extends Dexie {
@@ -46,9 +52,15 @@ export class AlmoxarifadoDB extends Dexie {
   documentos!: Table<Documento, string>;
   documento_itens!: Table<DocumentoItem, string>;
   documento_referencias!: Table<DocumentoReferencia, string>;
+  manutencao_documentos!: Table<ManutencaoDocumento, string>;
+  apropriacoes_financeiras_equipamentos!: Table<ApropriacaoFinanceiraEquipamento, string>;
   inventarios!: Table<Inventario, string>;
   inventario_itens!: Table<InventarioItem, string>;
   inteligencia_acoes!: Table<InteligenciaAcao, string>;
+  consumos_equipamentos!: Table<ConsumoEquipamento, string>;
+  manutencoes_equipamentos!: Table<ManutencaoEquipamento, string>;
+  regras_consumo_equipamentos!: Table<RegraConsumoEquipamento, string>;
+  perfis_parametros_custos!: Table<PerfilParametroCusto, string>;
 
   constructor() {
     super("almoxarifado");
@@ -536,6 +548,74 @@ export class AlmoxarifadoDB extends Dexie {
         "id, inventario_id, produto_id, equipe_id, quantidade_sistema, quantidade_contada, [inventario_id+produto_id+equipe_id]",
       inteligencia_acoes:
         "id, projeto_id, chave, assinatura, origem, tipo, produto_id, equipe_id, referencia_id, status, registrada_em, [projeto_id+chave]",
+    });
+
+    /**
+     * Versão 14
+     *
+     * Introduz ocorrências técnicas de manutenção como entidade própria.
+     * O histórico de movimentações continua sendo a fonte operacional;
+     * a ocorrência passa a concentrar o ciclo técnico e seus vínculos.
+     */
+    this.version(14).stores({
+      manutencoes_equipamentos:
+        "id, projeto_id, estoque_equipamento_id, equipamento_id, status, data_abertura, empresa_id, [projeto_id+estoque_equipamento_id]",
+    });
+
+    /**
+     * Versão 15
+     *
+     * Expande a indexação das ocorrências de manutenção para o ciclo
+     * operacional e mantém compatibilidade com registros criados na V14.
+     */
+    this.version(15).stores({
+      manutencoes_equipamentos:
+        "id, projeto_id, estoque_equipamento_id, equipamento_id, status_operacional, status_detalhamento, data_abertura, empresa_id, movimento_sinalizacao_id, movimento_envio_id, movimento_retorno_id, [projeto_id+estoque_equipamento_id], [projeto_id+status_operacional]",
+    });
+
+    /**
+     * Versão 16
+     *
+     * Vínculos documentais e apropriações financeiras rastreáveis de
+     * equipamentos, iniciando pela camada de manutenção.
+     */
+    this.version(16).stores({
+      manutencao_documentos:
+        "id, projeto_id, manutencao_id, documento_id, [manutencao_id+documento_id]",
+      apropriacoes_financeiras_equipamentos:
+        "id, projeto_id, tipo, documento_id, documento_item_id, manutencao_id, estoque_equipamento_id, equipamento_id, criado_em, [documento_id+estoque_equipamento_id]",
+    });
+
+    /**
+     * Versão 17
+     *
+     * Registra a apropriação analítica das saídas de materiais para
+     * equipamentos, sem alterar o histórico da movimentação original.
+     */
+    this.version(17).stores({
+      consumos_equipamentos:
+        "id, projeto_id, movimentacao_id, estoque_equipamento_id, equipamento_id, data_apropriacao, criado_em, [movimentacao_id+estoque_equipamento_id]",
+    });
+    /**
+     * Versão 18
+     *
+     * Regras parametrizadas de consumo por equipamento/produto, com
+     * possibilidade de override em um registro físico específico.
+     */
+    this.version(18).stores({
+      regras_consumo_equipamentos:
+        "id, projeto_id, equipamento_id, estoque_equipamento_id, produto_id, direcionador, ativo, vigencia_inicio, vigencia_fim, [projeto_id+equipamento_id], [equipamento_id+estoque_equipamento_id], [equipamento_id+produto_id]",
+    });
+
+    /**
+     * Versão 19
+     *
+     * Perfis reutilizáveis de parâmetros para simulação de custos.
+     * Cada versão é imutável; o mesmo perfil_id agrupa seu histórico.
+     */
+    this.version(19).stores({
+      perfis_parametros_custos:
+        "id, projeto_id, perfil_id, versao, atualizado_em, [projeto_id+perfil_id], [perfil_id+versao]",
     });
   }
 }

@@ -67,6 +67,9 @@ const MODULOS: Modulo[] = [
   { tabela: "documento_referencias", label: "Referências de documentos", descricao: "Relações entre documentos." },
   { tabela: "inventarios", label: "Inventários", descricao: "Inventários físicos e seus estados." },
   { tabela: "inventario_itens", label: "Itens de inventário", descricao: "Posições contadas e divergências." },
+  { tabela: "manutencoes_equipamentos", label: "Manutenções de equipamentos", descricao: "Ocorrências técnicas e histórico de manutenção." },
+  { tabela: "manutencao_documentos", label: "Documentos de manutenção", descricao: "Vínculos entre ocorrências de manutenção e documentos." },
+  { tabela: "apropriacoes_financeiras_equipamentos", label: "Apropriações financeiras", descricao: "Rateios de valores documentais para equipamentos e manutenções." },
 ];
 
 function DadosPage() {

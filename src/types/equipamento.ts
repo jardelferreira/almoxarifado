@@ -4,6 +4,19 @@ export type EquipamentoTipoControle = "INDIVIDUAL" | "QUANTITATIVO";
 export type EquipamentoVinculo = "PROPRIO" | "ALUGADO" | "EMPRESTIMO";
 export type EquipamentoStatus = "ATIVO" | "ENCERRADO";
 
+export type EquipamentoPeriodicidadeCusto =
+  | "HORA"
+  | "DIA"
+  | "SEMANA"
+  | "MES"
+  | "ANO";
+
+export type EquipamentoFonteValor =
+  | "INFORMADO"
+  | "DOCUMENTO"
+  | "HISTORICO"
+  | "IMPORTADO";
+
 export interface CategoriaEquipamento {
   id: ID;
   projeto_id: ID;
@@ -24,6 +37,13 @@ export interface Equipamento {
   modelo?: string | null | undefined;
   marca?: string | null | undefined;
   descricao?: string | null | undefined;
+
+  /** Parâmetros financeiros padrão do modelo. */
+  valor_referencia?: number | null | undefined;
+  custo_recorrente?: number | null | undefined;
+  periodicidade_custo?: EquipamentoPeriodicidadeCusto | null | undefined;
+  fonte_valor?: EquipamentoFonteValor | null | undefined;
+
   ativo: boolean;
   criado_em: string;
   atualizado_em: string;
@@ -56,6 +76,13 @@ export interface EstoqueEquipamento {
   data_entrada: string;
   referencia_documento?: string | null | undefined;
   observacoes?: string | null | undefined;
+
+  /** Sobrescreve os parâmetros do cadastro quando necessário para a unidade/lote. */
+  valor_unitario?: number | null | undefined;
+  custo_recorrente_unitario?: number | null | undefined;
+  periodicidade_custo?: EquipamentoPeriodicidadeCusto | null | undefined;
+  fonte_valor?: EquipamentoFonteValor | null | undefined;
+
   criado_em: string;
   atualizado_em: string;
 }

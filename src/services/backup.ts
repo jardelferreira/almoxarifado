@@ -1,7 +1,7 @@
 import { getDB } from "@/db/db";
 
 export const BACKUP_FORMATO = "ALMOXARIFADO_BACKUP";
-export const BACKUP_VERSAO = 2;
+export const BACKUP_VERSAO = 7;
 
 export const BACKUP_TABELAS = [
   "projetos",
@@ -26,6 +26,12 @@ export const BACKUP_TABELAS = [
   "documento_referencias",
   "inventarios",
   "inventario_itens",
+  "manutencoes_equipamentos",
+  "manutencao_documentos",
+  "apropriacoes_financeiras_equipamentos",
+  "consumos_equipamentos",
+  "regras_consumo_equipamentos",
+  "perfis_parametros_custos",
 ] as const;
 
 export type BackupTabela = (typeof BACKUP_TABELAS)[number];

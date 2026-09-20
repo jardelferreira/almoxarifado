@@ -74,10 +74,22 @@ export const repo = {
       db.locais,
       db.produtos,
       db.equipes,
+      db.consumos_equipamentos,
+      db.regras_consumo_equipamentos,
     ];
 
     await db.transaction("rw", tabelas, async () => {
       await db.movimentacoes
+        .where("projeto_id")
+        .equals(id)
+        .delete();
+
+      await db.consumos_equipamentos
+        .where("projeto_id")
+        .equals(id)
+        .delete();
+
+      await db.regras_consumo_equipamentos
         .where("projeto_id")
         .equals(id)
         .delete();
@@ -685,7 +697,17 @@ export const repo = {
       return;
     }
 
-    await db.movimentacoes.delete(id);
+    await db.transaction(
+      "rw",
+      [db.movimentacoes, db.consumos_equipamentos],
+      async () => {
+        await db.consumos_equipamentos
+          .where("movimentacao_id")
+          .equals(id)
+          .delete();
+        await db.movimentacoes.delete(id);
+      },
+    );
   },
 
   async movimentacoesDoProduto(

@@ -40,16 +40,19 @@ export const inteligenciaRepo = {
       status?: InteligenciaStatus | "TODOS";
       produtoId?: string | null;
       origens?: InteligenciaOrigem[];
+      tipos?: string[];
       limite?: number;
     } = {},
   ): Promise<InteligenciaAcao[]> {
     const registros = await getDB().inteligencia_acoes.where("projeto_id").equals(projetoId).toArray();
     const origemSet = opcoes.origens?.length ? new Set(opcoes.origens) : null;
+    const tipoSet = opcoes.tipos?.length ? new Set(opcoes.tipos) : null;
 
     return registros
       .filter((registro) => opcoes.status === "TODOS" || !opcoes.status || registro.status === opcoes.status)
       .filter((registro) => !opcoes.produtoId || registro.produto_id === opcoes.produtoId)
       .filter((registro) => !origemSet || origemSet.has(registro.origem))
+      .filter((registro) => !tipoSet || tipoSet.has(registro.tipo))
       .sort(ordenarMaisRecentes)
       .slice(0, Math.max(1, opcoes.limite ?? 40));
   },

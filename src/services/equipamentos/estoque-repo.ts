@@ -20,6 +20,10 @@ export type EstoqueEquipamentoInput = {
   data_entrada: string;
   referencia_documento?: string | null;
   observacoes?: string | null;
+  valor_unitario?: number | null;
+  custo_recorrente_unitario?: number | null;
+  periodicidade_custo?: EstoqueEquipamento["periodicidade_custo"];
+  fonte_valor?: EstoqueEquipamento["fonte_valor"];
 };
 
 function normalizarTexto(
@@ -279,6 +283,19 @@ export const estoqueEquipamentosRepo = {
     const quantidade = dados.quantidade;
     const devolvido = dados.devolvido ?? 0;
 
+    for (const [campo, valor] of [
+      ["valor_unitario", dados.valor_unitario],
+      ["custo_recorrente_unitario", dados.custo_recorrente_unitario],
+    ] as const) {
+      if (valor !== null && valor !== undefined && (!Number.isFinite(valor) || valor < 0)) {
+        throw new Error(`O campo ${campo.replaceAll("_", " ")} deve ser um valor maior ou igual a zero.`);
+      }
+    }
+
+    if (dados.custo_recorrente_unitario !== null && dados.custo_recorrente_unitario !== undefined && !dados.periodicidade_custo) {
+      throw new Error("Informe a periodicidade quando houver custo recorrente.");
+    }
+
     validarQuantidade(
       equipamento,
       quantidade,
@@ -371,6 +388,10 @@ export const estoqueEquipamentosRepo = {
       observacoes: normalizarTexto(
         dados.observacoes,
       ),
+      valor_unitario: dados.valor_unitario ?? existente?.valor_unitario ?? null,
+      custo_recorrente_unitario: dados.custo_recorrente_unitario ?? existente?.custo_recorrente_unitario ?? null,
+      periodicidade_custo: dados.periodicidade_custo ?? existente?.periodicidade_custo ?? null,
+      fonte_valor: dados.fonte_valor ?? existente?.fonte_valor ?? (dados.valor_unitario != null ? "INFORMADO" : null),
       criado_em: existente?.criado_em ?? agora,
       atualizado_em: agora,
     };
@@ -380,6 +401,56 @@ export const estoqueEquipamentosRepo = {
     );
 
     return estoqueEquipamento;
+  },
+
+  async atualizarFinanceiro(
+    projetoId: string,
+    estoqueEquipamentoId: string,
+    dados: {
+      valor_unitario: number | null;
+      custo_recorrente_unitario: number | null;
+      periodicidade_custo: EstoqueEquipamento["periodicidade_custo"] | null;
+    },
+  ): Promise<EstoqueEquipamento> {
+    const db = getDB();
+    const existente = await db.estoque_equipamentos.get(estoqueEquipamentoId);
+
+    if (!existente || existente.projeto_id !== projetoId) {
+      throw new Error("Registro de estoque não encontrado neste projeto.");
+    }
+
+    if (
+      dados.valor_unitario !== null &&
+      (!Number.isFinite(dados.valor_unitario) || dados.valor_unitario < 0)
+    ) {
+      throw new Error("O valor unitário deve ser maior ou igual a zero.");
+    }
+
+    if (
+      dados.custo_recorrente_unitario !== null &&
+      (!Number.isFinite(dados.custo_recorrente_unitario) || dados.custo_recorrente_unitario < 0)
+    ) {
+      throw new Error("O custo recorrente unitário deve ser maior ou igual a zero.");
+    }
+
+    if (
+      dados.custo_recorrente_unitario !== null &&
+      !dados.periodicidade_custo
+    ) {
+      throw new Error("Informe a periodicidade quando houver custo recorrente.");
+    }
+
+    const atualizado: EstoqueEquipamento = {
+      ...existente,
+      valor_unitario: dados.valor_unitario,
+      custo_recorrente_unitario: dados.custo_recorrente_unitario,
+      periodicidade_custo: dados.periodicidade_custo,
+      fonte_valor: dados.valor_unitario !== null ? "INFORMADO" : null,
+      atualizado_em: new Date().toISOString(),
+    };
+
+    await db.estoque_equipamentos.put(atualizado);
+    return atualizado;
   },
 
   async excluir(

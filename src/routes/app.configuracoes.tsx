@@ -12,6 +12,7 @@ import {
     SlidersHorizontal,
     Warehouse,
     Wrench,
+    Calculator,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -237,7 +238,7 @@ function ConfiguracoesPage() {
                             id="modulos-titulo"
                         />
                     </CardHeader>
-                    <CardContent className="grid gap-3 p-5 sm:grid-cols-3 sm:p-6">
+                    <CardContent className="grid gap-3 p-5 sm:grid-cols-2 xl:grid-cols-5 sm:p-6">
                         <ModuleCard
                             icon={<Package className="size-5" />}
                             title="Materiais"
@@ -258,6 +259,20 @@ function ConfiguracoesPage() {
                             description="Notas fiscais, romaneios, pedidos e documentos internos."
                             checked={rascunho.modulos.documentos}
                             onCheckedChange={(v) => atualizarModulo("documentos", v)}
+                        />
+                        <ModuleCard
+                            icon={<Calculator className="size-5" />}
+                            title="Financeiro de equipamentos"
+                            description="Valores, custos recorrentes e futura análise financeira do parque."
+                            checked={rascunho.modulos.financeiro_equipamentos}
+                            onCheckedChange={(v) => atualizarModulo("financeiro_equipamentos", v)}
+                        />
+                        <ModuleCard
+                            icon={<Wrench className="size-5" />}
+                            title="Manutenção de equipamentos"
+                            description="Detalhamento opcional do ciclo de manutenção gerado pelas movimentações."
+                            checked={rascunho.modulos.manutencao_equipamentos}
+                            onCheckedChange={(v) => atualizarModulo("manutencao_equipamentos", v)}
                         />
                     </CardContent>
                 </Card>

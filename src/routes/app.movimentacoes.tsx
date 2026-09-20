@@ -1,9 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
+import { useLiveQuery } from "dexie-react-hooks";
 import * as XLSX from "xlsx";
 import {
   ArrowRight,
   ArrowRightLeft,
+  Calculator,
   Building2,
   CalendarDays,
   Eye,
@@ -41,8 +43,11 @@ import {
 import { Combobox } from "@/components/common/Combobox";
 import { useDados, useProjetoAtivoId } from "@/hooks/useAppData";
 import { repo } from "@/services/repo";
+import { configuracoesRepo } from "@/services/configuracoes-repo";
+import { consumoEquipamentoRepo } from "@/services/equipamentos/consumo-equipamento-repo";
+import { getDB } from "@/db/db";
 import { num } from "@/utils/format";
-import type { Movimentacao } from "@/types";
+import type { ConsumoEquipamento, Equipamento, EstoqueEquipamento, Movimentacao } from "@/types";
 
 export const Route = createFileRoute("/app/movimentacoes")({
   validateSearch: (search: Record<string, unknown>): MovimentacoesBusca => ({
@@ -274,6 +279,42 @@ export function MovimentacoesPage() {
   const [ate, setAte] = useState("");
   const [pagina, setPagina] = useState(0);
   const [detalhe, setDetalhe] = useState<Movimentacao | null>(null);
+  const [consumoEstoqueId, setConsumoEstoqueId] = useState("");
+  const [consumoQuantidade, setConsumoQuantidade] = useState("");
+  const [consumoObservacao, setConsumoObservacao] = useState("");
+
+  const configuracao = useLiveQuery(
+    () => (projetoId ? configuracoesRepo.obter(projetoId) : undefined),
+    [projetoId],
+  );
+
+  const equipamentosContexto = useLiveQuery(
+    async () => {
+      if (!projetoId) {
+        return {
+          equipamentos: [] as Equipamento[],
+          estoques: [] as EstoqueEquipamento[],
+        };
+      }
+
+      const [equipamentos, estoques] = await Promise.all([
+        getDB().equipamentos.where("projeto_id").equals(projetoId).toArray(),
+        getDB().estoque_equipamentos.where("projeto_id").equals(projetoId).toArray(),
+      ]);
+
+      return { equipamentos, estoques };
+    },
+    [projetoId],
+  );
+
+  const consumosDetalhe = useLiveQuery(
+    () =>
+      projetoId && detalhe
+        ? consumoEquipamentoRepo.listarPorMovimentacao(projetoId, detalhe.id)
+        : Promise.resolve([] as ConsumoEquipamento[]),
+    [projetoId, detalhe?.id],
+    [],
+  );
 
   const nomeMap = useMemo(() => {
     if (!dados) return null;
@@ -375,6 +416,28 @@ export function MovimentacoesPage() {
     fn();
     setPagina(0);
   };
+
+  const nomesEquipamentos = useMemo(() => {
+    const mapa = new Map<string, string>();
+    for (const equipamento of equipamentosContexto?.equipamentos ?? []) {
+      mapa.set(equipamento.id, equipamento.nome);
+    }
+    return mapa;
+  }, [equipamentosContexto]);
+
+  const quantidadeConsumidaPorEquipamento = useMemo(
+    () =>
+      (consumosDetalhe ?? []).reduce(
+        (total, consumo) => total + consumo.quantidade,
+        0,
+      ),
+    [consumosDetalhe],
+  );
+
+  const saldoRateioConsumo =
+    detalhe?.tipo === "SAIDA"
+      ? Math.max(0, detalhe.quantidade - quantidadeConsumidaPorEquipamento)
+      : 0;
 
   const linhas = useMemo(() => {
     if (!dados || !nomeMap) return [];
@@ -525,6 +588,85 @@ export function MovimentacoesPage() {
       );
     }
   };
+
+  const salvarConsumoEquipamento = async () => {
+    if (!projetoId || !detalhe || detalhe.tipo !== "SAIDA") return;
+
+    const quantidade = Number(consumoQuantidade.replace(",", "."));
+
+    if (!consumoEstoqueId) {
+      toast.error("Selecione o equipamento.");
+      return;
+    }
+
+    if (!Number.isFinite(quantidade) || quantidade <= 0) {
+      toast.error("Informe uma quantidade maior que zero.");
+      return;
+    }
+
+    if (quantidade > saldoRateioConsumo) {
+      toast.error(
+        `Apropriação acima do saldo disponível da saída (${num(saldoRateioConsumo)}).`,
+      );
+      return;
+    }
+
+    try {
+      await consumoEquipamentoRepo.salvar(projetoId, {
+        movimentacaoId: detalhe.id,
+        estoqueEquipamentoId: consumoEstoqueId,
+        quantidade,
+        observacao: consumoObservacao.trim() || null,
+      });
+
+      setConsumoEstoqueId("");
+      setConsumoQuantidade("");
+      setConsumoObservacao("");
+      toast.success("Consumo apropriado ao equipamento.");
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível apropriar o consumo.",
+      );
+    }
+  };
+
+  const excluirConsumoEquipamento = async (consumo: ConsumoEquipamento) => {
+    if (!projetoId) return;
+
+    if (
+      !confirm(
+        "Remover esta apropriação? A saída de material permanecerá intacta.",
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await consumoEquipamentoRepo.remover(projetoId, consumo.id);
+      toast.success("Apropriação removida.");
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível remover a apropriação.",
+      );
+    }
+  };
+
+  const opcoesEquipamentos = (equipamentosContexto?.estoques ?? [])
+    .map((estoque) => ({
+      estoque,
+      equipamento: equipamentosContexto?.equipamentos.find(
+        (item) => item.id === estoque.equipamento_id,
+      ),
+    }))
+    .filter(
+      (item): item is { estoque: EstoqueEquipamento; equipamento: Equipamento } =>
+        Boolean(item.equipamento),
+    )
+    .sort((a, b) => a.equipamento.nome.localeCompare(b.equipamento.nome));
 
   if (!dados || !nomeMap) {
     return (
@@ -820,7 +962,12 @@ export function MovimentacoesPage() {
                           size="icon"
                           variant="ghost"
                           title="Detalhes"
-                          onClick={() => setDetalhe(movimentacao)}
+                          onClick={() => {
+                            setDetalhe(movimentacao);
+                            setConsumoEstoqueId("");
+                            setConsumoQuantidade("");
+                            setConsumoObservacao("");
+                          }}
                         >
                           <Eye className="size-4" />
                         </Button>
@@ -1111,6 +1258,135 @@ export function MovimentacoesPage() {
                         </div>
                       </div>
                     </section>
+
+                    {detalhe.tipo === "SAIDA" && configuracao?.modulos.equipamentos === true && (
+                      <section className="rounded-xl border bg-background p-4 shadow-sm">
+                        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <Calculator className="size-4 text-muted-foreground" />
+                              <h4 className="text-sm font-semibold">
+                                Consumo por equipamento
+                              </h4>
+                            </div>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              Aproprie toda ou parte da saída a um ou mais equipamentos. A movimentação original não é alterada.
+                            </p>
+                          </div>
+
+                          <Badge variant="outline">
+                            {num(quantidadeConsumidaPorEquipamento)} / {num(detalhe.quantidade)} {unidade ?? "un"}
+                          </Badge>
+                        </div>
+
+                        {consumosDetalhe && consumosDetalhe.length > 0 ? (
+                          <div className="mb-4 space-y-2">
+                            {consumosDetalhe.map((consumo) => (
+                              <div
+                                key={consumo.id}
+                                className="flex flex-col gap-3 rounded-lg border bg-muted/10 p-3 sm:flex-row sm:items-center sm:justify-between"
+                              >
+                                <div className="min-w-0">
+                                  <p className="truncate text-sm font-medium">
+                                    {nomesEquipamentos.get(consumo.equipamento_id) ?? "Equipamento não encontrado"}
+                                  </p>
+                                  <p className="mt-0.5 text-xs text-muted-foreground">
+                                    {num(consumo.quantidade)} {unidade ?? "un"}
+                                    {consumo.custo_total != null
+                                      ? ` · R$ ${consumo.custo_total.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                      : " · custo não disponível"}
+                                  </p>
+                                  {consumo.observacao ? (
+                                    <p className="mt-1 text-xs text-muted-foreground">
+                                      {consumo.observacao}
+                                    </p>
+                                  ) : null}
+                                </div>
+
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  className="self-start text-destructive sm:self-auto"
+                                  onClick={() => void excluirConsumoEquipamento(consumo)}
+                                >
+                                  <Trash2 className="size-4" />
+                                  Remover
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="mb-4 rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                            Nenhum consumo foi apropriado a equipamento nesta saída.
+                          </div>
+                        )}
+
+                        {saldoRateioConsumo > 0 ? (
+                          <div className="grid gap-3 rounded-xl border bg-muted/10 p-3 sm:grid-cols-2 lg:grid-cols-4">
+                            <div className="lg:col-span-2">
+                              <Label>Equipamento / registro físico</Label>
+                              <Combobox
+                                placeholder="Selecionar equipamento"
+                                value={consumoEstoqueId}
+                                onChange={(value) => setConsumoEstoqueId(value ?? "")}
+                                vazio="Nenhum equipamento cadastrado"
+                                opcoes={opcoesEquipamentos.map(({ estoque, equipamento }) => {
+                                  const identificador =
+                                    estoque.identificacao ||
+                                    estoque.patrimonio ||
+                                    estoque.serial ||
+                                    estoque.id;
+                                  return {
+                                    value: estoque.id,
+                                    label: `${equipamento.nome} · ${identificador}`,
+                                    hint: estoque.vinculo,
+                                  };
+                                })}
+                              />
+                            </div>
+
+                            <div>
+                              <Label>Quantidade</Label>
+                              <Input
+                                type="number"
+                                min={0}
+                                step="any"
+                                value={consumoQuantidade}
+                                onChange={(event) => setConsumoQuantidade(event.target.value)}
+                                placeholder={String(saldoRateioConsumo)}
+                              />
+                            </div>
+
+                            <div>
+                              <Label>Saldo para rateio</Label>
+                              <div className="flex h-10 items-center rounded-md border bg-background px-3 text-sm font-medium">
+                                {num(saldoRateioConsumo)} {unidade ?? "un"}
+                              </div>
+                            </div>
+
+                            <div className="sm:col-span-2 lg:col-span-3">
+                              <Label>Observação</Label>
+                              <Input
+                                value={consumoObservacao}
+                                onChange={(event) => setConsumoObservacao(event.target.value)}
+                                placeholder="Opcional"
+                              />
+                            </div>
+
+                            <div className="flex items-end">
+                              <Button type="button" className="w-full" onClick={() => void salvarConsumoEquipamento()}>
+                                Adicionar apropriação
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="rounded-lg border bg-muted/20 p-3 text-xs text-muted-foreground">
+                            A saída já está integralmente apropriada a equipamentos.
+                          </div>
+                        )}
+                      </section>
+                    )}
 
                     <section className="rounded-xl border bg-muted/10 p-4">
                       <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">

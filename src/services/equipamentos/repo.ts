@@ -13,6 +13,10 @@ export type EquipamentoInput = {
   modelo?: string | null;
   marca?: string | null;
   descricao?: string | null;
+  valor_referencia?: number | null;
+  custo_recorrente?: number | null;
+  periodicidade_custo?: Equipamento["periodicidade_custo"];
+  fonte_valor?: Equipamento["fonte_valor"];
   ativo?: boolean;
 };
 
@@ -111,6 +115,19 @@ export const equipamentosRepo = {
 
     validarTipoControle(dados.tipo_controle);
 
+    for (const [campo, valor] of [
+      ["valor_referencia", dados.valor_referencia],
+      ["custo_recorrente", dados.custo_recorrente],
+    ] as const) {
+      if (valor !== null && valor !== undefined && (!Number.isFinite(valor) || valor < 0)) {
+        throw new Error(`O campo ${campo.replaceAll("_", " ")} deve ser um valor maior ou igual a zero.`);
+      }
+    }
+
+    if (dados.custo_recorrente !== null && dados.custo_recorrente !== undefined && !dados.periodicidade_custo) {
+      throw new Error("Informe a periodicidade quando houver custo recorrente.");
+    }
+
     await validarCategoria(
       projetoId,
       dados.categoria_id,
@@ -144,6 +161,10 @@ export const equipamentosRepo = {
       modelo: normalizarTexto(dados.modelo),
       marca: normalizarTexto(dados.marca),
       descricao: normalizarTexto(dados.descricao),
+      valor_referencia: dados.valor_referencia ?? existente?.valor_referencia ?? null,
+      custo_recorrente: dados.custo_recorrente ?? existente?.custo_recorrente ?? null,
+      periodicidade_custo: dados.periodicidade_custo ?? existente?.periodicidade_custo ?? null,
+      fonte_valor: dados.fonte_valor ?? existente?.fonte_valor ?? (dados.valor_referencia != null ? "INFORMADO" : null),
       ativo: dados.ativo ?? existente?.ativo ?? true,
       criado_em: existente?.criado_em ?? agora,
       atualizado_em: agora,

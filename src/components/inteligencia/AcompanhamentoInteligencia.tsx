@@ -47,11 +47,13 @@ export function AcompanhamentoInteligencia({
   projetoId,
   produtoId,
   origens,
+  tipos,
   compact = false,
 }: {
   projetoId: string;
   produtoId?: string | null;
   origens?: InteligenciaOrigem[];
+  tipos?: string[];
   compact?: boolean;
 }) {
   const [abertoId, setAbertoId] = useState<string | null>(null);
@@ -64,10 +66,11 @@ export function AcompanhamentoInteligencia({
       {
         ...(produtoId !== undefined ? { produtoId } : {}),
         ...(origens !== undefined ? { origens } : {}),
+        ...(tipos !== undefined ? { tipos } : {}),
         limite: compact ? 8 : 24,
       },
     ),
-    [projetoId, produtoId, origens?.join("|") ?? "", compact],
+    [projetoId, produtoId, origens?.join("|") ?? "", tipos?.join("|") ?? "", compact],
   );
 
   const resumo = useMemo(() => {

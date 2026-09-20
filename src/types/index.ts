@@ -15,3 +15,23 @@ export * from "./documento";
 export * from "./inventario";
 
 export * from "./inteligencia";
+
+export * from "./manutencao-equipamento";
+
+export * from "./financeiro-equipamento";
+
+export * from "./consumo-equipamento";
+
+export * from "./regra-consumo-equipamento";
+export * from "./custo-equipamento";
+
+export * from "./estatisticas-equipamentos";
+
+export * from "./simulacao-custo-equipamento";
+
+export * from "./perfil-parametro-custo";
+
+export * from "./mesclagem-parametros-custo";
+export * from "./previsto-real-equipamento";
+
+export * from "./vigia-equipamentos";

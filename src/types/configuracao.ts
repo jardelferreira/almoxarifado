@@ -3,6 +3,10 @@ export type ConfiguracaoModulos = {
   materiais: boolean;
   equipamentos: boolean;
   documentos: boolean;
+  /** Camada financeira/analítica de equipamentos; desativada por padrão. */
+  financeiro_equipamentos: boolean;
+  /** Detalhamento opcional das ocorrências de manutenção; o ciclo operacional continua pelas movimentações. */
+  manutencao_equipamentos: boolean;
 };
 
 export type ConfiguracaoDocumentos = {
@@ -52,6 +56,8 @@ export function criarConfiguracaoPadrao(
       materiais: true,
       equipamentos: true,
       documentos: false,
+      financeiro_equipamentos: false,
+      manutencao_equipamentos: false,
     },
     documentos: {
       habilitado: false,

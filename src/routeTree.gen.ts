@@ -19,15 +19,22 @@ import { Route as AppDadosRouteImport } from './routes/app.dados'
 import { Route as AppDocumentosRouteImport } from './routes/app.documentos'
 import { Route as AppEquipamentosRouteImport } from './routes/app.equipamentos'
 import { Route as AppEstatisticasRouteImport } from './routes/app.estatisticas'
+import { Route as AppEstatisticasEquipamentosRouteImport } from './routes/app.estatisticas-equipamentos'
 import { Route as AppEstoqueRouteImport } from './routes/app.estoque'
 import { Route as AppInventarioRouteImport } from './routes/app.inventario'
 import { Route as AppLancarRouteImport } from './routes/app.lancar'
+import { Route as AppMesclarParametrosEquipamentosRouteImport } from './routes/app.mesclar-parametros-equipamentos'
 import { Route as AppMovimentacoesRouteImport } from './routes/app.movimentacoes'
 import { Route as AppMovimentacoesEquipamentosRouteImport } from './routes/app.movimentacoes-equipamentos'
+import { Route as AppPerfisParametrosEquipamentosRouteImport } from './routes/app.perfis-parametros-equipamentos'
+import { Route as AppPrevistoRealEquipamentosRouteImport } from './routes/app.previsto-real-equipamentos'
 import { Route as AppProdutoRouteImport } from './routes/app.produto'
 import { Route as AppRecebimentosRouteImport } from './routes/app.recebimentos'
+import { Route as AppRegrasConsumoEquipamentosRouteImport } from './routes/app.regras-consumo-equipamentos'
 import { Route as AppRelatoriosEquipamentosRouteImport } from './routes/app.relatorios-equipamentos'
+import { Route as AppSimulacaoCustosRouteImport } from './routes/app.simulacao-custos'
 import { Route as AppVigiaRouteImport } from './routes/app.vigia'
+import { Route as AppVigiaEquipamentosRouteImport } from './routes/app.vigia-equipamentos'
 import { Route as AppEstatisticasRelatorioRouteImport } from './routes/app.estatisticas.relatorio'
 
 const IndexRoute = IndexRouteImport.update({
@@ -80,6 +87,12 @@ const AppEstatisticasRoute = AppEstatisticasRouteImport.update({
   path: '/estatisticas',
   getParentRoute: () => AppRoute,
 } as any)
+const AppEstatisticasEquipamentosRoute =
+  AppEstatisticasEquipamentosRouteImport.update({
+    id: '/estatisticas-equipamentos',
+    path: '/estatisticas-equipamentos',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppEstoqueRoute = AppEstoqueRouteImport.update({
   id: '/estoque',
   path: '/estoque',
@@ -95,6 +108,12 @@ const AppLancarRoute = AppLancarRouteImport.update({
   path: '/lancar',
   getParentRoute: () => AppRoute,
 } as any)
+const AppMesclarParametrosEquipamentosRoute =
+  AppMesclarParametrosEquipamentosRouteImport.update({
+    id: '/mesclar-parametros-equipamentos',
+    path: '/mesclar-parametros-equipamentos',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppMovimentacoesRoute = AppMovimentacoesRouteImport.update({
   id: '/movimentacoes',
   path: '/movimentacoes',
@@ -104,6 +123,18 @@ const AppMovimentacoesEquipamentosRoute =
   AppMovimentacoesEquipamentosRouteImport.update({
     id: '/movimentacoes-equipamentos',
     path: '/movimentacoes-equipamentos',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppPerfisParametrosEquipamentosRoute =
+  AppPerfisParametrosEquipamentosRouteImport.update({
+    id: '/perfis-parametros-equipamentos',
+    path: '/perfis-parametros-equipamentos',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppPrevistoRealEquipamentosRoute =
+  AppPrevistoRealEquipamentosRouteImport.update({
+    id: '/previsto-real-equipamentos',
+    path: '/previsto-real-equipamentos',
     getParentRoute: () => AppRoute,
   } as any)
 const AppProdutoRoute = AppProdutoRouteImport.update({
@@ -116,15 +147,31 @@ const AppRecebimentosRoute = AppRecebimentosRouteImport.update({
   path: '/recebimentos',
   getParentRoute: () => AppRoute,
 } as any)
+const AppRegrasConsumoEquipamentosRoute =
+  AppRegrasConsumoEquipamentosRouteImport.update({
+    id: '/regras-consumo-equipamentos',
+    path: '/regras-consumo-equipamentos',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppRelatoriosEquipamentosRoute =
   AppRelatoriosEquipamentosRouteImport.update({
     id: '/relatorios-equipamentos',
     path: '/relatorios-equipamentos',
     getParentRoute: () => AppRoute,
   } as any)
+const AppSimulacaoCustosRoute = AppSimulacaoCustosRouteImport.update({
+  id: '/simulacao-custos',
+  path: '/simulacao-custos',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppVigiaRoute = AppVigiaRouteImport.update({
   id: '/vigia',
   path: '/vigia',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppVigiaEquipamentosRoute = AppVigiaEquipamentosRouteImport.update({
+  id: '/vigia-equipamentos',
+  path: '/vigia-equipamentos',
   getParentRoute: () => AppRoute,
 } as any)
 const AppEstatisticasRelatorioRoute =
@@ -144,15 +191,22 @@ export interface FileRoutesByFullPath {
   '/app/documentos': typeof AppDocumentosRoute
   '/app/equipamentos': typeof AppEquipamentosRoute
   '/app/estatisticas': typeof AppEstatisticasRouteWithChildren
+  '/app/estatisticas-equipamentos': typeof AppEstatisticasEquipamentosRoute
   '/app/estoque': typeof AppEstoqueRoute
   '/app/inventario': typeof AppInventarioRoute
   '/app/lancar': typeof AppLancarRoute
+  '/app/mesclar-parametros-equipamentos': typeof AppMesclarParametrosEquipamentosRoute
   '/app/movimentacoes': typeof AppMovimentacoesRoute
   '/app/movimentacoes-equipamentos': typeof AppMovimentacoesEquipamentosRoute
+  '/app/perfis-parametros-equipamentos': typeof AppPerfisParametrosEquipamentosRoute
+  '/app/previsto-real-equipamentos': typeof AppPrevistoRealEquipamentosRoute
   '/app/produto': typeof AppProdutoRoute
   '/app/recebimentos': typeof AppRecebimentosRoute
+  '/app/regras-consumo-equipamentos': typeof AppRegrasConsumoEquipamentosRoute
   '/app/relatorios-equipamentos': typeof AppRelatoriosEquipamentosRoute
+  '/app/simulacao-custos': typeof AppSimulacaoCustosRoute
   '/app/vigia': typeof AppVigiaRoute
+  '/app/vigia-equipamentos': typeof AppVigiaEquipamentosRoute
   '/app/': typeof AppIndexRoute
   '/app/estatisticas/relatorio': typeof AppEstatisticasRelatorioRoute
 }
@@ -165,15 +219,22 @@ export interface FileRoutesByTo {
   '/app/documentos': typeof AppDocumentosRoute
   '/app/equipamentos': typeof AppEquipamentosRoute
   '/app/estatisticas': typeof AppEstatisticasRouteWithChildren
+  '/app/estatisticas-equipamentos': typeof AppEstatisticasEquipamentosRoute
   '/app/estoque': typeof AppEstoqueRoute
   '/app/inventario': typeof AppInventarioRoute
   '/app/lancar': typeof AppLancarRoute
+  '/app/mesclar-parametros-equipamentos': typeof AppMesclarParametrosEquipamentosRoute
   '/app/movimentacoes': typeof AppMovimentacoesRoute
   '/app/movimentacoes-equipamentos': typeof AppMovimentacoesEquipamentosRoute
+  '/app/perfis-parametros-equipamentos': typeof AppPerfisParametrosEquipamentosRoute
+  '/app/previsto-real-equipamentos': typeof AppPrevistoRealEquipamentosRoute
   '/app/produto': typeof AppProdutoRoute
   '/app/recebimentos': typeof AppRecebimentosRoute
+  '/app/regras-consumo-equipamentos': typeof AppRegrasConsumoEquipamentosRoute
   '/app/relatorios-equipamentos': typeof AppRelatoriosEquipamentosRoute
+  '/app/simulacao-custos': typeof AppSimulacaoCustosRoute
   '/app/vigia': typeof AppVigiaRoute
+  '/app/vigia-equipamentos': typeof AppVigiaEquipamentosRoute
   '/app': typeof AppIndexRoute
   '/app/estatisticas/relatorio': typeof AppEstatisticasRelatorioRoute
 }
@@ -188,15 +249,22 @@ export interface FileRoutesById {
   '/app/documentos': typeof AppDocumentosRoute
   '/app/equipamentos': typeof AppEquipamentosRoute
   '/app/estatisticas': typeof AppEstatisticasRouteWithChildren
+  '/app/estatisticas-equipamentos': typeof AppEstatisticasEquipamentosRoute
   '/app/estoque': typeof AppEstoqueRoute
   '/app/inventario': typeof AppInventarioRoute
   '/app/lancar': typeof AppLancarRoute
+  '/app/mesclar-parametros-equipamentos': typeof AppMesclarParametrosEquipamentosRoute
   '/app/movimentacoes': typeof AppMovimentacoesRoute
   '/app/movimentacoes-equipamentos': typeof AppMovimentacoesEquipamentosRoute
+  '/app/perfis-parametros-equipamentos': typeof AppPerfisParametrosEquipamentosRoute
+  '/app/previsto-real-equipamentos': typeof AppPrevistoRealEquipamentosRoute
   '/app/produto': typeof AppProdutoRoute
   '/app/recebimentos': typeof AppRecebimentosRoute
+  '/app/regras-consumo-equipamentos': typeof AppRegrasConsumoEquipamentosRoute
   '/app/relatorios-equipamentos': typeof AppRelatoriosEquipamentosRoute
+  '/app/simulacao-custos': typeof AppSimulacaoCustosRoute
   '/app/vigia': typeof AppVigiaRoute
+  '/app/vigia-equipamentos': typeof AppVigiaEquipamentosRoute
   '/app/': typeof AppIndexRoute
   '/app/estatisticas/relatorio': typeof AppEstatisticasRelatorioRoute
 }
@@ -212,15 +280,22 @@ export interface FileRouteTypes {
     | '/app/documentos'
     | '/app/equipamentos'
     | '/app/estatisticas'
+    | '/app/estatisticas-equipamentos'
     | '/app/estoque'
     | '/app/inventario'
     | '/app/lancar'
+    | '/app/mesclar-parametros-equipamentos'
     | '/app/movimentacoes'
     | '/app/movimentacoes-equipamentos'
+    | '/app/perfis-parametros-equipamentos'
+    | '/app/previsto-real-equipamentos'
     | '/app/produto'
     | '/app/recebimentos'
+    | '/app/regras-consumo-equipamentos'
     | '/app/relatorios-equipamentos'
+    | '/app/simulacao-custos'
     | '/app/vigia'
+    | '/app/vigia-equipamentos'
     | '/app/'
     | '/app/estatisticas/relatorio'
   fileRoutesByTo: FileRoutesByTo
@@ -233,15 +308,22 @@ export interface FileRouteTypes {
     | '/app/documentos'
     | '/app/equipamentos'
     | '/app/estatisticas'
+    | '/app/estatisticas-equipamentos'
     | '/app/estoque'
     | '/app/inventario'
     | '/app/lancar'
+    | '/app/mesclar-parametros-equipamentos'
     | '/app/movimentacoes'
     | '/app/movimentacoes-equipamentos'
+    | '/app/perfis-parametros-equipamentos'
+    | '/app/previsto-real-equipamentos'
     | '/app/produto'
     | '/app/recebimentos'
+    | '/app/regras-consumo-equipamentos'
     | '/app/relatorios-equipamentos'
+    | '/app/simulacao-custos'
     | '/app/vigia'
+    | '/app/vigia-equipamentos'
     | '/app'
     | '/app/estatisticas/relatorio'
   id:
@@ -255,15 +337,22 @@ export interface FileRouteTypes {
     | '/app/documentos'
     | '/app/equipamentos'
     | '/app/estatisticas'
+    | '/app/estatisticas-equipamentos'
     | '/app/estoque'
     | '/app/inventario'
     | '/app/lancar'
+    | '/app/mesclar-parametros-equipamentos'
     | '/app/movimentacoes'
     | '/app/movimentacoes-equipamentos'
+    | '/app/perfis-parametros-equipamentos'
+    | '/app/previsto-real-equipamentos'
     | '/app/produto'
     | '/app/recebimentos'
+    | '/app/regras-consumo-equipamentos'
     | '/app/relatorios-equipamentos'
+    | '/app/simulacao-custos'
     | '/app/vigia'
+    | '/app/vigia-equipamentos'
     | '/app/'
     | '/app/estatisticas/relatorio'
   fileRoutesById: FileRoutesById
@@ -345,6 +434,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppEstatisticasRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/estatisticas-equipamentos': {
+      id: '/app/estatisticas-equipamentos'
+      path: '/estatisticas-equipamentos'
+      fullPath: '/app/estatisticas-equipamentos'
+      preLoaderRoute: typeof AppEstatisticasEquipamentosRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/estoque': {
       id: '/app/estoque'
       path: '/estoque'
@@ -366,6 +462,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppLancarRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/mesclar-parametros-equipamentos': {
+      id: '/app/mesclar-parametros-equipamentos'
+      path: '/mesclar-parametros-equipamentos'
+      fullPath: '/app/mesclar-parametros-equipamentos'
+      preLoaderRoute: typeof AppMesclarParametrosEquipamentosRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/movimentacoes': {
       id: '/app/movimentacoes'
       path: '/movimentacoes'
@@ -378,6 +481,20 @@ declare module '@tanstack/react-router' {
       path: '/movimentacoes-equipamentos'
       fullPath: '/app/movimentacoes-equipamentos'
       preLoaderRoute: typeof AppMovimentacoesEquipamentosRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/perfis-parametros-equipamentos': {
+      id: '/app/perfis-parametros-equipamentos'
+      path: '/perfis-parametros-equipamentos'
+      fullPath: '/app/perfis-parametros-equipamentos'
+      preLoaderRoute: typeof AppPerfisParametrosEquipamentosRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/previsto-real-equipamentos': {
+      id: '/app/previsto-real-equipamentos'
+      path: '/previsto-real-equipamentos'
+      fullPath: '/app/previsto-real-equipamentos'
+      preLoaderRoute: typeof AppPrevistoRealEquipamentosRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/produto': {
@@ -394,6 +511,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppRecebimentosRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/regras-consumo-equipamentos': {
+      id: '/app/regras-consumo-equipamentos'
+      path: '/regras-consumo-equipamentos'
+      fullPath: '/app/regras-consumo-equipamentos'
+      preLoaderRoute: typeof AppRegrasConsumoEquipamentosRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/relatorios-equipamentos': {
       id: '/app/relatorios-equipamentos'
       path: '/relatorios-equipamentos'
@@ -401,11 +525,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppRelatoriosEquipamentosRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/simulacao-custos': {
+      id: '/app/simulacao-custos'
+      path: '/simulacao-custos'
+      fullPath: '/app/simulacao-custos'
+      preLoaderRoute: typeof AppSimulacaoCustosRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/vigia': {
       id: '/app/vigia'
       path: '/vigia'
       fullPath: '/app/vigia'
       preLoaderRoute: typeof AppVigiaRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/vigia-equipamentos': {
+      id: '/app/vigia-equipamentos'
+      path: '/vigia-equipamentos'
+      fullPath: '/app/vigia-equipamentos'
+      preLoaderRoute: typeof AppVigiaEquipamentosRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/estatisticas/relatorio': {
@@ -438,15 +576,22 @@ interface AppRouteChildren {
   AppDocumentosRoute: typeof AppDocumentosRoute
   AppEquipamentosRoute: typeof AppEquipamentosRoute
   AppEstatisticasRoute: typeof AppEstatisticasRouteWithChildren
+  AppEstatisticasEquipamentosRoute: typeof AppEstatisticasEquipamentosRoute
   AppEstoqueRoute: typeof AppEstoqueRoute
   AppInventarioRoute: typeof AppInventarioRoute
   AppLancarRoute: typeof AppLancarRoute
+  AppMesclarParametrosEquipamentosRoute: typeof AppMesclarParametrosEquipamentosRoute
   AppMovimentacoesRoute: typeof AppMovimentacoesRoute
   AppMovimentacoesEquipamentosRoute: typeof AppMovimentacoesEquipamentosRoute
+  AppPerfisParametrosEquipamentosRoute: typeof AppPerfisParametrosEquipamentosRoute
+  AppPrevistoRealEquipamentosRoute: typeof AppPrevistoRealEquipamentosRoute
   AppProdutoRoute: typeof AppProdutoRoute
   AppRecebimentosRoute: typeof AppRecebimentosRoute
+  AppRegrasConsumoEquipamentosRoute: typeof AppRegrasConsumoEquipamentosRoute
   AppRelatoriosEquipamentosRoute: typeof AppRelatoriosEquipamentosRoute
+  AppSimulacaoCustosRoute: typeof AppSimulacaoCustosRoute
   AppVigiaRoute: typeof AppVigiaRoute
+  AppVigiaEquipamentosRoute: typeof AppVigiaEquipamentosRoute
   AppIndexRoute: typeof AppIndexRoute
 }
 
@@ -458,15 +603,22 @@ const AppRouteChildren: AppRouteChildren = {
   AppDocumentosRoute: AppDocumentosRoute,
   AppEquipamentosRoute: AppEquipamentosRoute,
   AppEstatisticasRoute: AppEstatisticasRouteWithChildren,
+  AppEstatisticasEquipamentosRoute: AppEstatisticasEquipamentosRoute,
   AppEstoqueRoute: AppEstoqueRoute,
   AppInventarioRoute: AppInventarioRoute,
   AppLancarRoute: AppLancarRoute,
+  AppMesclarParametrosEquipamentosRoute: AppMesclarParametrosEquipamentosRoute,
   AppMovimentacoesRoute: AppMovimentacoesRoute,
   AppMovimentacoesEquipamentosRoute: AppMovimentacoesEquipamentosRoute,
+  AppPerfisParametrosEquipamentosRoute: AppPerfisParametrosEquipamentosRoute,
+  AppPrevistoRealEquipamentosRoute: AppPrevistoRealEquipamentosRoute,
   AppProdutoRoute: AppProdutoRoute,
   AppRecebimentosRoute: AppRecebimentosRoute,
+  AppRegrasConsumoEquipamentosRoute: AppRegrasConsumoEquipamentosRoute,
   AppRelatoriosEquipamentosRoute: AppRelatoriosEquipamentosRoute,
+  AppSimulacaoCustosRoute: AppSimulacaoCustosRoute,
   AppVigiaRoute: AppVigiaRoute,
+  AppVigiaEquipamentosRoute: AppVigiaEquipamentosRoute,
   AppIndexRoute: AppIndexRoute,
 }
 

@@ -1,5 +1,6 @@
 import {
   ArrowLeftRight,
+  Calculator,
   Boxes,
   ChartColumn,
   ChevronDown,
@@ -10,6 +11,7 @@ import {
   FileChartLine,
   FileClock,
   FileText,
+  GitCompareArrows,
   LayoutDashboard,
   LayoutList,
   LogOut,
@@ -19,6 +21,7 @@ import {
   Settings2,
   ShieldAlert,
   UserCheck,
+  Workflow,
   Warehouse,
   WifiOff,
   Wrench,
@@ -50,6 +53,7 @@ type NavItem = {
   exact?: boolean;
   visivel?: (configuracao?: Configuracao) => boolean;
   search?: { produto: string | undefined };
+  subgrupo?: string;
 };
 
 type NavGroup = {
@@ -65,30 +69,37 @@ const navGroups: NavGroup[] = [
     label: "Materiais",
     icon: Boxes,
     modulo: "materiais",
-    descricao: "Operação e análise de materiais",
+    descricao: "Operação do estoque e materiais",
     items: [
-      { to: "/app/lancar", label: "Lançar", icon: ArrowLeftRight },
-      { to: "/app/estoque", label: "Estoque", icon: Warehouse },
-      { to: "/app/movimentacoes", label: "Movimentações", icon: FileClock },
+      { to: "/app/lancar", label: "Lançar", icon: ArrowLeftRight, subgrupo: "Operação" },
+      { to: "/app/estoque", label: "Estoque", icon: Warehouse, subgrupo: "Operação" },
+      { to: "/app/movimentacoes", label: "Movimentações", icon: FileClock, subgrupo: "Operação" },
       {
         to: "/app/inventario",
         label: "Inventário",
         icon: ClipboardList,
+        subgrupo: "Operação",
         visivel: (configuracao) => configuracao?.inventario.habilitado !== false,
       },
-      { to: "/app/produto", label: "Perfil do produto", icon: PackageSearch, search: { produto: undefined } },
+      { to: "/app/produto", label: "Perfil do produto", icon: PackageSearch, search: { produto: undefined }, subgrupo: "Consulta" },
     ],
   },
   {
     label: "Equipamentos",
     icon: Wrench,
     modulo: "equipamentos",
-    descricao: "Controle e movimentação de equipamentos",
+    descricao: "Controle, análise e custos do parque",
     items: [
-      { to: "/app/equipamentos", label: "Equipamentos", icon: LayoutList },
-      { to: "/app/apropriacoes", label: "Apropriações", icon: UserCheck },
-      { to: "/app/movimentacoes-equipamentos", label: "Movimentações", icon: ArrowLeftRight },
-      { to: "/app/relatorios-equipamentos", label: "Relatórios", icon: FileChartLine },
+      { to: "/app/equipamentos", label: "Equipamentos", icon: LayoutList, subgrupo: "Gestão" },
+      { to: "/app/apropriacoes", label: "Apropriações", icon: UserCheck, subgrupo: "Gestão" },
+      { to: "/app/movimentacoes-equipamentos", label: "Movimentações", icon: ArrowLeftRight, subgrupo: "Gestão" },
+      { to: "/app/relatorios-equipamentos", label: "Relatórios", icon: FileChartLine, subgrupo: "Gestão" },
+      { to: "/app/estatisticas-equipamentos", label: "Estatísticas", icon: ChartColumn, subgrupo: "Análise" },
+      { to: "/app/simulacao-custos", label: "Simulação de custos", icon: Calculator, subgrupo: "Análise" },
+      { to: "/app/previsto-real-equipamentos", label: "Previsto x real", icon: GitCompareArrows, subgrupo: "Análise" },
+      { to: "/app/vigia-equipamentos", label: "Vigia de equipamentos", icon: ShieldAlert, subgrupo: "Análise" },
+      { to: "/app/perfis-parametros-equipamentos", label: "Perfis de parâmetros", icon: Settings2, subgrupo: "Parâmetros" },
+      { to: "/app/mesclar-parametros-equipamentos", label: "Mesclar parâmetros", icon: Workflow, subgrupo: "Parâmetros" },
     ],
   },
   {
@@ -97,8 +108,17 @@ const navGroups: NavGroup[] = [
     modulo: "documentos",
     descricao: "Documentação e recebimentos",
     items: [
-      { to: "/app/documentos", label: "Documentos", icon: FileText, exact: true },
-      { to: "/app/recebimentos", label: "Recebimentos", icon: PackageSearch },
+      { to: "/app/documentos", label: "Documentos", icon: FileText, exact: true, subgrupo: "Documentos" },
+      { to: "/app/recebimentos", label: "Recebimentos", icon: PackageSearch, subgrupo: "Documentos" },
+    ],
+  },
+  {
+    label: "Inteligência",
+    icon: ShieldAlert,
+    descricao: "Acompanhamento e análise transversal",
+    items: [
+      { to: "/app/vigia", label: "Vigia operacional", icon: ShieldAlert, subgrupo: "Monitoramento" },
+      { to: "/app/estatisticas", label: "Estatísticas de materiais", icon: ChartColumn, subgrupo: "Análise" },
     ],
   },
   {
@@ -106,16 +126,7 @@ const navGroups: NavGroup[] = [
     icon: Settings2,
     descricao: "Dados compartilhados pelos módulos",
     items: [
-      { to: "/app/cadastros", label: "Cadastros", icon: Settings2 },
-    ],
-  },
-  {
-    label: "Inteligência",
-    icon: ShieldAlert,
-    descricao: "Alertas, análise e acompanhamento",
-    items: [
-      { to: "/app/vigia", label: "Vigia Operacional", icon: ShieldAlert },
-      { to: "/app/estatisticas", label: "Estatísticas", icon: ChartColumn },
+      { to: "/app/cadastros", label: "Cadastros", icon: Settings2, subgrupo: "Base" },
     ],
   },
 ];
@@ -144,69 +155,59 @@ function Navigation({
 
   const renderItem = (item: NavItem) => {
     const classes = [
-      "group relative flex min-h-10 items-center rounded-md text-sm font-medium",
-      "text-sidebar-foreground/80 transition-colors duration-150",
+      "group relative flex min-h-9 items-center rounded-lg text-sm font-medium",
+      "text-sidebar-foreground/78 transition-colors duration-150",
       "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
       "outline-none focus-visible:ring-2 focus-visible:ring-sidebar-primary focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar",
-      expanded ? "gap-3 px-3 pl-4" : "justify-center px-2",
+      expanded ? "gap-3 px-3" : "justify-center px-2",
     ].join(" ");
 
     const activeClasses = [
-      "group relative flex min-h-10 items-center rounded-md text-sm font-medium",
+      "group relative flex min-h-9 items-center rounded-lg text-sm font-semibold",
       "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm",
       "before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-sidebar-primary",
       "outline-none focus-visible:ring-2 focus-visible:ring-sidebar-primary focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar",
-      expanded ? "gap-3 px-3 pl-4" : "justify-center px-2",
+      expanded ? "gap-3 px-3" : "justify-center px-2",
     ].join(" ");
 
     const content = (
       <>
         <item.icon
-          className="size-[18px] shrink-0 transition-transform duration-150 group-hover:translate-x-0.5"
+          className="size-[17px] shrink-0 transition-transform duration-150 group-hover:translate-x-0.5"
           aria-hidden="true"
         />
         {expanded && <span className="truncate">{item.label}</span>}
       </>
     );
 
+    const props = {
+      activeOptions: { exact: item.exact ?? false },
+      onClick: onNavigate,
+      title: !expanded ? item.label : undefined,
+      "aria-label": !expanded ? item.label : undefined,
+      className: classes,
+      activeProps: { className: activeClasses },
+    } as const;
+
     if (item.search) {
       return (
-        <Link
-          key={item.to}
-          to="/app/produto"
-          search={item.search}
-          activeOptions={{ exact: item.exact ?? false }}
-          onClick={onNavigate}
-          title={!expanded ? item.label : undefined}
-          aria-label={!expanded ? item.label : undefined}
-          className={classes}
-          activeProps={{ className: activeClasses }}
-        >
+        <Link key={item.to} to="/app/produto" search={item.search} {...props}>
           {content}
         </Link>
       );
     }
 
     return (
-      <Link
-        key={item.to}
-        to={item.to}
-        activeOptions={{ exact: item.exact ?? false }}
-        onClick={onNavigate}
-        title={!expanded ? item.label : undefined}
-        aria-label={!expanded ? item.label : undefined}
-        className={classes}
-        activeProps={{ className: activeClasses }}
-      >
+      <Link key={item.to} to={item.to} {...props}>
         {content}
       </Link>
     );
   };
 
   return (
-    <nav aria-label="Navegação principal" className="sidebar-scrollbar flex-1 overflow-y-auto px-2 py-3">
-      <div className="space-y-3">
-        <div className="mb-1 border-b border-sidebar-border pb-3">
+    <nav aria-label="Navegação principal" className="sidebar-scrollbar flex-1 overflow-y-auto px-2.5 py-3">
+      <div className="space-y-1">
+        <div className="mb-3 border-b border-sidebar-border pb-3">
           {renderItem(dashboardItem)}
         </div>
 
@@ -216,72 +217,63 @@ function Navigation({
           const GroupIcon = group.icon;
 
           return (
-            <section key={group.label} aria-label={group.label}>
+            <section key={group.label} aria-label={group.label} className="py-1">
               <div
                 className={[
-                  "rounded-lg border transition-colors",
-                  moduloAtivo ? "border-sidebar-border/80 bg-sidebar-accent/25" : "border-sidebar-border/60 bg-sidebar-accent/10",
+                  "flex min-h-9 items-center rounded-lg",
+                  expanded ? "gap-2.5 px-2.5" : "justify-center px-1",
+                  moduloAtivo ? "text-sidebar-foreground" : "text-sidebar-foreground/40",
                 ].join(" ")}
+                title={!expanded && !moduloAtivo ? `${group.label}: módulo desativado` : undefined}
               >
-                <div
+                <GroupIcon
                   className={[
-                    "flex min-h-10 items-center",
-                    expanded ? "gap-2.5 px-3" : "justify-center px-1",
+                    "size-[16px] shrink-0",
+                    moduloAtivo ? "text-sidebar-primary" : "text-sidebar-foreground/40",
                   ].join(" ")}
-                  title={!expanded && !moduloAtivo ? `${group.label}: módulo desativado` : undefined}
-                >
-                  <GroupIcon
-                    className={[
-                      "size-[17px] shrink-0",
-                      moduloAtivo ? "text-sidebar-primary" : "text-sidebar-foreground/40",
-                    ].join(" ")}
-                    aria-hidden="true"
-                  />
-                  {expanded && (
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold uppercase tracking-[0.1em] text-sidebar-foreground">
-                          {group.label}
-                        </span>
-                        {group.modulo && (
-                          <span
-                            className={[
-                              "rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide",
-                              moduloAtivo
-                                ? "bg-sidebar-primary/10 text-sidebar-primary"
-                                : "bg-sidebar-foreground/10 text-sidebar-foreground/55",
-                            ].join(" ")}
-                          >
-                            {moduloAtivo ? "Ativo" : "Desativado"}
-                          </span>
-                        )}
-                      </div>
-                      {group.descricao && (
-                        <p className="mt-0.5 truncate text-[10px] text-sidebar-foreground/50">
-                          {moduloAtivo ? group.descricao : "Ative este módulo em Configurações"}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {moduloAtivo && items.length > 0 && (
-                  <div className={expanded ? "mx-2 mb-2 border-l border-sidebar-border/80 pl-1" : "mb-2"}>
-                    <div className="space-y-0.5">{items.map(renderItem)}</div>
+                  aria-hidden="true"
+                />
+                {expanded && (
+                  <div className="min-w-0">
+                    <span className="text-[10px] font-bold uppercase tracking-[0.14em]">{group.label}</span>
+                    {group.descricao ? (
+                      <p className="truncate text-[9px] text-sidebar-foreground/40">{group.descricao}</p>
+                    ) : null}
                   </div>
                 )}
-
-                {!moduloAtivo && group.modulo && expanded && (
-                  <Link
-                    to="/app/configuracoes"
-                    onClick={onNavigate}
-                    className="mx-3 mb-3 flex min-h-9 items-center justify-center gap-2 rounded-md border border-dashed border-sidebar-border px-3 text-xs font-medium text-sidebar-foreground/65 transition-colors hover:border-sidebar-primary/40 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                  >
-                    <Settings2 className="size-3.5" />
-                    Ativar em Configurações
-                  </Link>
-                )}
               </div>
+
+              {moduloAtivo && items.length > 0 ? (
+                <div className={expanded ? "mt-0.5 ml-2 border-l border-sidebar-border/80 pl-1.5" : "mt-0.5"}>
+                  <div className="space-y-0.5">
+                    {items.map((item, index) => {
+                      const previous = items[index - 1];
+                      const showSubgroup = expanded && item.subgrupo && item.subgrupo !== previous?.subgrupo;
+                      return (
+                        <div key={item.to}>
+                          {showSubgroup ? (
+                            <div className="px-3 pb-1 pt-2 text-[9px] font-semibold uppercase tracking-[0.12em] text-sidebar-foreground/35">
+                              {item.subgrupo}
+                            </div>
+                          ) : null}
+                          {renderItem(item)}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+
+              {!moduloAtivo && group.modulo && expanded ? (
+                <Link
+                  to="/app/configuracoes"
+                  onClick={onNavigate}
+                  className="mx-2 mb-2 mt-1 flex min-h-8 items-center justify-center gap-2 rounded-lg border border-dashed border-sidebar-border px-2.5 text-[11px] font-medium text-sidebar-foreground/60 transition-colors hover:border-sidebar-primary/40 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                >
+                  <Settings2 className="size-3.5" />
+                  Ativar em Configurações
+                </Link>
+              ) : null}
             </section>
           );
         })}
