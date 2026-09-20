@@ -211,6 +211,8 @@ function AcaoCard({
   const navigate = useNavigate();
   const principal = alerta.acaoPrincipal ?? (alerta.tipo === "QUALIDADE" ? "QUALIDADE" : "RISCO_PRODUTO");
   const secundaria = alerta.acaoSecundaria ?? null;
+  const grupo = gruposVigia.find((item) => item.tipo === alerta.tipo);
+  const GrupoIcon = grupo?.icon;
   const [registrando, setRegistrando] = useState(false);
 
   const registrar = async (navegar: boolean, acao: VigiaAcao) => {
@@ -225,9 +227,9 @@ function AcaoCard({
         prioridade: alerta.prioridade,
         titulo: alerta.titulo,
         descricao: alerta.descricao,
-        regra: alerta.regra,
-        produtoId: alerta.produtoId,
-        equipeId: alerta.equipeId,
+        regra: alerta.regra ?? null,
+        produtoId: alerta.produtoId ?? null,
+        equipeId: alerta.equipeId ?? null,
       });
       toast.success(navegar ? "Ação registrada. Abrindo o próximo caminho." : "Ação adicionada ao acompanhamento.");
       if (navegar) navigate({ to: acaoRota(acao) });
@@ -244,10 +246,16 @@ function AcaoCard({
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
+              {grupo && GrupoIcon ? (
+                <span className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-semibold uppercase tracking-wide ${grupo.iconBg}`}>
+                  <GrupoIcon className="size-3.5" aria-hidden="true" />
+                  {grupo.label}
+                </span>
+              ) : null}
               {prioridadeBadge(alerta.prioridade)}
               {alerta.indicador ? <Badge variant="secondary">{alerta.indicador}</Badge> : null}
             </div>
-            <h3 className="mt-2 text-sm font-semibold">{alerta.titulo}</h3>
+            <h3 className="mt-2 text-sm font-semibold leading-5">{alerta.titulo}</h3>
             <p className="mt-1 text-sm leading-5 text-muted-foreground">{alerta.descricao}</p>
             {alerta.regra ? (
               <div className="mt-3 rounded-xl border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
@@ -256,7 +264,8 @@ function AcaoCard({
             ) : null}
           </div>
 
-          <div className="flex shrink-0 flex-col gap-2 sm:flex-row lg:flex-col">
+          <div className="flex shrink-0 flex-col gap-2 sm:min-w-44 sm:flex-row lg:min-w-40 lg:flex-col">
+            <p className="px-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground lg:text-right">Próximo passo</p>
             <Button type="button" size="sm" variant="outline" disabled={registrando} onClick={() => void registrar(false, principal)}>
               Acompanhar
             </Button>

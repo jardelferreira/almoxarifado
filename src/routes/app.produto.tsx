@@ -11,6 +11,7 @@ import {
   History,
   PackageCheck,
   PackageOpen,
+  PackageSearch,
   RefreshCw,
   Settings2,
   ShieldAlert,
@@ -279,14 +280,48 @@ function PerfilProdutoPage() {
       <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-sidebar-primary">
-            <Sparkles className="size-5" aria-hidden="true" />
-            <span className="text-xs font-semibold uppercase tracking-[0.14em]">Materiais · inteligência</span>
+            <PackageSearch className="size-5" aria-hidden="true" />
+            <span className="text-xs font-semibold uppercase tracking-[0.14em]">Materiais · consulta integrada</span>
           </div>
           <h1 className="mt-1 font-display text-3xl font-bold tracking-tight">Perfil do produto</h1>
           <p className="mt-1 max-w-3xl text-sm text-muted-foreground">Uma visão integrada para entender o estado do material, o que está acontecendo e qual ação merece atenção.</p>
         </div>
-        <div className="w-full lg:w-[380px]">
-          <Combobox value={produtoId} onChange={setProdutoId} placeholder="Selecione um produto" opcoes={opcoesProdutos} />
+        <div className="w-full lg:w-[470px]">
+          <div className="rounded-2xl border-2 border-sidebar-primary/20 bg-sidebar-primary/[0.035] p-3 shadow-sm shadow-sidebar-primary/5 sm:p-3.5">
+            <div className="mb-2.5 flex items-center gap-2.5 px-1">
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary/10 text-sidebar-primary">
+                <PackageSearch className="size-4" aria-hidden="true" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-sidebar-primary">Produto em foco</p>
+                <p className="truncate text-xs text-muted-foreground">Selecione o material que esta tela deve acompanhar.</p>
+              </div>
+            </div>
+            <Combobox
+              value={produtoId}
+              onChange={setProdutoId}
+              placeholder="Selecione um produto"
+              opcoes={opcoesProdutos}
+              className="h-14 rounded-xl border-2 border-sidebar-primary/25 bg-background px-4 text-sm font-semibold shadow-sm transition-[border-color,box-shadow] hover:border-sidebar-primary/45 focus-visible:border-sidebar-primary focus-visible:ring-2 focus-visible:ring-sidebar-primary/20 sm:text-base"
+            />
+            {produto ? (
+              <div className="mt-2.5 flex flex-wrap gap-2 px-1 text-[11px] text-muted-foreground">
+                <span className="rounded-full bg-background px-2.5 py-1 font-medium shadow-sm ring-1 ring-border">
+                  {produto.codigo ? `Código ${produto.codigo}` : "Sem código"}
+                </span>
+                <span className="rounded-full bg-background px-2.5 py-1 font-medium shadow-sm ring-1 ring-border">
+                  {unidade?.sigla ?? "unidade não informada"}
+                </span>
+                {categoria?.nome && (
+                  <span className="max-w-full truncate rounded-full bg-background px-2.5 py-1 font-medium shadow-sm ring-1 ring-border">
+                    {categoria.nome}
+                  </span>
+                )}
+              </div>
+            ) : (
+              <p className="mt-2 px-1 text-[11px] text-muted-foreground">O produto selecionado passa a orientar todas as informações exibidas abaixo.</p>
+            )}
+          </div>
         </div>
       </header>
 

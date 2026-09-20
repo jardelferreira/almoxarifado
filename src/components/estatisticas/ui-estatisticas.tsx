@@ -385,8 +385,8 @@ export function ChartTooltip({
 /* Cores de série, resolvidas pelo tema com fallback seguro. */
 export const COR_ENTRADA = "var(--success, #16a34a)";
 export const COR_SAIDA = "var(--destructive, #dc2626)";
-export const COR_ANTERIOR = "var(--muted-foreground, #94a3b8)";
-export const COR_ATUAL = "var(--primary, #2563eb)";
+export const COR_ANTERIOR = "var(--chart-2)";
+export const COR_ATUAL = "var(--chart-1)";
 export const COR_GRID = "var(--border, #e2e8f0)";
 export const COR_EIXO = "var(--muted-foreground, #64748b)";
 

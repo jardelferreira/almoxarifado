@@ -146,7 +146,7 @@ type Aviso = {
 };
 
 const MAX_VISOES = 12;
-const PERIODOS_RAPIDOS = [7, 30, 90] as const;
+const PERIODOS_RAPIDOS = [7,15, 30,60, 90] as const;
 
 /* Definição estática das abas: fora do componente para não recriar a cada render. */
 const ABAS_BASE: ReadonlyArray<{ id: AbaEstatistica; label: string; short: string; icon: NavPillItem<AbaEstatistica>["icon"] }> = [
@@ -245,20 +245,8 @@ function EstatisticasMateriaisPage() {
   }, [chaveVisoes, visoesSalvas, visoesCarregadas]);
 
   /* ---------------------------------------------------------------- */
-  /* Período com debounce                                              */
+  /* Período: confirmar no blur ou manualmente                         */
   /* ---------------------------------------------------------------- */
-
-  useEffect(() => {
-    if (de === deAplicado && ate === ateAplicado) return;
-    const timeoutId = window.setTimeout(() => {
-      startTransition(() => {
-        setDeAplicado(de);
-        setAteAplicado(ate);
-      });
-    }, 450);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [de, ate, deAplicado, ateAplicado, startTransition]);
 
   useEffect(() => {
     // Ao trocar de projeto, nunca carregamos filtros que pertençam ao contexto anterior.
@@ -671,7 +659,18 @@ function EstatisticasMateriaisPage() {
   /* Ações                                                             */
   /* ---------------------------------------------------------------- */
 
-  const processando = isPending || de !== deAplicado || ate !== ateAplicado;
+  const periodoPendente = de !== deAplicado || ate !== ateAplicado;
+  const periodoValido = Boolean(de && ate && de <= ate);
+  const processando = isPending;
+
+  const aplicarPeriodo = useCallback(() => {
+    if (!periodoPendente || !periodoValido || isPending) return;
+
+    startTransition(() => {
+      setDeAplicado(de);
+      setAteAplicado(ate);
+    });
+  }, [de, ate, isPending, periodoPendente, periodoValido, startTransition]);
 
   const irPara = useCallback((aba: AbaEstatistica) => setEstatisticaAtiva(aba), []);
 
@@ -696,16 +695,24 @@ function EstatisticasMateriaisPage() {
     const novo = criarPeriodoPadrao(dias);
     setDe(novo.de);
     setAte(novo.ate);
-  }, []);
+    startTransition(() => {
+      setDeAplicado(novo.de);
+      setAteAplicado(novo.ate);
+    });
+  }, [startTransition]);
 
   const limparFiltros = useCallback(() => {
     const novo = criarPeriodoPadrao(30);
     setDe(novo.de);
     setAte(novo.ate);
+    startTransition(() => {
+      setDeAplicado(novo.de);
+      setAteAplicado(novo.ate);
+    });
     setProdutoId(null);
     setEquipeId(null);
     avisar("info", "Filtros restaurados para os últimos 30 dias.");
-  }, [avisar]);
+  }, [avisar, startTransition]);
 
   const exportarCsv = useCallback(() => {
     if (!dados) return;
@@ -733,8 +740,8 @@ function EstatisticasMateriaisPage() {
     const nova: VisaoEstatisticasSalva = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       nome,
-      de,
-      ate,
+      de: deAplicado,
+      ate: ateAplicado,
       produtoId,
       equipeId,
       estatisticaAtiva,
@@ -743,18 +750,22 @@ function EstatisticasMateriaisPage() {
     setNomeNovaVisao("");
     setFormVisaoAberto(false);
     avisar("sucesso", `Visão "${nome}" salva.`);
-  }, [nomeNovaVisao, de, ate, produtoId, equipeId, estatisticaAtiva, avisar]);
+  }, [nomeNovaVisao, deAplicado, ateAplicado, produtoId, equipeId, estatisticaAtiva, avisar]);
 
   const aplicarVisao = useCallback(
     (visao: VisaoEstatisticasSalva) => {
       setDe(visao.de);
       setAte(visao.ate);
+      startTransition(() => {
+        setDeAplicado(visao.de);
+        setAteAplicado(visao.ate);
+      });
       setProdutoId(visao.produtoId);
       setEquipeId(visao.equipeId);
       setEstatisticaAtiva(visao.estatisticaAtiva);
       avisar("info", `Visão "${visao.nome}" aplicada.`);
     },
-    [avisar],
+    [avisar, startTransition],
   );
 
   const excluirVisao = useCallback(
@@ -937,11 +948,25 @@ function EstatisticasMateriaisPage() {
             <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
               <div className="space-y-1.5">
                 <Label className="text-xs" htmlFor="filtro-de">De</Label>
-                <Input id="filtro-de" type="date" value={de} max={ate} onChange={(event) => setDe(event.target.value)} />
+                <Input
+                  id="filtro-de"
+                  type="date"
+                  value={de}
+                  max={ate}
+                  onChange={(event) => setDe(event.target.value)}
+                  onBlur={aplicarPeriodo}
+                />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs" htmlFor="filtro-ate">Até</Label>
-                <Input id="filtro-ate" type="date" value={ate} min={de} onChange={(event) => setAte(event.target.value)} />
+                <Input
+                  id="filtro-ate"
+                  type="date"
+                  value={ate}
+                  min={de}
+                  onChange={(event) => setAte(event.target.value)}
+                  onBlur={aplicarPeriodo}
+                />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">Produto</Label>
@@ -974,10 +999,22 @@ function EstatisticasMateriaisPage() {
                     );
                   })}
                 </div>
-                <Button type="button" variant="ghost" size="sm" className="self-start sm:self-auto" onClick={limparFiltros}>
-                  <RotateCcw className="size-4" />
-                  Limpar filtros
-                </Button>
+                <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="w-full sm:w-auto"
+                    disabled={!periodoPendente || !periodoValido || processando}
+                    onClick={aplicarPeriodo}
+                  >
+                    <Check className="size-4" />
+                    Aplicar período
+                  </Button>
+                  <Button type="button" variant="ghost" size="sm" className="w-full sm:w-auto" onClick={limparFiltros}>
+                    <RotateCcw className="size-4" />
+                    Limpar filtros
+                  </Button>
+                </div>
               </div>
 
               {/* ---------------- Visões salvas ---------------- */}
@@ -1034,7 +1071,7 @@ function EstatisticasMateriaisPage() {
                         }}
                       />
                       <p className="text-[11px] text-muted-foreground">
-                        Serão guardados: {de} → {ate} · {nomeProdutoFiltro ?? "Todos os produtos"} ·{" "}
+                        Serão guardados: {deAplicado} → {ateAplicado} · {nomeProdutoFiltro ?? "Todos os produtos"} ·{" "}
                         {nomeEquipeFiltro ?? "Todas as equipes"}
                       </p>
                     </div>
@@ -2779,14 +2816,14 @@ const AbaComparativo = memo(function AbaComparativo({
         <div className="rounded-xl border bg-card p-3.5">
           <p className="text-xs font-medium text-muted-foreground">Período atual</p>
           <p className="mt-1 font-medium">
-            {comparacao.periodoAtual.de} → {comparacao.periodoAtual.ate}
+            {formatarData(comparacao.periodoAtual.de)} → {formatarData(comparacao.periodoAtual.ate)}
           </p>
           <p className="text-xs tabular-nums text-muted-foreground">{num(comparacao.dias)} dias</p>
         </div>
         <div className="rounded-xl border bg-muted/30 p-3.5">
           <p className="text-xs font-medium text-muted-foreground">Período anterior</p>
           <p className="mt-1 font-medium">
-            {comparacao.periodoAnterior.de} → {comparacao.periodoAnterior.ate}
+            {formatarData(comparacao.periodoAnterior.de)} → {formatarData(comparacao.periodoAnterior.ate)}
           </p>
           <p className="text-xs tabular-nums text-muted-foreground">{num(comparacao.dias)} dias</p>
         </div>

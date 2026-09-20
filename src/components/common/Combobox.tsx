@@ -25,6 +25,7 @@ export function Combobox({
   placeholder = "Selecionar…",
   vazio = "Nada encontrado",
   disabled = false,
+  className,
 }: {
   opcoes: Opcao[];
   value: string | null;
@@ -32,6 +33,7 @@ export function Combobox({
   placeholder?: string;
   vazio?: string;
   disabled?: boolean;
+  className?: string;
 }) {
   const [open, setOpen] = useState(false);
   const atual = opcoes.find((o) => o.value === value);
@@ -42,7 +44,7 @@ export function Combobox({
         <Button
           variant="outline"
           role="combobox"
-          className="w-full justify-between font-normal"
+          className={cn("w-full justify-between font-normal", className)}
           disabled={disabled}
         >
           <span className={cn("truncate", !atual && "text-muted-foreground")}>
