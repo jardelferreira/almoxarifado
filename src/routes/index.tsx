@@ -7,7 +7,6 @@ import {
   FolderOpen,
   Plus,
   Trash2,
-  Upload,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -25,12 +24,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { useProjetoAtivoId, useProjetos, useOnline } from "@/hooks/useAppData";
 import { repo } from "@/services/repo";
-import {
-  lerArquivo,
-  restaurarBackup,
-  salvarDataset,
-  type DatasetImportado,
-} from "@/services/excel";
+import { lerArquivo, salvarDataset, type DatasetImportado } from "@/services/excel";
 import { formatarData, hoje } from "@/utils/format";
 import { uid } from "@/db/db";
 
@@ -70,7 +64,6 @@ function Home() {
   });
   const [preview, setPreview] = useState<DatasetImportado | null>(null);
   const inputXlsx = useRef<HTMLInputElement>(null);
-  const inputBackup = useRef<HTMLInputElement>(null);
 
   const abrir = (id: string) => {
     setProjetoAtivo(id);
@@ -156,12 +149,6 @@ function Home() {
     if (id) abrir(id);
   };
 
-  const onBackup = async (file: File) => {
-    if (!confirm("Restaurar backup substitui TODOS os dados atuais. Continuar?")) return;
-    await restaurarBackup(await file.text());
-    toast.success("Backup restaurado");
-  };
-
   const limparDados = async () => {
     if (
       !confirm(
@@ -217,7 +204,7 @@ function Home() {
       </header>
 
       <main className="mx-auto max-w-5xl px-6 py-8">
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           <Button className="h-auto justify-start gap-3 py-4" onClick={() => setNovoAberto(true)}>
             <Plus className="size-5" />
             <span className="text-left">
@@ -234,17 +221,6 @@ function Home() {
             <span className="text-left">
               <span className="block font-semibold">Importar planilha</span>
               <span className="block text-xs text-muted-foreground">Modelo .xlsx</span>
-            </span>
-          </Button>
-          <Button
-            variant="outline"
-            className="h-auto justify-start gap-3 py-4"
-            onClick={() => inputBackup.current?.click()}
-          >
-            <Upload className="size-5" />
-            <span className="text-left">
-              <span className="block font-semibold">Restaurar backup</span>
-              <span className="block text-xs text-muted-foreground">Arquivo .json</span>
             </span>
           </Button>
           <Button
@@ -271,18 +247,6 @@ function Home() {
             e.target.value = "";
           }}
         />
-        <input
-          ref={inputBackup}
-          type="file"
-          accept="application/json"
-          className="hidden"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) void onBackup(f);
-            e.target.value = "";
-          }}
-        />
-
         <h2 className="mt-10 font-display text-2xl font-semibold uppercase">Projetos</h2>
         <div className="mt-4 grid gap-3 md:grid-cols-2">
           {(projetos ?? []).length === 0 && (
