@@ -120,7 +120,7 @@ const ROTULOS: Record<string, string> = {
   nome: "Nome",
   descricao: "Descrição",
   status: "Status",
-  ativo: "Status",
+  ativo: "Ativo",
   tipo: "Tipo",
   quantidade: "Quantidade",
   data: "Data",
@@ -359,6 +359,7 @@ export async function exportarProjetoParaExcel(projetoId: string): Promise<void>
         .map((row) => texto(row.unidade_id)),
     ].filter(Boolean),
   );
+
 
   const folhas: Array<{ nome: string; data: Row[]; columns: Column[] }> = [];
 

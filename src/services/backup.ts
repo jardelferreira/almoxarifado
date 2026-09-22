@@ -1,4 +1,5 @@
 import { getDB } from "@/db/db";
+import { validarIntegridadeManutencoes } from "@/services/equipamentos/manutencao-integridade";
 
 export const BACKUP_FORMATO = "ALMOXARIFADO_BACKUP";
 export const BACKUP_VERSAO = 8;
@@ -453,15 +454,11 @@ function validarReferencias(tabelas: BackupTabelas, projeto: BackupProjetoIdenti
     if (item.empresa_id && !empresaIds.has(String(item.empresa_id))) adicionarErro(erros, `Manutenção ${String(item.id)} referencia empresa inexistente.`);
   }
 
-  for (const manutencao of tabelas.manutencoes_equipamentos ?? []) {
-    const item = manutencao as BackupRegistro;
-    for (const campo of ["movimento_sinalizacao_id", "movimento_envio_id", "movimento_retorno_id"]) {
-      const valor = item[campo];
-      if (valor && !ids(tabelas.movimentacoes_equipamentos ?? []).has(String(valor))) {
-        adicionarErro(erros, `Manutenção ${String(item.id)} referencia movimentação de equipamento inexistente em ${campo}.`);
-      }
-    }
-  }
+  validarIntegridadeManutencoes(
+    (tabelas.manutencoes_equipamentos ?? []) as Record<string, unknown>[],
+    (tabelas.movimentacoes_equipamentos ?? []) as Record<string, unknown>[],
+    (mensagem) => adicionarErro(erros, mensagem),
+  );
 
   for (const vinculacao of tabelas.manutencao_documentos ?? []) {
     const item = vinculacao as BackupRegistro;

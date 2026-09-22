@@ -13,6 +13,7 @@ import type {
   Unidade,
 } from "@/types";
 import { normalizar } from "@/utils/format";
+import { validarIntegridadeManutencoes } from "@/services/equipamentos/manutencao-integridade";
 
 /**
  * Importação da representação tabular do projeto.
@@ -244,6 +245,129 @@ function normalizarValorCampo(
   return valor;
 }
 
+const ROTULOS_IMPORTACAO: Record<string, string> = {
+  "ID do sistema": "id",
+  "ID projeto": "projeto_id",
+  "Código": "codigo",
+  "Nome": "nome",
+  "Descrição": "descricao",
+  "ID empresa": "empresa_id",
+  "Empresa": "empresa",
+  "ID funcionário": "funcionario_id",
+  "Funcionário": "funcionario",
+  "ID encarregado": "encarregado_id",
+  "Encarregado": "encarregado",
+  "ID equipe": "equipe_id",
+  "Equipe": "equipe",
+  "ID equipe raiz": "equipe_raiz_id",
+  "Equipe raiz": "equipe_raiz",
+  "ID produto": "produto_id",
+  "Produto": "produto",
+  "ID categoria": "categoria_id",
+  "Categoria": "categoria",
+  "ID unidade": "unidade_id",
+  "Unidade": "unidade",
+  "ID local": "local_id",
+  "Local": "local",
+  "ID local destino": "local_destino_id",
+  "Local destino": "local_destino",
+  "Observação": "observacao",
+  "Observações": "observacoes",
+  "Matrícula": "matricula",
+  "Função": "funcao",
+  "Marca": "marca",
+  "Modelo": "modelo",
+  "Estoque mínimo": "estoque_minimo",
+  "Sinal": "sinal",
+  "ID documento": "documento_id",
+  "ID item documento": "documento_item_id",
+  "Número": "numero",
+  "Série": "serie",
+  "Data emissão": "data_emissao",
+  "Data entrada": "data_entrada",
+  "Valor total": "valor_total",
+  "Valor unitário": "valor_unitario",
+  "ID documento relacionado": "documento_referenciado_id",
+  "Tipo de relação": "tipo_relacao",
+  "ID inventário": "inventario_id",
+  "Quantidade sistema": "quantidade_sistema",
+  "Quantidade contada": "quantidade_contada",
+  "Patrimônio": "patrimonio",
+  "Serial": "serial",
+  "Identificação": "identificacao",
+  "Devolvido": "devolvido",
+  "Baixado": "baixado",
+  "Tipo de controle": "tipo_controle",
+  "ID estoque equipamento": "estoque_equipamento_id",
+  "Tipo origem": "tipo_origem",
+  "ID origem": "origem_id",
+  "Tipo destino": "tipo_destino",
+  "ID destino": "destino_id",
+  "Documento de referência": "referencia_documento",
+  "MIME type": "mime_type",
+  "Tamanho (bytes)": "tamanho",
+  "Nome original": "nome_original",
+  "Chave de armazenamento": "chave_r2",
+  "Casas decimais": "casas_decimais",
+  "Fator": "fator",
+  "Custo unitário": "custo_unitario",
+  "Custo total": "custo_total",
+  "ID perfil": "perfil_id",
+  "Versão": "versao",
+  "Ativo": "ativo",
+};
+
+function snakeCaseCabecalho(campo: string): string {
+  return campo
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function normalizarCabecalhoImportacao(
+  campo: unknown,
+  nomeAba: string,
+  indice: number,
+  ocorrenciaStatus = 0,
+): string {
+  const bruto = S(campo);
+  if (!bruto) return `coluna_${indice + 1}`;
+
+  // Rótulos ambíguos precisam ser resolvidos pelo contexto antes de
+  // aceitarmos o nome "Status" como um campo interno.
+  //
+  // - CATEGORIAS/UNIDADES exportam o campo booleano `ativo` com o rótulo
+  //   legado "Status".
+  // - ESTOQUE_EQUIPAMENTOS possui historicamente duas colunas "Status":
+  //   `status` e `ativo`.
+  if (bruto === "Status") {
+    const aba = normalizarNomeAba(nomeAba);
+
+    if (["CATEGORIAS", "UNIDADES"].includes(aba)) {
+      return "ativo";
+    }
+
+    if (aba === "ESTOQUE_EQUIPAMENTOS") {
+      return ocorrenciaStatus === 0 ? "status" : "ativo";
+    }
+  }
+
+  // Rótulo não ambíguo usado pelo exportador corrigido.
+  if (bruto === "Ativo") return "ativo";
+
+  // Aceita também planilhas já exportadas com os nomes internos do banco.
+  const canonico = bruto.toLowerCase();
+  if (/^[a-z_][a-z0-9_]*$/.test(canonico)) {
+    return canonico;
+  }
+
+  return ROTULOS_IMPORTACAO[bruto] ?? snakeCaseCabecalho(bruto);
+}
+
 function lerAba(
   workbook: XLSX.WorkBook,
   nomeAba: string,
@@ -254,7 +378,29 @@ function lerAba(
     return [];
   }
 
+  const primeiraLinha = XLSX.utils.sheet_to_json<unknown[]>(worksheet, {
+    header: 1,
+    defval: "",
+    raw: true,
+  })[0] ?? [];
+
+  let ocorrenciaStatus = 0;
+  const cabecalhos = primeiraLinha.map((campo, indice) => {
+    const ehStatusLegado = S(campo) === "Status" &&
+      normalizarNomeAba(nomeAba) === "ESTOQUE_EQUIPAMENTOS";
+    const mapeado = normalizarCabecalhoImportacao(
+      campo,
+      nomeAba,
+      indice,
+      ehStatusLegado ? ocorrenciaStatus : 0,
+    );
+    if (ehStatusLegado) ocorrenciaStatus += 1;
+    return mapeado;
+  });
+
   const linhas = XLSX.utils.sheet_to_json<Linha>(worksheet, {
+    header: cabecalhos,
+    range: 1,
     defval: "",
     raw: true,
   });
@@ -1020,6 +1166,12 @@ function validarReferencias(
       );
     }
   }
+
+  validarIntegridadeManutencoes(
+    tabelas["manutencoes_equipamentos"] ?? [],
+    tabelas["movimentacoes_equipamentos"] ?? [],
+    (mensagem) => problemas.push(mensagem),
+  );
 
   for (const [index, linha] of (
     tabelas["regras_consumo_equipamentos"] ?? []
