@@ -142,11 +142,19 @@ function Home() {
 
   const confirmarImportacao = async () => {
     if (!preview) return;
-    await salvarDataset(preview);
-    toast.success("Importação concluída");
-    const id = preview.projetos[0]?.id;
-    setPreview(null);
-    if (id) abrir(id);
+    if (preview.problemas.length > 0) {
+      toast.error("A planilha possui inconsistências e não pode ser importada.");
+      return;
+    }
+    try {
+      await salvarDataset(preview);
+      toast.success("Projeto importado com sucesso");
+      const id = preview.projetos[0]?.id;
+      setPreview(null);
+      if (id) abrir(id);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível importar o projeto.");
+    }
   };
 
   const limparDados = async () => {
@@ -423,21 +431,35 @@ function Home() {
           <DialogHeader>
             <DialogTitle>Pré-visualização da importação</DialogTitle>
             <DialogDescription>
-              Revise antes de gravar os dados no dispositivo.
+              Revise antes de criar o projeto e gravar seus dados no dispositivo. A importação só grava após todas as validações.
             </DialogDescription>
           </DialogHeader>
           {preview && (
             <div className="space-y-4 text-sm">
+              <div className="rounded-xl border bg-muted/20 p-3">
+                <p className="font-semibold">
+                  {Object.values(preview.contagens).reduce((total, quantidade) => total + quantidade, 0)} registros · {Object.values(preview.contagens).filter(Boolean).length} módulos
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  A planilha foi reconhecida nas tabelas suportadas pelo projeto.
+                </p>
+              </div>
               <div className="grid grid-cols-2 gap-2">
                 {[
-                  ["Movimentações", preview.movimentacoes.length],
-                  ["Produtos", preview.produtos.length],
-                  ["Funcionários", preview.funcionarios.length],
-                  ["Empresas", preview.empresas.length],
-                  ["Locais", preview.locais.length],
-                  ["Categorias", preview.categorias.length],
-                  ["Unidades", preview.unidades.length],
-                  ["Projetos", preview.projetos.length],
+                  ["Produtos", preview.contagens["produtos"]],
+                  ["Movimentações", preview.contagens["movimentacoes"]],
+                  ["Equipamentos", preview.contagens["equipamentos"]],
+                  ["Estoque de equipamentos", preview.contagens["estoque_equipamentos"]],
+                  ["Mov. equipamentos", preview.contagens["movimentacoes_equipamentos"]],
+                  ["Manutenções", preview.contagens["manutencoes_equipamentos"]],
+                  ["Documentos", preview.contagens["documentos"]],
+                  ["Itens de documentos", preview.contagens["documento_itens"]],
+                  ["Inventários", preview.contagens["inventarios"]],
+                  ["Itens de inventário", preview.contagens["inventario_itens"]],
+                  ["Consumos", preview.contagens["consumos_equipamentos"]],
+                  ["Regras de consumo", preview.contagens["regras_consumo_equipamentos"]],
+                  ["Perfis de custos", preview.contagens["perfis_parametros_custos"]],
+                  ["Inteligência", preview.contagens["inteligencia_acoes"]],
                 ].map(([label, n]) => (
                   <div key={label as string} className="rounded-md border border-border p-2">
                     <p className="num text-lg font-semibold">{n as number}</p>
@@ -463,7 +485,7 @@ function Home() {
             <Button variant="outline" onClick={() => setPreview(null)}>
               Cancelar
             </Button>
-            <Button onClick={confirmarImportacao}>Importar mesmo assim</Button>
+            <Button onClick={confirmarImportacao} disabled={!preview || preview.problemas.length > 0}>Importar projeto</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

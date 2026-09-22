@@ -66,6 +66,14 @@ type NavGroup = {
 
 const navGroups: NavGroup[] = [
   {
+    label: "Cadastros",
+    icon: Settings2,
+    descricao: "Base cadastral compartilhada pelos módulos",
+    items: [
+      { to: "/app/cadastros", label: "Cadastros", icon: Settings2, subgrupo: "Base" },
+    ],
+  },
+  {
     label: "Materiais",
     icon: Boxes,
     modulo: "materiais",
@@ -119,14 +127,6 @@ const navGroups: NavGroup[] = [
     items: [
       { to: "/app/vigia", label: "Vigia operacional", icon: ShieldAlert, subgrupo: "Monitoramento" },
       { to: "/app/estatisticas", label: "Estatísticas de materiais", icon: ChartColumn, subgrupo: "Análise" },
-    ],
-  },
-  {
-    label: "Base cadastral",
-    icon: Settings2,
-    descricao: "Dados compartilhados pelos módulos",
-    items: [
-      { to: "/app/cadastros", label: "Cadastros", icon: Settings2, subgrupo: "Base" },
     ],
   },
 ];

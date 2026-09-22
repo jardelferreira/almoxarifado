@@ -437,8 +437,8 @@ function DadosPage() {
       <Dialog open={!!preview} onOpenChange={(open) => !open && setPreview(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Pré-visualização da importação da planilha</DialogTitle>
-            <DialogDescription>Os registros da planilha serão mesclados no projeto ativo.</DialogDescription>
+            <DialogTitle>Pré-visualização da importação do projeto</DialogTitle>
+            <DialogDescription>Os dados da planilha substituirão os dados atuais do projeto ativo. A importação só grava após todas as validações.</DialogDescription>
           </DialogHeader>
           {preview && (
             <div className="space-y-3 text-sm">
@@ -504,7 +504,7 @@ function DadosPage() {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setPreview(null)}>Cancelar</Button>
-            <Button onClick={() => void confirmarImportacao()} disabled={processando}>Importar</Button>
+            <Button onClick={() => void confirmarImportacao()} disabled={processando || !!preview?.problemas.length}>Importar projeto</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -514,10 +514,10 @@ function DadosPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FileJson className="size-5 text-primary" />
-              Restaurar projeto
+              Pré-visualização da restauração
             </DialogTitle>
             <DialogDescription>
-              Selecione um backup deste projeto. O sistema só permitirá a restauração se o arquivo pertencer ao projeto ativo.
+              Selecione um backup deste projeto. O sistema só permitirá a restauração se o arquivo pertencer ao projeto ativo e passar pelas verificações de integridade.
             </DialogDescription>
           </DialogHeader>
 
@@ -559,7 +559,7 @@ function DadosPage() {
                   <div className="flex items-center gap-3">
                     <RefreshCw className="size-4 animate-spin text-primary" />
                     <div>
-                      <p className="text-sm font-semibold">Processando restauração</p>
+                      <p className="text-sm font-semibold">Restaurando projeto</p>
                       <p className="mt-0.5 text-xs text-muted-foreground">{statusRestauracao}</p>
                     </div>
                   </div>
@@ -577,7 +577,7 @@ function DadosPage() {
 
               {backupPreview.analise.avisos.length > 0 ? (
                 <section className="rounded-xl border border-warning/30 bg-warning/5 p-4">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-warning"><AlertTriangle className="size-4" /> Observações</div>
+                  <div className="flex items-center gap-2 text-sm font-semibold text-warning"><AlertTriangle className="size-4" /> Verificações adicionais</div>
                   <ul className="mt-2 max-h-36 list-disc space-y-1 overflow-y-auto pl-5 text-xs leading-5">
                     {backupPreview.analise.avisos.map((aviso) => <li key={aviso}>{aviso}</li>)}
                   </ul>

@@ -63,8 +63,53 @@ export const TABELAS_IMPORTACAO = [
 ] as const;
 
 const ABA_PARA_TABELA: Record<string, string> = {
-  APROPRIACOES_FINANCEIRAS_EQUIPA:
-    "apropriacoes_financeiras_equipamentos",
+  // Nomes canônicos usados pela exportação atual.
+  PROJETOS: "projetos",
+  CATEGORIAS: "categorias",
+  CATEGORIAS_EQUIPAMENTOS: "categorias_equipamentos",
+  UNIDADES: "unidades",
+  EMPRESAS: "empresas",
+  FUNCIONARIOS: "funcionarios",
+  LOCAIS: "locais",
+  PRODUTOS: "produtos",
+  MOVIMENTACOES: "movimentacoes",
+  EQUIPES: "equipes",
+  EQUIPE_MEMBROS: "equipe_membros",
+  ARQUIVOS: "arquivos",
+  EQUIPAMENTOS: "equipamentos",
+  ESTOQUE_EQUIPAMENTOS: "estoque_equipamentos",
+  APROPRIACOES: "apropriacoes",
+  MOVIMENTACOES_EQUIPAMENTOS: "movimentacoes_equipamentos",
+  CONFIGURACOES: "configuracoes",
+  DOCUMENTOS: "documentos",
+  DOCUMENTO_ITENS: "documento_itens",
+  DOCUMENTO_REFERENCIAS: "documento_referencias",
+  INVENTARIOS: "inventarios",
+  INVENTARIO_ITENS: "inventario_itens",
+  INTELIGENCIA_ACOES: "inteligencia_acoes",
+  MANUTENCOES_EQUIPAMENTOS: "manutencoes_equipamentos",
+  MANUTENCAO_DOCUMENTOS: "manutencao_documentos",
+  APROPRIACOES_FIN_EQUIP: "apropriacoes_financeiras_equipamentos",
+  CONSUMOS_EQUIPAMENTOS: "consumos_equipamentos",
+  REGRAS_CONSUMO_EQUIPAMENTOS: "regras_consumo_equipamentos",
+  PERFIS_PARAMETROS_CUSTOS: "perfis_parametros_custos",
+
+  // Nomes produzidos pela versão anterior do exportador.
+  PROJETO: "projetos",
+  "CAT. EQUIPAMENTOS": "categorias_equipamentos",
+  "MEMBROS EQUIPES": "equipe_membros",
+  "ESTOQUE EQUIP.": "estoque_equipamentos",
+  "MOV. EQUIPAMENTOS": "movimentacoes_equipamentos",
+  "ITENS DOCUMENTOS": "documento_itens",
+  "REF. DOCUMENTOS": "documento_referencias",
+  "ITENS INVENTÁRIO": "inventario_itens",
+  "APROPRIAÇÕES FINANCEIRAS": "apropriacoes_financeiras_equipamentos",
+  "CONSUMOS": "consumos_equipamentos",
+  "REGRAS DE CONSUMO": "regras_consumo_equipamentos",
+  "PERFIS DE PARÂMETROS": "perfis_parametros_custos",
+  "INTELIGÊNCIA": "inteligencia_acoes",
+  "MANUTENÇÕES": "manutencoes_equipamentos",
+  "DOCUMENTOS DE MANUTENÇÃO": "manutencao_documentos",
 };
 
 const TABELAS_GLOBAIS = new Set(["categorias", "unidades"]);
@@ -235,22 +280,30 @@ function lerAba(
     );
 }
 
+function normalizarNomeAba(nome: string): string {
+  return nome
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toUpperCase();
+}
+
 function obterAba(
   workbook: XLSX.WorkBook,
   tabela: string,
 ): Linha[] {
-  const nomePrincipal = tabela.toUpperCase();
-  const linhasPrincipais = lerAba(workbook, nomePrincipal);
+  const candidatos = new Set<string>([
+    normalizarNomeAba(tabela),
+    ...Object.entries(ABA_PARA_TABELA)
+      .filter(([, tabelaInterna]) => tabelaInterna === tabela)
+      .map(([nome]) => normalizarNomeAba(nome)),
+  ]);
 
-  if (linhasPrincipais.length > 0) {
-    return linhasPrincipais;
-  }
+  const nomeEncontrado = workbook.SheetNames.find((nome) =>
+    candidatos.has(normalizarNomeAba(nome)),
+  );
 
-  const alias = Object.entries(ABA_PARA_TABELA).find(
-    ([, tabelaInterna]) => tabelaInterna === tabela,
-  )?.[0];
-
-  return alias ? lerAba(workbook, alias) : [];
+  return nomeEncontrado ? lerAba(workbook, nomeEncontrado) : [];
 }
 
 function projetoDeLinha(linha: Linha): Projeto {
@@ -370,6 +423,12 @@ function equipeMembroDeLinha(linha: Linha): EquipeMembro {
 
 function movimentacaoDeLinha(linha: Linha): Movimentacao {
   const quantidadeOriginal = N(linha["quantidade"]);
+  const sinalInformado = N(linha["sinal"]);
+  const sinal = sinalInformado === -1 || sinalInformado === 1
+    ? (sinalInformado as 1 | -1)
+    : quantidadeOriginal < 0
+      ? -1
+      : 1;
 
   return {
     id: S(linha["id"]) || uid(),
@@ -380,13 +439,17 @@ function movimentacaoDeLinha(linha: Linha): Movimentacao {
     ) as Movimentacao["tipo"],
     produto_id: S(linha["produto_id"]),
     quantidade: Math.abs(quantidadeOriginal),
-    sinal: quantidadeOriginal < 0 ? -1 : 1,
+    sinal,
     funcionario_id: S(linha["funcionario_id"]) || null,
     encarregado_id: S(linha["encarregado_id"]) || null,
     empresa_id: S(linha["empresa_id"]) || null,
     local_id: S(linha["local_id"]) || null,
     observacao: S(linha["observacao"]) || null,
     equipe_id: S(linha["equipe_id"]),
+    ...(S(linha["local_destino_id"]) ? { local_destino_id: S(linha["local_destino_id"]) } : {}),
+    ...(S(linha["movimentacao_origem_id"]) ? { movimentacao_origem_id: S(linha["movimentacao_origem_id"]) } : {}),
+    ...(S(linha["documento_id"]) ? { documento_id: S(linha["documento_id"]) } : {}),
+    ...(S(linha["documento_item_id"]) ? { documento_item_id: S(linha["documento_item_id"]) } : {}),
   };
 }
 
@@ -411,6 +474,136 @@ function validarDuplicados(
   }
 }
 
+const TABELAS_PROJETO_DIRETO = [
+  "categorias_equipamentos",
+  "empresas",
+  "funcionarios",
+  "locais",
+  "produtos",
+  "movimentacoes",
+  "equipes",
+  "arquivos",
+  "equipamentos",
+  "estoque_equipamentos",
+  "movimentacoes_equipamentos",
+  "configuracoes",
+  "documentos",
+  "documento_referencias",
+  "inventarios",
+  "inteligencia_acoes",
+  "manutencoes_equipamentos",
+  "manutencao_documentos",
+  "apropriacoes_financeiras_equipamentos",
+  "consumos_equipamentos",
+  "regras_consumo_equipamentos",
+  "perfis_parametros_custos",
+] as const;
+
+function validarEscopoProjeto(
+  problemas: string[],
+  tabelas: Record<string, Linha[]>,
+  projetoId: string,
+): void {
+  for (const tabela of TABELAS_PROJETO_DIRETO) {
+    for (const [index, linha] of (tabelas[tabela] ?? []).entries()) {
+      const registroProjetoId = S(linha["projeto_id"]);
+      if (registroProjetoId !== projetoId) {
+        problemas.push(
+          `${tabela}[${index}]: projeto_id deve ser ${projetoId}`,
+        );
+      }
+    }
+  }
+}
+
+function serializarEstavel(valor: unknown): string {
+  if (Array.isArray(valor)) return `[${valor.map(serializarEstavel).join(",")}]`;
+  if (valor && typeof valor === "object") {
+    const objeto = valor as Record<string, unknown>;
+    return `{${Object.keys(objeto).sort().map((chave) => `${JSON.stringify(chave)}:${serializarEstavel(objeto[chave])}`).join(",")}}`;
+  }
+  return JSON.stringify(valor);
+}
+
+async function validarConflitosInterprojetos(
+  tabelas: Record<string, Linha[]>,
+  projetoDestinoId: string,
+  importacaoExterna: boolean,
+): Promise<void> {
+  const db = getDB();
+
+  if (importacaoExterna && (await db.projetos.get(projetoDestinoId))) {
+    throw new Error(
+      `O projeto ${projetoDestinoId} já existe neste dispositivo. A importação externa foi bloqueada para impedir substituição acidental de outro projeto.`,
+    );
+  }
+
+  const verificarTabela = async (tabela: string) => {
+    if (!getDB().tables.some((item) => item.name === tabela)) return;
+    const existentes = await db.table(tabela).toArray() as Linha[];
+    const porId = new Map(existentes.map((item) => [S(item["id"]), item]));
+
+    for (const linha of tabelas[tabela] ?? []) {
+      const id = S(linha["id"]);
+      if (!id) continue;
+      const existente = porId.get(id);
+      if (!existente) continue;
+
+      const projetoExistente = S(existente["projeto_id"]);
+      if (projetoExistente !== projetoDestinoId) {
+        throw new Error(
+          `Conflito interprojetos: ${tabela} com ID ${id} já pertence ao projeto ${projetoExistente}. A importação foi bloqueada para proteger esse projeto.`,
+        );
+      }
+    }
+  };
+
+  for (const tabela of TABELAS_PROJETO_DIRETO) {
+    await verificarTabela(tabela);
+  }
+
+  const relacionamentos: Array<[string, string, string]> = [
+    ["equipe_membros", "equipe_id", "equipes"],
+    ["documento_itens", "documento_id", "documentos"],
+    ["inventario_itens", "inventario_id", "inventarios"],
+    ["apropriacoes", "estoque_equipamento_id", "estoque_equipamentos"],
+  ];
+
+  for (const [tabela, campoPai, tabelaPai] of relacionamentos) {
+    if (!getDB().tables.some((item) => item.name === tabela)) continue;
+    const pais = new Map(
+      ((await db.table(tabelaPai).toArray()) as Linha[]).map((item) => [S(item["id"]), S(item["projeto_id"]) ]),
+    );
+    const existentes = (await db.table(tabela).toArray()) as Linha[];
+    const idsNovos = new Set((tabelas[tabela] ?? []).map((item) => S(item["id"])).filter(Boolean));
+    for (const existente of existentes) {
+      const id = S(existente["id"]);
+      if (!idsNovos.has(id)) continue;
+      const projetoPai = pais.get(S(existente[campoPai]));
+      if (projetoPai !== projetoDestinoId) {
+        throw new Error(
+          `Conflito interprojetos: ${tabela} com ID ${id} está ligado ao projeto ${projetoPai}. A importação foi bloqueada.`,
+        );
+      }
+    }
+  }
+
+  for (const tabela of TABELAS_GLOBAIS) {
+    const existentes = (await db.table(tabela).toArray()) as Linha[];
+    const porId = new Map(existentes.map((item) => [S(item["id"]), item]));
+    for (const linha of tabelas[tabela] ?? []) {
+      const id = S(linha["id"]);
+      const existente = porId.get(id);
+      if (!id || !existente) continue;
+      if (serializarEstavel(existente) !== serializarEstavel(linha)) {
+        throw new Error(
+          `Conflito no catálogo global “${tabela}”: o ID ${id} já existe com conteúdo diferente. A importação foi bloqueada.`,
+        );
+      }
+    }
+  }
+}
+
 function validarReferencias(
   problemas: string[],
   tabelas: Record<string, Linha[]>,
@@ -430,9 +623,13 @@ function validarReferencias(
   const equipamentos = ids("equipamentos");
   const estoquesEquipamentos = ids("estoque_equipamentos");
   const documentos = ids("documentos");
+  const documentoItens = ids("documento_itens");
   const inventarios = ids("inventarios");
   const manutencoes = ids("manutencoes_equipamentos");
+  const movimentacoesEquipamentos = ids("movimentacoes_equipamentos");
+  const movimentacoesMateriais = ids("movimentacoes");
   const unidades = ids("unidades");
+  const categoriasEquipamentos = ids("categorias_equipamentos");
 
   for (const [index, linha] of (
     tabelas["movimentacoes"] ?? []
@@ -478,6 +675,42 @@ function validarReferencias(
         `movimentacoes[${index}]: local_id inexistente`,
       );
     }
+
+    if (
+      S(linha["local_destino_id"]) &&
+      !locais.has(S(linha["local_destino_id"]))
+    ) {
+      problemas.push(
+        `movimentacoes[${index}]: local_destino_id inexistente`,
+      );
+    }
+
+    if (
+      S(linha["documento_id"]) &&
+      !documentos.has(S(linha["documento_id"]))
+    ) {
+      problemas.push(
+        `movimentacoes[${index}]: documento_id inexistente`,
+      );
+    }
+
+    if (
+      S(linha["documento_item_id"]) &&
+      !documentoItens.has(S(linha["documento_item_id"]))
+    ) {
+      problemas.push(
+        `movimentacoes[${index}]: documento_item_id inexistente`,
+      );
+    }
+
+    if (
+      S(linha["movimentacao_origem_id"]) &&
+      !movimentacoesMateriais.has(S(linha["movimentacao_origem_id"]))
+    ) {
+      problemas.push(
+        `movimentacoes[${index}]: movimentacao_origem_id inexistente`,
+      );
+    }
   }
 
   for (const [index, linha] of (
@@ -485,9 +718,7 @@ function validarReferencias(
   ).entries()) {
     if (
       S(linha["categoria_id"]) &&
-      !ids("categorias_equipamentos").has(
-        S(linha["categoria_id"]),
-      )
+      !categoriasEquipamentos.has(S(linha["categoria_id"]))
     ) {
       problemas.push(
         `equipamentos[${index}]: categoria_id inexistente`,
@@ -565,6 +796,28 @@ function validarReferencias(
       );
     }
 
+
+    if (origem && origemId) {
+      const existe = origem === "EMPRESA"
+        ? empresas.has(origemId)
+        : origem === "EQUIPE"
+          ? equipes.has(origemId)
+          : funcionarios.has(origemId);
+      if (!existe) problemas.push(`movimentacoes_equipamentos[${index}]: origem_id inexistente`);
+    } else {
+      problemas.push(`movimentacoes_equipamentos[${index}]: origem e origem_id são obrigatórios`);
+    }
+
+    if (destino && destinoId) {
+      const existe = destino === "EMPRESA"
+        ? empresas.has(destinoId)
+        : destino === "EQUIPE"
+          ? equipes.has(destinoId)
+          : funcionarios.has(destinoId);
+      if (!existe) problemas.push(`movimentacoes_equipamentos[${index}]: destino_id inexistente`);
+    } else {
+      problemas.push(`movimentacoes_equipamentos[${index}]: destino e destino_id são obrigatórios`);
+    }
     if (tipo === "BAIXA") {
       if (origem !== "EQUIPE") {
         problemas.push(
@@ -693,7 +946,10 @@ function validarReferencias(
       );
     }
 
-    if (!produtos.has(S(linha["produto_id"]))) {
+    if (
+      S(linha["produto_id"]) &&
+      !produtos.has(S(linha["produto_id"]))
+    ) {
       problemas.push(
         `documento_itens[${index}]: produto_id inexistente`,
       );
@@ -852,6 +1108,11 @@ export function lerArquivo(
     problemas.push(
       `A planilha deve conter exatamente 1 projeto. Encontrados: ${projetos.length}.`,
     );
+  } else {
+    const projeto = projetos[0];
+    if (projeto) {
+      validarEscopoProjeto(problemas, tabelas, projeto.id);
+    }
   }
 
   validarDuplicados(problemas, tabelas);
@@ -1144,8 +1405,7 @@ export async function salvarDataset(
   );
 
   const movimentacoes = comProjeto(
-    dataset.tabelas["movimentacoes"] ??
-      dataset.movimentacoes.map((item) => ({ ...item })),
+    dataset.movimentacoes.map((item) => ({ ...item })),
     destinoId,
   );
 
@@ -1280,6 +1540,12 @@ export async function salvarDataset(
    * O banco não possui FK relacional do IndexedDB; a integridade é
    * controlada pelo fluxo de domínio.
    */
+  await validarConflitosInterprojetos(
+    dataset.tabelas,
+    destinoId,
+    !projetoId,
+  );
+
   const tabelasTransacao = [
     db.projetos,
     db.categorias,
@@ -1586,6 +1852,57 @@ export async function salvarDataset(
           perfisCustos,
         );
       }
+
+      // Verificação pós-gravação ainda dentro da transação. Qualquer divergência
+      // lança erro e faz o IndexedDB desfazer toda a importação.
+      const verificarQuantidadeProjeto = async (tabela: string, esperado: number) => {
+        const registros = (await db.table(tabela).toArray()) as Linha[];
+        return registros.filter((item) => S(item["projeto_id"]) === destinoId).length === esperado;
+      };
+
+      const verificacoesDiretas: Array<[string, number]> = [
+        ["empresas", empresas.length],
+        ["funcionarios", funcionarios.length],
+        ["locais", locais.length],
+        ["produtos", produtos.length],
+        ["equipes", equipes.length],
+        ["categorias_equipamentos", categoriasEquipamentos.length],
+        ["arquivos", arquivos.length],
+        ["equipamentos", equipamentos.length],
+        ["estoque_equipamentos", estoqueEquipamentos.length],
+        ["movimentacoes", movimentacoes.length],
+        ["movimentacoes_equipamentos", movimentacoesEquipamentos.length],
+        ["configuracoes", configuracoes.length],
+        ["documentos", documentos.length],
+        ["documento_referencias", documentoReferencias.length],
+        ["inventarios", inventarios.length],
+        ["inteligencia_acoes", inteligenciaAcoes.length],
+        ["manutencoes_equipamentos", manutencoes.length],
+        ["manutencao_documentos", manutencaoDocumentos.length],
+        ["apropriacoes_financeiras_equipamentos", apropriacoesFinanceiras.length],
+        ["consumos_equipamentos", consumosEquipamentos.length],
+        ["regras_consumo_equipamentos", regrasConsumo.length],
+        ["perfis_parametros_custos", perfisCustos.length],
+      ];
+
+      for (const [tabela, esperado] of verificacoesDiretas) {
+        if (!(await verificarQuantidadeProjeto(tabela, esperado))) {
+          throw new Error(`Falha de integridade após a importação: a tabela ${tabela} não contém a quantidade esperada de registros do projeto.`);
+        }
+      }
+
+      const verificarRelacionada = async (tabela: string, campo: string, pais: Set<string>, esperado: number) => {
+        const registros = (await db.table(tabela).toArray()) as Linha[];
+        const quantidade = registros.filter((item) => pais.has(S(item[campo]))).length;
+        if (quantidade !== esperado) {
+          throw new Error(`Falha de integridade após a importação: a tabela ${tabela} contém ${quantidade} registros relacionados, mas eram esperados ${esperado}.`);
+        }
+      };
+
+      await verificarRelacionada("equipe_membros", "equipe_id", equipesNovasIds, equipeMembros.length);
+      await verificarRelacionada("apropriacoes", "estoque_equipamento_id", estoqueNovoIds, apropriacoes.length);
+      await verificarRelacionada("documento_itens", "documento_id", documentosNovosIds, documentoItens.length);
+      await verificarRelacionada("inventario_itens", "inventario_id", inventariosNovosIds, inventarioItens.length);
     },
   );
 
