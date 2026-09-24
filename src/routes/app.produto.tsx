@@ -274,7 +274,7 @@ function PerfilProdutoPage() {
   if (!dados) return <p className="text-sm text-muted-foreground">Carregando perfil do produto…</p>;
 
   const opcoesProdutos = dados.produtos.filter((item) => item.ativo).sort((a, b) => a.nome.localeCompare(b.nome)).map((item) => ({ value: item.id, label: item.codigo ? `${item.codigo} · ${item.nome}` : item.nome }));
-
+  
   return (
     <div className="space-y-6">
       <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
