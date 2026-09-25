@@ -410,9 +410,10 @@ function Formulario({ modo, produtoInicial }: { modo: string; produtoInicial: st
                   placeholder="Selecionar"
                   value={funcionarioId}
                   onChange={(v) => {
+                    // O funcionário é o destinatário da saída, não o responsável
+                    // pelo estoque de origem. A equipe selecionada manualmente
+                    // continua sendo a equipe cujo estoque será movimentado.
                     setFuncionarioId(v);
-                    const equipeRaiz = dados.funcionarios.find((f) => f.id === v)?.equipe_raiz_id;
-                    if (equipeRaiz) setEquipeId(equipeRaiz);
                   }}
                   opcoes={opt(funcAtivos)}
                 />

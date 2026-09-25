@@ -43,7 +43,7 @@ import {
   type ProdutoEstatistica,
 } from "@/services/estatisticas-materiais";
 import type { Documento, DocumentoItem, Equipe, Inventario, InventarioItem, Movimentacao, Produto } from "@/types";
-import { formatarData, num } from "@/utils/format";
+import { dataFormatada, formatarData, num } from "@/utils/format";
 
 export const Route = createFileRoute("/app/produto")({
   ssr: false,
@@ -257,6 +257,7 @@ function PerfilProdutoPage() {
   }, [configuracao?.documentos.habilitado, configuracao?.modulos.documentos, dados, documentoDados?.itens.length, desvios, estatistica, inventarioDados?.inventarios, movimentosProduto, produto, reposicao, ultimoInventarioConcluido]);
 
   const ultimaMovimentacao = movimentosProduto[0];
+  console.log(ultimaMovimentacao)
   const unidade = produto?.unidade_id ? dados?.unidades.find((item) => item.id === produto.unidade_id) : undefined;
   const categoria = produto?.categoria_id ? dados?.categorias.find((item) => item.id === produto.categoria_id) : undefined;
 
@@ -366,7 +367,7 @@ function PerfilProdutoPage() {
               <div className="bg-card p-4"><p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Estoque atual</p><p className="num mt-1 text-2xl font-bold">{num(estatistica?.estoqueAtual ?? 0)} {unidade?.sigla ?? ""}</p><p className="mt-1 text-xs text-muted-foreground">Somado entre as equipes.</p></div>
               <div className="bg-card p-4"><p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Estoque mínimo</p><p className="num mt-1 text-2xl font-bold">{num(estatistica?.estoqueMinimo ?? produto.estoque_minimo)} {unidade?.sigla ?? ""}</p><p className="mt-1 text-xs text-muted-foreground">Parâmetro cadastrado.</p></div>
               <div className="bg-card p-4"><p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Cobertura</p><p className="num mt-1 text-2xl font-bold">{estatistica?.coberturaDias == null ? "—" : `${num(estatistica.coberturaDias)} d`}</p><p className="mt-1 text-xs text-muted-foreground">Janela efetiva de {PERIODO_DIAS} dias.</p></div>
-              <div className="bg-card p-4"><p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Última movimentação</p><p className="mt-1 text-2xl font-bold">{ultimaMovimentacao ? formatarData(ultimaMovimentacao.data) : "—"}</p><p className="mt-1 text-xs text-muted-foreground">{ultimaMovimentacao?.tipo ?? "Nenhuma movimentação"}</p></div>
+              <div className="bg-card p-4"><p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Última movimentação</p><p className="mt-1 text-2xl font-bold">{ultimaMovimentacao ? dataFormatada(ultimaMovimentacao.data) : "—"}</p><p className="mt-1 text-xs text-muted-foreground">{ultimaMovimentacao?.tipo ?? "Nenhuma movimentação"}</p></div>
             </div>
           </section>
 

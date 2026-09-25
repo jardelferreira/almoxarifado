@@ -14,6 +14,20 @@ export function formatarData(iso?: string | null) {
   return `${d}/${m}/${y}`;
 }
 
+export function dataFormatada(data: string){
+
+  return new Date(data).toLocaleString("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+
+}
+
 export function hoje() {
   return new Date().toISOString().slice(0, 10);
 }
