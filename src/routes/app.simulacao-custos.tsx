@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import type { ReactNode } from "react";
+import type { FocusEvent, ReactNode } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
   AlertTriangle,
@@ -128,6 +128,29 @@ function criarLinha(equipamento: Equipamento, quantidadePadrao: number): LinhaSi
   };
 }
 
+function normalizarLinhaSimulacao(linha: LinhaSimulacao): LinhaSimulacao {
+  const numero = (valor: unknown, padrao = 0) => {
+    const convertido = Number(valor);
+    return Number.isFinite(convertido) ? convertido : padrao;
+  };
+
+  return {
+    ...linha,
+    quantidade: Math.max(1, numero(linha.quantidade, 1)),
+    uso_previsto: Math.max(0, numero(linha.uso_previsto)),
+    manutencao_ocorrencias_por_unidade: Math.max(0, numero(linha.manutencao_ocorrencias_por_unidade)),
+    manutencao_valor_por_ocorrencia: Math.max(0, numero(linha.manutencao_valor_por_ocorrencia)),
+    custo_recorrente_unitario_override:
+      linha.custo_recorrente_unitario_override == null
+        ? null
+        : Math.max(0, numero(linha.custo_recorrente_unitario_override)),
+  };
+}
+
+function selecionarConteudoAoFocar(event: FocusEvent<HTMLInputElement>) {
+  event.currentTarget.select();
+}
+
 function obterDirecionador(value: RegraConsumoEquipamentoDirecionador) {
   return DIRECIONADORES.find((item) => item.value === value) ?? DIRECIONADORES[0]!;
 }
@@ -162,7 +185,7 @@ function SimulacaoCustosPage() {
         : Promise.resolve([] as Equipamento[]),
     [projetoId],
   ) ?? [];
-
+  
   const estoques = useLiveQuery(
     () =>
       projetoId
@@ -192,11 +215,13 @@ function SimulacaoCustosPage() {
 
   const equipamentosDisponiveis = useMemo(
     () => equipamentos
-      .filter((item) => item.ativo && !linhas.some((linha) => linha.equipamento_id === item.id))
+      // Equipamentos legados sem o campo ativo continuam disponíveis.
+      // Somente um equipamento explicitamente inativo deve ser bloqueado.
+      .filter((item) => item.ativo !== false && !linhas.some((linha) => linha.equipamento_id === item.id))
       .sort((a, b) => a.nome.localeCompare(b.nome)),
     [equipamentos, linhas],
   );
-
+  console.log(linhas)
   const equipamentosPorId = useMemo(
     () => new Map(equipamentos.map((equipamento) => [equipamento.id, equipamento])),
     [equipamentos],
@@ -234,7 +259,7 @@ function SimulacaoCustosPage() {
 
         setPeriodo(periodoCarregado);
         setPeriodoAplicado(periodoCarregado);
-        setLinhas(carregado.equipamentos);
+        setLinhas(carregado.equipamentos.map(normalizarLinhaSimulacao));
         setPrecosManuais(
           Object.fromEntries(
             Object.entries(carregado.precosManuais).map(([id, valor]) => [id, valor == null ? "" : String(valor)]),
@@ -570,7 +595,7 @@ function SimulacaoCustosPage() {
                     <CardContent className="space-y-5 p-4 sm:p-5">
                       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                         <Field label="Quantidade simulada" hint="unidades">
-                          <Input type="number" min="1" step="1" value={linha.quantidade} onChange={(event) => atualizarLinha(linha.equipamento_id, { quantidade: Math.max(1, Number(event.target.value) || 1) })} />
+                          <Input type="number" min="1" step="1" value={linha.quantidade} onFocus={selecionarConteudoAoFocar} onChange={(event) => atualizarLinha(linha.equipamento_id, { quantidade: Math.max(1, Number(event.target.value) || 1) })} />
                         </Field>
                         <Field label="Direcionador">
                           <Select value={linha.direcionador} onValueChange={(value) => atualizarLinha(linha.equipamento_id, { direcionador: value as RegraConsumoEquipamentoDirecionador })}>
@@ -579,10 +604,10 @@ function SimulacaoCustosPage() {
                           </Select>
                         </Field>
                         <Field label="Uso previsto" hint={`${direcionador.unidade} / unidade`}>
-                          <Input type="number" min="0" step="0.01" value={linha.uso_previsto} onChange={(event) => atualizarLinha(linha.equipamento_id, { uso_previsto: Math.max(0, Number(event.target.value) || 0) })} />
+                          <Input type="number" min="0" step="0.01" value={linha.uso_previsto} onFocus={selecionarConteudoAoFocar} onChange={(event) => atualizarLinha(linha.equipamento_id, { uso_previsto: Math.max(0, Number(event.target.value) || 0) })} />
                         </Field>
                         <Field label="Manutenção · ocorrências" hint="por unidade">
-                          <Input type="number" min="0" step="1" value={linha.manutencao_ocorrencias_por_unidade} onChange={(event) => atualizarLinha(linha.equipamento_id, { manutencao_ocorrencias_por_unidade: Math.max(0, Number(event.target.value) || 0) })} />
+                          <Input type="number" min="0" step="1" value={linha.manutencao_ocorrencias_por_unidade} onFocus={selecionarConteudoAoFocar} onChange={(event) => atualizarLinha(linha.equipamento_id, { manutencao_ocorrencias_por_unidade: Math.max(0, Number(event.target.value) || 0) })} />
                         </Field>
                       </div>
 
@@ -590,7 +615,7 @@ function SimulacaoCustosPage() {
                         <Field label="Valor por manutenção" hint="por ocorrência / unidade">
                           <div className="relative">
                             <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-xs text-muted-foreground">R$</span>
-                            <Input className="pl-9" type="number" min="0" step="0.01" value={linha.manutencao_valor_por_ocorrencia} onChange={(event) => atualizarLinha(linha.equipamento_id, { manutencao_valor_por_ocorrencia: Math.max(0, Number(event.target.value) || 0) })} />
+                            <Input className="pl-9" type="number" min="0" step="0.01" value={linha.manutencao_valor_por_ocorrencia} onFocus={selecionarConteudoAoFocar} onChange={(event) => atualizarLinha(linha.equipamento_id, { manutencao_valor_por_ocorrencia: Math.max(0, Number(event.target.value) || 0) })} />
                           </div>
                         </Field>
                         <div className="space-y-1.5">
@@ -608,6 +633,7 @@ function SimulacaoCustosPage() {
                                 step="0.01"
                                 placeholder={equipamento.custo_recorrente != null ? formatarMoeda(equipamento.custo_recorrente) : "Usar padrão"}
                                 value={linha.custo_recorrente_unitario_override ?? ""}
+                                onFocus={selecionarConteudoAoFocar}
                                 onChange={(event) => atualizarLinha(linha.equipamento_id, { custo_recorrente_unitario_override: event.target.value === "" ? null : Math.max(0, Number(event.target.value) || 0) })}
                               />
                             </div>

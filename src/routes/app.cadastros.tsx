@@ -1,6 +1,17 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
-import { Pencil, Plus } from "lucide-react";
+import {
+  Building2,
+  Boxes,
+  FolderTree,
+  MapPin,
+  Pencil,
+  Ruler,
+  Users,
+  UsersRound,
+  Plus,
+  type LucideIcon,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -238,47 +249,97 @@ function CadastrosPage() {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="font-display text-3xl font-bold uppercase">Cadastros</h1>
-        <p className="text-sm text-muted-foreground">
-          Registros usados em todos os lançamentos. Desative em vez de excluir.
-        </p>
+      <div className="relative overflow-hidden rounded-2xl border border-sidebar-primary/15 bg-gradient-to-br from-sidebar-primary/[0.08] via-background to-background p-5 shadow-sm md:p-6">
+        <div className="absolute inset-y-0 left-0 w-1.5 bg-sidebar-primary" />
+        <div className="absolute -right-16 -top-20 size-48 rounded-full bg-sidebar-primary/[0.06]" />
+        <div className="relative flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="flex items-start gap-4">
+            <div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-sidebar-primary text-sidebar-primary-foreground shadow-sm">
+              <FolderTree className="size-6" />
+            </div>
+            <div>
+              <div className="mb-1 flex flex-wrap items-center gap-2">
+                <span className="text-xs font-bold uppercase tracking-[0.18em] text-sidebar-primary">
+                  Base operacional
+                </span>
+                <Badge variant="outline" className="border-sidebar-primary/25 bg-sidebar-primary/[0.05] text-sidebar-primary">
+                  Cadastros
+                </Badge>
+              </div>
+              <h1 className="font-display text-3xl font-bold uppercase tracking-tight md:text-4xl">
+                Cadastros
+              </h1>
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
+                Organize as informações que alimentam os lançamentos, o estoque e o rastreamento do projeto.
+              </p>
+            </div>
+          </div>
+          <div className="hidden rounded-xl border border-sidebar-primary/15 bg-background/80 px-4 py-3 text-right shadow-sm md:block">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Princípio</p>
+            <p className="mt-1 text-sm font-semibold">Desative em vez de excluir</p>
+          </div>
+        </div>
       </div>
 
       <Tabs defaultValue="produtos" className="w-full">
-        <TabsList className="overflow-x-auto w-full justify-start p-2">
-          <TabsTrigger className="text-lg mb-2" value="produtos">Produtos</TabsTrigger>
-          <TabsTrigger className="text-lg mb-2" value="categorias">Categorias</TabsTrigger>
-          <TabsTrigger className="text-lg mb-2" value="unidades">Unidades</TabsTrigger>
-          <TabsTrigger className="text-lg mb-2" value="empresas">Empresas</TabsTrigger>
-          <TabsTrigger className="text-lg mb-2" value="funcionarios">Funcionários</TabsTrigger>
-          <TabsTrigger className="text-lg mb-2" value="locais">Locais</TabsTrigger>
-          <TabsTrigger className="text-lg mb-2" value="equipes">Equipes</TabsTrigger>
-        </TabsList>
+        <div className="rounded-2xl border border-primary bg-muted/35 p-1.5 shadow-sm">
+          <TabsList className="grid h-auto w-full grid-cols-2 gap-1 bg-transparent sm:grid-cols-4 lg:grid-cols-7">
+            {(
+              [
+                { aba: "produtos", label: "Produtos", icon: Boxes },
+                { aba: "categorias", label: "Categorias", icon: FolderTree },
+                { aba: "unidades", label: "Unidades", icon: Ruler },
+                { aba: "empresas", label: "Empresas", icon: Building2 },
+                { aba: "funcionarios", label: "Funcionários", icon: Users },
+                { aba: "locais", label: "Locais", icon: MapPin },
+                { aba: "equipes", label: "Equipes", icon: UsersRound },
+              ] satisfies { aba: Aba; label: string; icon: LucideIcon }[]
+            ).map(({ aba, label: tabLabel, icon: Icon }) => (
+              <TabsTrigger
+                key={aba}
+                value={aba}
+                className="group relative h-12 justify-start gap-2.5 overflow-hidden rounded-lg border border-transparent px-3 text-sm font-semibold transition-all duration-200 hover:bg-background/70 data-[state=active]:border-sidebar-primary/15 data-[state=active]:bg-background data-[state=active]:text-sidebar-primary data-[state=active]:shadow-sm before:absolute before:inset-y-2 before:left-0 before:w-1 before:rounded-r-full before:bg-transparent data-[state=active]:before:bg-sidebar-primary"
+              >
+                <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-background/70 text-muted-foreground transition-colors group-data-[state=active]:bg-sidebar-primary/[0.10] group-data-[state=active]:text-sidebar-primary">
+                  <Icon className="size-4" />
+                </span>
+                <span className="truncate">{tabLabel}</span>
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </div>
 
         {(
           [
-            ["produtos", "Produto"],
-            ["categorias", "Categoria"],
-            ["unidades", "Unidade"],
-            ["empresas", "Empresa"],
-            ["funcionarios", "Funcionário"],
-            ["locais", "Local"],
-            ["equipes", "Equipe"],
+            ["produtos", "Produto", "Materiais controlados pelo estoque."],
+            ["categorias", "Categoria", "Organize os produtos por grupos."],
+            ["unidades", "Unidade", "Defina as unidades de medida utilizadas."],
+            ["empresas", "Empresa", "Cadastre empresas próprias, terceiras e fornecedores."],
+            ["funcionarios", "Funcionário", "Pessoas relacionadas às operações do projeto."],
+            ["locais", "Local", "Defina onde materiais e equipamentos são localizados."],
+            ["equipes", "Equipe", "Organize responsáveis e estoques por equipe."],
           ] as const
-        ).map(([aba, label]) => (
-          <TabsContent key={aba} value={aba}>
-            <Card>
-              <CardHeader className="flex-row items-center gap-3 space-y-0">
-                <Input
-                  className="max-w-sm"
-                  placeholder="Pesquisar…"
-                  value={q}
-                  onChange={(e) => setQ(e.target.value)}
-                />
-                <Button size="sm" onClick={() => novo(aba)}>
-                  <Plus className="size-4" /> Novo {label.toLowerCase()}
-                </Button>
+        ).map(([aba, label, descricao]) => (
+          <TabsContent key={aba} value={aba} className="mt-4">
+            <Card className="overflow-hidden border-border/80 shadow-sm">
+              <CardHeader className="relative border-b border-sidebar-primary/10 bg-gradient-to-r from-sidebar-primary/[0.045] via-background to-background">
+                <div className="relative flex flex-col gap-3 pl-3 sm:flex-row sm:items-center sm:justify-between before:absolute before:inset-y-0 before:left-0 before:w-1 before:rounded-full before:bg-sidebar-primary">
+                  <div>
+                    <h2 className="font-display text-xl font-bold">{label}</h2>
+                    <p className="mt-1 text-sm text-muted-foreground">{descricao}</p>
+                  </div>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <Input
+                      className="w-full sm:w-64"
+                      placeholder={`Pesquisar ${label.toLowerCase()}…`}
+                      value={q}
+                      onChange={(e) => setQ(e.target.value)}
+                    />
+                    <Button size="sm" className="shrink-0" onClick={() => novo(aba)}>
+                      <Plus className="size-4" /> Novo {label.toLowerCase()}
+                    </Button>
+                  </div>
+                </div>
               </CardHeader>
               <CardContent className="overflow-x-auto">
                 <Table>
@@ -461,12 +522,41 @@ function CadastrosPage() {
       </Tabs>
 
       <Dialog open={!!editando} onOpenChange={(o) => !o && setEditando(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Cadastro</DialogTitle>
+        <DialogContent className="w-[calc(100%-2rem)] max-w-3xl overflow-hidden p-0">
+          <DialogHeader className="border-b border-sidebar-primary/15 bg-gradient-to-r from-sidebar-primary/[0.08] via-background to-background px-6 pb-5 pt-5 shadow-sm">
+            <DialogTitle className="flex items-center gap-3 font-display text-xl">
+              <span className="flex size-9 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground shadow-sm">
+                <Pencil className="size-4" />
+              </span>
+              {editando
+                ? `${editando.item["id"] ? "Editar" : "Novo"} ${
+                    editando.aba === "funcionarios" ? "funcionário" :
+                    editando.aba === "produtos" ? "produto" :
+                    editando.aba === "categorias" ? "categoria" :
+                    editando.aba === "unidades" ? "unidade" :
+                    editando.aba === "empresas" ? "empresa" :
+                    editando.aba === "locais" ? "local" : "equipe"
+                  }`
+                : "Cadastro"}
+            </DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              {editando?.aba === "produtos"
+                ? "Informe os dados do material e suas regras básicas de estoque."
+                : editando?.aba === "funcionarios"
+                  ? "Informe os dados da pessoa e seus vínculos operacionais."
+                  : editando?.aba === "equipes"
+                    ? "Defina a equipe, seu estoque e os membros relacionados."
+                    : editando?.aba === "empresas"
+                      ? "Cadastre a empresa e informe seu tipo."
+                      : editando?.aba === "locais"
+                        ? "Defina o local e, quando necessário, seu local pai."
+                        : editando?.aba === "categorias"
+                          ? "Cadastre o grupo que será usado para organizar produtos."
+                          : "Informe os dados necessários para este cadastro."}
+            </p>
           </DialogHeader>
           {editando && (
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-4 px-6 py-5 sm:grid-cols-2">
               {editando.aba !== "unidades" && (
                 <Campo
                   label="Nome"
@@ -707,7 +797,7 @@ function CadastrosPage() {
               )}
             </div>
           )}
-          <DialogFooter>
+          <DialogFooter className="border-t bg-muted/20 px-6 py-4">
             <Button variant="outline" onClick={() => setEditando(null)}>
               Cancelar
             </Button>

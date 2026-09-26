@@ -1,6 +1,8 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import {
+  Calendar,
+  CheckCircle2,
   Copy,
   Download,
   FileSpreadsheet,
@@ -196,12 +198,16 @@ function Home() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b border-border bg-sidebar px-6 py-10 text-sidebar-foreground">
+      <header className="border-b border-border bg-sidebar px-6 py-10 text-sidebar-foreground shadow-md">
         <div className="mx-auto max-w-5xl">
-          <Badge className="bg-sidebar-primary text-sidebar-primary-foreground">
+          <Badge className="gap-1.5 bg-sidebar-primary text-sidebar-primary-foreground">
+            <span
+              className={`size-1.5 rounded-full ${online ? "bg-emerald-400" : "bg-amber-400"}`}
+              aria-hidden
+            />
             {online ? "Online" : "Modo offline — dados salvos neste dispositivo"}
           </Badge>
-          <h1 className="mt-4 font-display text-4xl font-bold uppercase tracking-wide md:text-5xl">
+          <h1 className="mt-4 font-display text-4xl font-bold uppercase tracking-wide text-sidebar-foreground md:text-5xl">
             Gestão de Almoxarifado
           </h1>
           <p className="mt-2 max-w-2xl text-sm text-sidebar-foreground/75">
@@ -255,7 +261,14 @@ function Home() {
             e.target.value = "";
           }}
         />
-        <h2 className="mt-10 font-display text-2xl font-semibold uppercase">Projetos</h2>
+        <div className="mt-10 flex items-baseline gap-2 border-b border-border pb-2">
+          <h2 className="font-display text-2xl font-semibold uppercase tracking-wide">
+            Projetos
+          </h2>
+          <span className="text-sm font-medium text-muted-foreground">
+            {(projetos ?? []).length}
+          </span>
+        </div>
         <div className="mt-4 grid gap-3 md:grid-cols-2">
           {(projetos ?? []).length === 0 && (
             <p className="text-sm text-muted-foreground">
@@ -263,17 +276,31 @@ function Home() {
             </p>
           )}
           {(projetos ?? []).map((p) => (
-            <Card key={p.id}>
+            <Card
+              key={p.id}
+              className={`transition-shadow hover:shadow-md ${
+                p.status === "ATIVO" ? "border-primary/40 bg-primary/[0.03]" : ""
+              }`}
+            >
               <CardHeader className="pb-2">
-                <CardTitle className="flex items-center justify-between text-base">
-                  <span>
-                    {p.codigo} · {p.nome}
+                <CardTitle className="flex items-center justify-between gap-2 text-base">
+                  <span className="flex items-baseline gap-1.5 truncate">
+                    <span className="font-display font-semibold text-muted-foreground">
+                      {p.codigo}
+                    </span>
+                    <span className="truncate font-semibold">{p.nome}</span>
                   </span>
-                  <Badge variant="secondary">{p.status}</Badge>
+                  <Badge
+                    variant={p.status === "ATIVO" ? "default" : "secondary"}
+                    className="shrink-0"
+                  >
+                    {p.status}
+                  </Badge>
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <p className="text-xs text-muted-foreground">
+                <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Calendar className="size-3.5 shrink-0" />
                   Início {formatarData(p.data_inicio)} · Término {formatarData(p.data_fim)}
                 </p>
                 <div className="flex flex-wrap gap-2">
@@ -367,11 +394,11 @@ function Home() {
 
       {/* Novo projeto */}
       <Dialog open={novoAberto} onOpenChange={setNovoAberto}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Novo projeto</DialogTitle>
-            <DialogDescription>
-              Crie uma estrutura vazia. Você pode importar a planilha modelo depois.
+        <DialogContent className="w-[calc(100%-2rem)] max-w-2xl">
+          <DialogHeader className="-mx-2 rounded-lg border-b border-border bg-primary px-2 pb-2 shadow-sm">
+            <DialogTitle className="text-white  border-b border-white-100 mx-2 mt-2 rounded text-center py-2" >Novo projeto</DialogTitle>
+            <DialogDescription className="text-white text-center">
+              Insira os dados iniciais do projeto.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -380,7 +407,7 @@ function Home() {
               <Input
                 value={form.codigo}
                 onChange={(e) => setForm({ ...form, codigo: e.target.value })}
-                placeholder="OBRA-122"
+                placeholder="032 ou 115..."
               />
             </div>
             <div className="space-y-1.5">
@@ -388,7 +415,7 @@ function Home() {
               <Input
                 value={form.nome}
                 onChange={(e) => setForm({ ...form, nome: e.target.value })}
-                placeholder="Obra 122"
+                placeholder="Nome do Projeto - Etapa ou Fase"
               />
             </div>
             <div className="space-y-1.5 sm:col-span-2">
@@ -396,7 +423,7 @@ function Home() {
               <Input
                 value={form.empresa}
                 onChange={(e) => setForm({ ...form, empresa: e.target.value })}
-                placeholder="Construtora Ápice"
+                placeholder="Nome da Empresa"
               />
             </div>
             <div className="space-y-1.5">
@@ -420,7 +447,10 @@ function Home() {
             <Button variant="outline" onClick={() => setNovoAberto(false)}>
               Cancelar
             </Button>
-            <Button onClick={criar}>Criar projeto</Button>
+            <Button size="lg" className="gap-2 font-semibold shadow-sm" onClick={criar}>
+              <Plus className="size-4" />
+              Criar projeto
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -428,7 +458,7 @@ function Home() {
       {/* Pré-visualização da importação */}
       <Dialog open={!!preview} onOpenChange={(o) => !o && setPreview(null)}>
         <DialogContent className="max-w-lg">
-          <DialogHeader>
+          <DialogHeader className="-mx-2 rounded-lg border-b border-border bg-primary/20 px-2 pb-4 shadow-sm">
             <DialogTitle>Pré-visualização da importação</DialogTitle>
             <DialogDescription>
               Revise antes de criar o projeto e gravar seus dados no dispositivo. A importação só grava após todas as validações.
@@ -436,9 +466,12 @@ function Home() {
           </DialogHeader>
           {preview && (
             <div className="space-y-4 text-sm">
-              <div className="rounded-xl border bg-muted/20 p-3">
-                <p className="font-semibold">
-                  {Object.values(preview.contagens).reduce((total, quantidade) => total + quantidade, 0)} registros · {Object.values(preview.contagens).filter(Boolean).length} módulos
+              <div className="rounded-xl border border-primary/30 bg-primary/5 p-3">
+                <p className="font-display text-lg font-semibold">
+                  {Object.values(preview.contagens).reduce((total, quantidade) => total + quantidade, 0)}{" "}
+                  <span className="text-sm font-normal text-muted-foreground">registros</span>{" "}
+                  · {Object.values(preview.contagens).filter(Boolean).length}{" "}
+                  <span className="text-sm font-normal text-muted-foreground">módulos</span>
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   A planilha foi reconhecida nas tabelas suportadas pelo projeto.
@@ -485,7 +518,15 @@ function Home() {
             <Button variant="outline" onClick={() => setPreview(null)}>
               Cancelar
             </Button>
-            <Button onClick={confirmarImportacao} disabled={!preview || preview.problemas.length > 0}>Importar projeto</Button>
+            <Button
+              size="lg"
+              className="gap-2 font-semibold shadow-sm"
+              onClick={confirmarImportacao}
+              disabled={!preview || preview.problemas.length > 0}
+            >
+              <CheckCircle2 className="size-4" />
+              Importar projeto
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
