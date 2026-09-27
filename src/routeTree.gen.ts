@@ -15,6 +15,7 @@ import { Route as AppIndexRouteImport } from './routes/app.index'
 import { Route as AppApropriacoesRouteImport } from './routes/app.apropriacoes'
 import { Route as AppCadastrosRouteImport } from './routes/app.cadastros'
 import { Route as AppConfiguracoesRouteImport } from './routes/app.configuracoes'
+import { Route as AppCronologiaRouteImport } from './routes/app.cronologia'
 import { Route as AppDadosRouteImport } from './routes/app.dados'
 import { Route as AppDocumentosRouteImport } from './routes/app.documentos'
 import { Route as AppEquipamentosRouteImport } from './routes/app.equipamentos'
@@ -65,6 +66,11 @@ const AppCadastrosRoute = AppCadastrosRouteImport.update({
 const AppConfiguracoesRoute = AppConfiguracoesRouteImport.update({
   id: '/configuracoes',
   path: '/configuracoes',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppCronologiaRoute = AppCronologiaRouteImport.update({
+  id: '/cronologia',
+  path: '/cronologia',
   getParentRoute: () => AppRoute,
 } as any)
 const AppDadosRoute = AppDadosRouteImport.update({
@@ -187,6 +193,7 @@ export interface FileRoutesByFullPath {
   '/app/apropriacoes': typeof AppApropriacoesRoute
   '/app/cadastros': typeof AppCadastrosRoute
   '/app/configuracoes': typeof AppConfiguracoesRoute
+  '/app/cronologia': typeof AppCronologiaRoute
   '/app/dados': typeof AppDadosRoute
   '/app/documentos': typeof AppDocumentosRoute
   '/app/equipamentos': typeof AppEquipamentosRoute
@@ -215,6 +222,7 @@ export interface FileRoutesByTo {
   '/app/apropriacoes': typeof AppApropriacoesRoute
   '/app/cadastros': typeof AppCadastrosRoute
   '/app/configuracoes': typeof AppConfiguracoesRoute
+  '/app/cronologia': typeof AppCronologiaRoute
   '/app/dados': typeof AppDadosRoute
   '/app/documentos': typeof AppDocumentosRoute
   '/app/equipamentos': typeof AppEquipamentosRoute
@@ -245,6 +253,7 @@ export interface FileRoutesById {
   '/app/apropriacoes': typeof AppApropriacoesRoute
   '/app/cadastros': typeof AppCadastrosRoute
   '/app/configuracoes': typeof AppConfiguracoesRoute
+  '/app/cronologia': typeof AppCronologiaRoute
   '/app/dados': typeof AppDadosRoute
   '/app/documentos': typeof AppDocumentosRoute
   '/app/equipamentos': typeof AppEquipamentosRoute
@@ -276,6 +285,7 @@ export interface FileRouteTypes {
     | '/app/apropriacoes'
     | '/app/cadastros'
     | '/app/configuracoes'
+    | '/app/cronologia'
     | '/app/dados'
     | '/app/documentos'
     | '/app/equipamentos'
@@ -304,6 +314,7 @@ export interface FileRouteTypes {
     | '/app/apropriacoes'
     | '/app/cadastros'
     | '/app/configuracoes'
+    | '/app/cronologia'
     | '/app/dados'
     | '/app/documentos'
     | '/app/equipamentos'
@@ -333,6 +344,7 @@ export interface FileRouteTypes {
     | '/app/apropriacoes'
     | '/app/cadastros'
     | '/app/configuracoes'
+    | '/app/cronologia'
     | '/app/dados'
     | '/app/documentos'
     | '/app/equipamentos'
@@ -404,6 +416,13 @@ declare module '@tanstack/react-router' {
       path: '/configuracoes'
       fullPath: '/app/configuracoes'
       preLoaderRoute: typeof AppConfiguracoesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/cronologia': {
+      id: '/app/cronologia'
+      path: '/cronologia'
+      fullPath: '/app/cronologia'
+      preLoaderRoute: typeof AppCronologiaRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/dados': {
@@ -572,6 +591,7 @@ interface AppRouteChildren {
   AppApropriacoesRoute: typeof AppApropriacoesRoute
   AppCadastrosRoute: typeof AppCadastrosRoute
   AppConfiguracoesRoute: typeof AppConfiguracoesRoute
+  AppCronologiaRoute: typeof AppCronologiaRoute
   AppDadosRoute: typeof AppDadosRoute
   AppDocumentosRoute: typeof AppDocumentosRoute
   AppEquipamentosRoute: typeof AppEquipamentosRoute
@@ -599,6 +619,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppApropriacoesRoute: AppApropriacoesRoute,
   AppCadastrosRoute: AppCadastrosRoute,
   AppConfiguracoesRoute: AppConfiguracoesRoute,
+  AppCronologiaRoute: AppCronologiaRoute,
   AppDadosRoute: AppDadosRoute,
   AppDocumentosRoute: AppDocumentosRoute,
   AppEquipamentosRoute: AppEquipamentosRoute,

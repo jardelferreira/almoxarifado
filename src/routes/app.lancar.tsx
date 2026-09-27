@@ -286,18 +286,19 @@ function Formulario({ modo, produtoInicial }: { modo: string; produtoInicial: st
     limpar();
   };
 
-  const opt = <T extends { id: string; nome: string }>(arr: T[]) =>
-    arr.map((x) => ({ value: x.id, label: x.nome }));
+  const opt = <T extends { id: string; nome: string, tipo?: string }>(arr: T[]) =>
+    arr.map((x) => ({ value: x.id, label: `${x.nome} ${x.tipo ?? ""}` }));
+
   const funcAtivos = dados.funcionarios.filter((f) => f.status === "ATIVO");
   const empAtivas = dados.empresas.filter((e) => e.ativo);
   const locAtivos = dados.locais.filter((l) => l.ativo);
   const documentosDisponiveis = (documentos ?? []).filter((documento) => documento.status !== "CANCELADO");
   const documentoObrigatorio = Boolean(
     configuracao?.modulos.documentos &&
-      ((cfg.tipo === "ENTRADA" && configuracao.documentos.exigir_na_entrada) ||
-        (cfg.tipo === "SAIDA" && configuracao.documentos.exigir_na_saida) ||
-        (cfg.tipo === "TRANSFERENCIA" && configuracao.documentos.exigir_na_transferencia) ||
-        (cfg.tipo === "AJUSTE" && configuracao.documentos.exigir_no_ajuste)),
+    ((cfg.tipo === "ENTRADA" && configuracao.documentos.exigir_na_entrada) ||
+      (cfg.tipo === "SAIDA" && configuracao.documentos.exigir_na_saida) ||
+      (cfg.tipo === "TRANSFERENCIA" && configuracao.documentos.exigir_na_transferencia) ||
+      (cfg.tipo === "AJUSTE" && configuracao.documentos.exigir_no_ajuste)),
   );
   const documentoSelecionado = documentosDisponiveis.find((documento) => documento.id === documentoId);
 

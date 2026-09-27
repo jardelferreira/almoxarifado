@@ -26,6 +26,9 @@ import {
   WifiOff,
   Wrench,
   X,
+  Calendar,
+  OptionIcon,
+  SlidersHorizontal,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useState, useEffect } from "react";
@@ -54,6 +57,7 @@ type NavItem = {
   visivel?: (configuracao?: Configuracao) => boolean;
   search?: { produto: string | undefined };
   subgrupo?: string;
+  abrirNovaAba?: boolean;
 };
 
 type NavGroup = {
@@ -74,11 +78,22 @@ const navGroups: NavGroup[] = [
     ],
   },
   {
+    label: "Documentos",
+    icon: FileText,
+    modulo: "documentos",
+    descricao: "Documentação e recebimentos",
+    items: [
+      { to: "/app/documentos", label: "Documentos", icon: FileText, exact: true, subgrupo: "Documentos" },
+      { to: "/app/recebimentos", label: "Recebimentos", icon: PackageSearch, subgrupo: "Documentos" },
+    ],
+  },
+  {
     label: "Materiais",
     icon: Boxes,
     modulo: "materiais",
     descricao: "Operação do estoque e materiais",
     items: [
+      { to: "/app/produto", label: "Perfil do produto", icon: PackageSearch, search: { produto: undefined }, subgrupo: "Consulta" },
       { to: "/app/lancar", label: "Lançar", icon: ArrowLeftRight, subgrupo: "Operação" },
       { to: "/app/estoque", label: "Estoque", icon: Warehouse, subgrupo: "Operação" },
       { to: "/app/movimentacoes", label: "Movimentações", icon: FileClock, subgrupo: "Operação" },
@@ -89,7 +104,8 @@ const navGroups: NavGroup[] = [
         subgrupo: "Operação",
         visivel: (configuracao) => configuracao?.inventario.habilitado !== false,
       },
-      { to: "/app/produto", label: "Perfil do produto", icon: PackageSearch, search: { produto: undefined }, subgrupo: "Consulta" },
+      { to: "/app/vigia", label: "Vigia operacional", icon: ShieldAlert, subgrupo: "Monitoramento" },
+      { to: "/app/estatisticas", label: "Estatísticas de materiais", icon: ChartColumn, subgrupo: "Análise" },
     ],
   },
   {
@@ -108,27 +124,27 @@ const navGroups: NavGroup[] = [
       { to: "/app/vigia-equipamentos", label: "Vigia de equipamentos", icon: ShieldAlert, subgrupo: "Análise" },
       { to: "/app/perfis-parametros-equipamentos", label: "Perfis de parâmetros", icon: Settings2, subgrupo: "Parâmetros" },
       { to: "/app/mesclar-parametros-equipamentos", label: "Mesclar parâmetros", icon: Workflow, subgrupo: "Parâmetros" },
+      { to: "/app/regras-consumo-equipamentos", label: "Regras de consumo", icon: SlidersHorizontal, subgrupo: "Parâmetros",}
     ],
   },
+
+  // {
+  //   label: "Inteligência",
+  //   icon: ShieldAlert,
+  //   descricao: "Acompanhamento e análise transversal",
+  //   items: [
+  //     { to: "/app/vigia", label: "Vigia operacional", icon: ShieldAlert, subgrupo: "Monitoramento" },
+  //     { to: "/app/estatisticas", label: "Estatísticas de materiais", icon: ChartColumn, subgrupo: "Análise" },
+  //   ],
+  // },
   {
-    label: "Documentos",
-    icon: FileText,
-    modulo: "documentos",
-    descricao: "Documentação e recebimentos",
+    label: "Adendos",
+    descricao: "Acesso a ferramentas externas do app",
+    icon: OptionIcon,
     items: [
-      { to: "/app/documentos", label: "Documentos", icon: FileText, exact: true, subgrupo: "Documentos" },
-      { to: "/app/recebimentos", label: "Recebimentos", icon: PackageSearch, subgrupo: "Documentos" },
+      { to: "/app/cronologia", label: "Regua cronologica", icon: Calendar, abrirNovaAba: true }
     ],
-  },
-  {
-    label: "Inteligência",
-    icon: ShieldAlert,
-    descricao: "Acompanhamento e análise transversal",
-    items: [
-      { to: "/app/vigia", label: "Vigia operacional", icon: ShieldAlert, subgrupo: "Monitoramento" },
-      { to: "/app/estatisticas", label: "Estatísticas de materiais", icon: ChartColumn, subgrupo: "Análise" },
-    ],
-  },
+  }
 ];
 
 function Navigation({
@@ -187,6 +203,12 @@ function Navigation({
       "aria-label": !expanded ? item.label : undefined,
       className: classes,
       activeProps: { className: activeClasses },
+      ...(item.abrirNovaAba
+        ? {
+          target: "_blank",
+          rel: "noopener noreferrer",
+        }
+        : {}),
     } as const;
 
     if (item.search) {
@@ -286,7 +308,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   const online = useOnline();
   const [projetoId, setProjetoAtivo] = useProjetoAtivoId();
   const navigate = useNavigate();
-  const [sidebarAberta, setSidebarAberta] = useState(false);
+  const SIDEBAR_STORAGE_KEY = "almoxarifado.sidebar.aberta";
+  const [sidebarAberta, setSidebarAberta] = useState(() => {
+    if (typeof window === "undefined") return false;
+
+    return window.localStorage.getItem(SIDEBAR_STORAGE_KEY) === "true";
+  });
   const [mobileMenuAberto, setMobileMenuAberto] = useState(false);
 
   const projeto = useLiveQuery(
@@ -307,6 +334,13 @@ export function AppShell({ children }: { children: ReactNode }) {
 
     void inicializarProjeto(projetoId);
   }, [projetoId]);
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      SIDEBAR_STORAGE_KEY,
+      String(sidebarAberta),
+    );
+  }, [sidebarAberta]);
 
   const trocarProjeto = () => {
     setProjetoAtivo(null);

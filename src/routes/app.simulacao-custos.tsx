@@ -221,7 +221,6 @@ function SimulacaoCustosPage() {
       .sort((a, b) => a.nome.localeCompare(b.nome)),
     [equipamentos, linhas],
   );
-  console.log(linhas)
   const equipamentosPorId = useMemo(
     () => new Map(equipamentos.map((equipamento) => [equipamento.id, equipamento])),
     [equipamentos],
