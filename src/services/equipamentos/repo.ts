@@ -17,7 +17,10 @@ export type EquipamentoInput = {
   custo_recorrente?: number | null;
   periodicidade_custo?: Equipamento["periodicidade_custo"];
   fonte_valor?: Equipamento["fonte_valor"];
+  vida_util_meses?: number | null;
+  metodo_depreciacao?: Equipamento["metodo_depreciacao"];
   ativo?: boolean;
+  situacao?: Equipamento["situacao"];
 };
 
 function normalizarTexto(
@@ -37,6 +40,72 @@ function validarTipoControle(
   ) {
     throw new Error("Tipo de controle de equipamento inválido.");
   }
+}
+
+async function obterSaldoFisicoEquipamento(
+  projetoId: string,
+  equipamentoId: string,
+): Promise<number> {
+  const db = getDB();
+  const estoques = await db.estoque_equipamentos
+    .where("projeto_id")
+    .equals(projetoId)
+    .toArray();
+
+  const registros = estoques.filter(
+    (registro) => registro.equipamento_id === equipamentoId,
+  );
+
+  if (registros.length === 0) return 0;
+
+  let saldo = registros.reduce(
+    (total, registro) => total + Math.max(0, registro.quantidade),
+    0,
+  );
+
+  for (const registro of registros) {
+    const movimentos = await db.movimentacoes_equipamentos
+      .where("estoque_equipamento_id")
+      .equals(registro.id)
+      .toArray();
+
+    const pendencias: Array<{
+      tipo: "DEVOLUCAO_FORNECEDOR" | "BAIXA";
+      restante: number;
+    }> = [];
+
+    for (const movimento of movimentos) {
+      const quantidade = Math.max(0, movimento.quantidade);
+
+      if (movimento.tipo === "DEVOLUCAO_FORNECEDOR" || movimento.tipo === "BAIXA") {
+        pendencias.push({ tipo: movimento.tipo, restante: quantidade });
+        continue;
+      }
+
+      if (movimento.tipo === "REENTRADA") {
+        let restante = quantidade;
+        while (restante > 0 && pendencias.length > 0) {
+          const pendencia = pendencias[pendencias.length - 1];
+          if (!pendencia) break;
+          const aplicada = Math.min(restante, pendencia.restante);
+          pendencia.restante -= aplicada;
+          restante -= aplicada;
+          if (pendencia.restante <= 0) pendencias.pop();
+        }
+      }
+    }
+
+    const devolvido = pendencias
+      .filter((item) => item.tipo === "DEVOLUCAO_FORNECEDOR")
+      .reduce((total, item) => total + item.restante, 0);
+    const baixado = pendencias
+      .filter((item) => item.tipo === "BAIXA")
+      .reduce((total, item) => total + item.restante, 0);
+
+    saldo -= devolvido + baixado;
+  }
+
+  return Math.max(0, saldo);
 }
 
 async function validarCategoria(
@@ -128,11 +197,6 @@ export const equipamentosRepo = {
       throw new Error("Informe a periodicidade quando houver custo recorrente.");
     }
 
-    await validarCategoria(
-      projetoId,
-      dados.categoria_id,
-    );
-
     const agora = new Date().toISOString();
     const id = dados.id ?? uid();
 
@@ -152,6 +216,40 @@ export const equipamentosRepo = {
       );
     }
 
+    await validarCategoria(
+      projetoId,
+      dados.categoria_id,
+    );
+
+    if (dados.vida_util_meses !== null && dados.vida_util_meses !== undefined && (!Number.isFinite(dados.vida_util_meses) || dados.vida_util_meses <= 0 || !Number.isInteger(dados.vida_util_meses))) {
+      throw new Error("A vida útil deve ser um número inteiro de meses maior que zero.");
+    }
+
+    if (dados.vida_util_meses != null && dados.valor_referencia == null && existente?.valor_referencia == null) {
+      throw new Error("Informe o valor de referência para configurar a depreciação.");
+    }
+
+    if (dados.metodo_depreciacao !== null && dados.metodo_depreciacao !== undefined && dados.metodo_depreciacao !== "LINEAR") {
+      throw new Error("Método de depreciação inválido.");
+    }
+
+    const situacao = dados.situacao ?? existente?.situacao ?? "ATIVO";
+    if (situacao !== "ATIVO" && situacao !== "PLANEJADO") {
+      throw new Error("Situação do cadastro inválida.");
+    }
+
+    if (situacao === "PLANEJADO" && existente) {
+      const saldoFisico = await obterSaldoFisicoEquipamento(
+        projetoId,
+        id,
+      );
+
+      if (saldoFisico > 0) {
+        throw new Error(
+          `O equipamento não pode ser definido como PLANEJADO enquanto possuir ${saldoFisico} unidade(s) no estoque ou em operação.`,
+        );
+      }
+    }
     const equipamento: Equipamento = {
       id,
       projeto_id: projetoId,
@@ -165,7 +263,10 @@ export const equipamentosRepo = {
       custo_recorrente: dados.custo_recorrente ?? existente?.custo_recorrente ?? null,
       periodicidade_custo: dados.periodicidade_custo ?? existente?.periodicidade_custo ?? null,
       fonte_valor: dados.fonte_valor ?? existente?.fonte_valor ?? (dados.valor_referencia != null ? "INFORMADO" : null),
+      vida_util_meses: dados.vida_util_meses !== undefined ? dados.vida_util_meses : (existente?.vida_util_meses ?? null),
+      metodo_depreciacao: dados.metodo_depreciacao !== undefined ? dados.metodo_depreciacao : (existente?.metodo_depreciacao ?? (dados.vida_util_meses != null ? "LINEAR" : null)),
       ativo: dados.ativo ?? existente?.ativo ?? true,
+      situacao,
       criado_em: existente?.criado_em ?? agora,
       atualizado_em: agora,
     };

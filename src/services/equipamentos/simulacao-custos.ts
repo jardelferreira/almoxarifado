@@ -9,6 +9,7 @@ import type {
   SimulacaoCustoEquipamentoResumo,
   SimulacaoCustoProdutoLinha,
   SimulacaoPeriodicidadeRecorrencia,
+  RegraConsumoEquipamentoPeriodicidade,
 } from "@/types";
 
 export interface SimulacaoCustoEquipamentoInput {
@@ -25,11 +26,15 @@ function validarPeriodo(inicio: string, fim: string): void {
   if (inicio > fim) throw new Error("A data final não pode ser anterior à data inicial.");
 }
 
-function arredondar(valor: number): number {
+function arredondarQuantidade(valor: number): number {
   return Number(valor.toFixed(6));
 }
 
-function inteiroPositivo(valor: number): number {
+function arredondarMoeda(valor: number): number {
+  return Number(valor.toFixed(2));
+}
+
+function numeroPositivo(valor: number): number {
   return Number.isFinite(valor) && valor > 0 ? valor : 0;
 }
 
@@ -51,9 +56,10 @@ function unidadesRecorrencia(
   inicio: string,
   fim: string,
   periodicidade: EquipamentoPeriodicidadeCusto,
+  usoPrevisto: number,
 ): number {
   const dias = diasInclusivos(inicio, fim);
-  if (periodicidade === "HORA") return dias * 24;
+  if (periodicidade === "HORA") return numeroPositivo(usoPrevisto);
   if (periodicidade === "DIA") return dias;
   if (periodicidade === "SEMANA") return dias / 7;
 
@@ -82,6 +88,42 @@ function unidadesRecorrencia(
   return total;
 }
 
+function mesesProporcionalmenteNoPeriodo(inicio: string, fim: string): number {
+  return unidadesRecorrencia(inicio, fim, "MES", 0);
+}
+
+function intersecaoVigencia(
+  inicio: string,
+  fim: string,
+  regra: RegraConsumoEquipamento,
+): { inicio: string; fim: string; dias: number } | null {
+  const inicioAtivo = regra.vigencia_inicio && regra.vigencia_inicio > inicio
+    ? regra.vigencia_inicio
+    : inicio;
+  const fimAtivo = regra.vigencia_fim && regra.vigencia_fim < fim
+    ? regra.vigencia_fim
+    : fim;
+
+  if (inicioAtivo > fimAtivo) return null;
+  return { inicio: inicioAtivo, fim: fimAtivo, dias: diasInclusivos(inicioAtivo, fimAtivo) };
+}
+
+function unidadesPeriodicidadeRegra(
+  inicio: string,
+  fim: string,
+  periodicidade: RegraConsumoEquipamentoPeriodicidade,
+): number {
+  return unidadesRecorrencia(inicio, fim, periodicidade, 0);
+}
+
+function fracaoVigencia(diasAtivos: number, diasSimulacao: number): number {
+  return Math.min(1, Math.max(0, diasAtivos / Math.max(1, diasSimulacao)));
+}
+
+function formatarNumeroInterno(valor: number): string {
+  return Number(valor.toFixed(4)).toString();
+}
+
 function resolverPeriodicidade(
   equipamento: Equipamento,
   item: SimulacaoCustoEquipamentoEntrada,
@@ -98,19 +140,29 @@ function resolverCustoRecorrenteUnitario(
   );
 }
 
+type CustoHistoricoProduto = {
+  valor: number;
+  documento_id: string;
+  documento_numero: string;
+  documento_tipo: string;
+  data: string | null;
+};
+
 async function carregarCustosHistoricosProdutos(
   projetoId: string,
   produtoIds: string[],
-): Promise<Map<string, number | null>> {
+): Promise<Map<string, CustoHistoricoProduto>> {
   if (!produtoIds.length) return new Map();
 
   const db = getDB();
-  const [movimentacoes, itens] = await Promise.all([
+  const [movimentacoes, itens, documentos] = await Promise.all([
     db.movimentacoes.where("projeto_id").equals(projetoId).toArray(),
     db.documento_itens.toArray(),
+    db.documentos.where("projeto_id").equals(projetoId).toArray(),
   ]);
 
   const produtoSet = new Set(produtoIds);
+  const documentoPorId = new Map(documentos.map((documento) => [documento.id, documento]));
   const itensPorId = new Map(
     itens
       .filter(
@@ -124,23 +176,33 @@ async function carregarCustosHistoricosProdutos(
       .map((item) => [item.id, item]),
   );
 
-  const melhor = new Map<string, { data: string; valor: number }>();
+  const melhor = new Map<string, CustoHistoricoProduto & { dataComparacao: string }>();
 
   for (const movimentacao of movimentacoes) {
     if (movimentacao.tipo !== "ENTRADA" || !movimentacao.documento_item_id) continue;
     const item = itensPorId.get(movimentacao.documento_item_id);
-    if (!item?.produto_id || item.valor_unitario == null) continue;
+    const documento = item ? documentoPorId.get(item.documento_id) : undefined;
+    if (!item?.produto_id || item.valor_unitario == null || !documento) continue;
 
+    const dataComparacao = movimentacao.data || documento.data_entrada || documento.data_emissao || "";
     const atual = melhor.get(item.produto_id);
-    const candidato = {
-      data: movimentacao.data,
-      valor: item.valor_unitario,
-    };
-    if (!atual || candidato.data > atual.data) melhor.set(item.produto_id, candidato);
+    if (!atual || dataComparacao > atual.dataComparacao) {
+      melhor.set(item.produto_id, {
+        valor: item.valor_unitario,
+        documento_id: documento.id,
+        documento_numero: documento.numero,
+        documento_tipo: documento.tipo,
+        data: documento.data_entrada ?? documento.data_emissao ?? movimentacao.data ?? null,
+        dataComparacao,
+      });
+    }
   }
 
   return new Map(
-    produtoIds.map((produtoId) => [produtoId, melhor.get(produtoId)?.valor ?? null]),
+    [...melhor.entries()].map(([produtoId, historico]) => {
+      const { dataComparacao: _dataComparacao, ...valor } = historico;
+      return [produtoId, valor];
+    }),
   );
 }
 
@@ -154,7 +216,8 @@ function regraSeAplicaAoDirecionador(
 async function obterRegrasCatalogo(
   projetoId: string,
   equipamentoId: string,
-  dataReferencia: string,
+  inicio: string,
+  fim: string,
 ): Promise<RegraConsumoEquipamento[]> {
   const regras = await regrasConsumoEquipamentosRepo.listarPorEquipamento(
     projetoId,
@@ -165,10 +228,9 @@ async function obterRegrasCatalogo(
 
   for (const regra of regras) {
     if (!regra.ativo || regra.estoque_equipamento_id !== null) continue;
-    if (regra.vigencia_inicio && dataReferencia < regra.vigencia_inicio) continue;
-    if (regra.vigencia_fim && dataReferencia > regra.vigencia_fim) continue;
+    if (!intersecaoVigencia(inicio, fim, regra)) continue;
     efetivas.set(
-      `${regra.produto_id}|${regra.direcionador}|${regra.periodicidade ?? ""}`,
+      `${regra.produto_id}|${regra.direcionador}`,
       regra,
     );
   }
@@ -198,7 +260,7 @@ export async function calcularSimulacaoCustos(
   const produtoIds = new Set<string>();
 
   for (const item of entradasValidas) {
-    const regras = await obterRegrasCatalogo(projetoId, item.equipamento_id, input.inicio);
+    const regras = await obterRegrasCatalogo(projetoId, item.equipamento_id, input.inicio, input.fim);
     regraPorEquipamento.set(item.equipamento_id, regras);
     for (const regra of regras) {
       if (regraSeAplicaAoDirecionador(regra, item)) produtoIds.add(regra.produto_id);
@@ -215,13 +277,14 @@ export async function calcularSimulacaoCustos(
   const precosManuais = input.precosManuais ?? {};
 
   const resultados: SimulacaoCustoEquipamentoResultado[] = [];
+  const diasSimulacao = diasInclusivos(input.inicio, input.fim);
 
   for (const item of entradasValidas) {
     const equipamento = equipamentosPorId.get(item.equipamento_id)!;
     const regras = regraPorEquipamento.get(item.equipamento_id) ?? [];
     const aderentes = regras.filter((regra) => regraSeAplicaAoDirecionador(regra, item));
-    const quantidade = inteiroPositivo(item.quantidade);
-    const usoPrevisto = inteiroPositivo(item.uso_previsto);
+    const quantidade = numeroPositivo(item.quantidade);
+    const usoPrevisto = numeroPositivo(item.uso_previsto);
 
     const produtosResultado: SimulacaoCustoProdutoLinha[] = [];
 
@@ -231,17 +294,30 @@ export async function calcularSimulacaoCustos(
 
       const unidadeBase = unidadePorId.get(regra.unidade_base_id);
       const unidadeConsumo = unidadePorId.get(regra.unidade_consumo_id);
-      const quantidadePrevista = arredondar(regra.fator * usoPrevisto * quantidade);
+      const vigencia = intersecaoVigencia(input.inicio, input.fim, regra);
+      if (!vigencia) continue;
+      const fracaoAtiva = fracaoVigencia(vigencia.dias, diasSimulacao);
+      const multiplicadorPeriodicidade = regra.direcionador === "PERIODO" && regra.periodicidade
+        ? unidadesPeriodicidadeRegra(vigencia.inicio, vigencia.fim, regra.periodicidade)
+        : null;
+      const usoAplicado = multiplicadorPeriodicidade != null
+        ? multiplicadorPeriodicidade
+        : usoPrevisto * fracaoAtiva;
+      const quantidadePrevista = arredondarQuantidade(regra.fator * usoAplicado * quantidade);
+      const historico = custosHistoricos.get(regra.produto_id) ?? null;
       const precoManual = numeroNaoNegativo(precosManuais[regra.produto_id]);
-      const precoHistorico = custosHistoricos.get(regra.produto_id) ?? null;
+      const precoHistorico = historico?.valor ?? null;
       const custoAplicado = precoManual ?? precoHistorico;
       const fonte = precoManual != null
         ? "MANUAL"
         : precoHistorico != null
           ? "HISTORICO"
           : "SEM_CUSTO";
+      const formulaMemoria = multiplicadorPeriodicidade != null
+        ? `${regra.fator} × ${formatarNumeroInterno(multiplicadorPeriodicidade)} períodos × ${quantidade}`
+        : `${regra.fator} × ${formatarNumeroInterno(usoPrevisto)} uso × ${quantidade} × ${formatarNumeroInterno(fracaoAtiva)} vigência`;
 
-      produtosResultado.push({
+      const linha: SimulacaoCustoProdutoLinha = {
         produto_id: produto.id,
         nome: produto.nome,
         unidade_consumo_sigla: unidadeConsumo?.sigla ?? "un.",
@@ -249,34 +325,66 @@ export async function calcularSimulacaoCustos(
         fator: regra.fator,
         direcionador: regra.direcionador,
         periodicidade_regra: regra.periodicidade,
+        dias_ativos: vigencia.dias,
+        multiplicador_periodicidade: multiplicadorPeriodicidade,
+        formula_memoria: formulaMemoria,
         quantidade_prevista: quantidadePrevista,
         custo_unitario_sugerido: precoHistorico,
         custo_unitario_aplicado: custoAplicado,
-        custo_total: custoAplicado == null ? 0 : arredondar(quantidadePrevista * custoAplicado),
+        custo_total: custoAplicado == null ? 0 : arredondarMoeda(quantidadePrevista * custoAplicado),
         fonte_custo: fonte,
-      });
+      };
+      if (historico) {
+        linha.fonte_historico = {
+          documento_id: historico.documento_id,
+          documento_numero: historico.documento_numero,
+          documento_tipo: historico.documento_tipo,
+          data: historico.data,
+          valor_unitario: historico.valor,
+        };
+      }
+      produtosResultado.push(linha);
     }
 
-    const custoOperacional = arredondar(
+    const custoOperacional = arredondarMoeda(
       produtosResultado.reduce((total, produto) => total + produto.custo_total, 0),
     );
-    const manutencaoOcorrencias = inteiroPositivo(item.manutencao_ocorrencias_por_unidade);
+    const manutencaoOcorrencias = numeroPositivo(item.manutencao_ocorrencias_por_unidade);
     const manutencaoValor = numeroNaoNegativo(item.manutencao_valor_por_ocorrencia) ?? 0;
-    const custoManutencao = arredondar(manutencaoOcorrencias * quantidade * manutencaoValor);
+    const custoManutencao = arredondarMoeda(manutencaoOcorrencias * quantidade * manutencaoValor);
 
     const periodicidadeRecorrente = resolverPeriodicidade(equipamento, item);
     const custoRecorrenteUnitario = resolverCustoRecorrenteUnitario(equipamento, item);
+    const unidadesRecorrenciaCalculadas = periodicidadeRecorrente
+      ? unidadesRecorrencia(input.inicio, input.fim, periodicidadeRecorrente, usoPrevisto)
+      : 0;
     const custoRecorrente = periodicidadeRecorrente && custoRecorrenteUnitario != null
-      ? arredondar(
-        custoRecorrenteUnitario * quantidade * unidadesRecorrencia(
-          input.inicio,
-          input.fim,
-          periodicidadeRecorrente,
-        ),
-      )
+      ? arredondarMoeda(custoRecorrenteUnitario * quantidade * unidadesRecorrenciaCalculadas)
       : 0;
 
-    const regrasIgnoradas = regras.filter((regra) => !regraSeAplicaAoDirecionador(regra, item)).length;
+    const valorReferenciaUnitario = numeroNaoNegativo(equipamento.valor_referencia);
+    const vidaUtilMeses = equipamento.metodo_depreciacao === "LINEAR"
+      ? numeroNaoNegativo(equipamento.vida_util_meses)
+      : null;
+    const mesesDepreciacaoCalculados = mesesProporcionalmenteNoPeriodo(input.inicio, input.fim);
+    const depreciacaoProjetada = valorReferenciaUnitario != null && vidaUtilMeses != null
+      ? arredondarMoeda((valorReferenciaUnitario * quantidade * mesesDepreciacaoCalculados) / vidaUtilMeses)
+      : 0;
+    const investimentoAquisicao = equipamento.situacao === "PLANEJADO" && valorReferenciaUnitario != null
+      ? arredondarMoeda(valorReferenciaUnitario * quantidade)
+      : 0;
+    const formulaDepreciacao = valorReferenciaUnitario != null && vidaUtilMeses != null
+      ? `${formatarNumeroInterno(valorReferenciaUnitario)} × ${quantidade} ÷ ${formatarNumeroInterno(vidaUtilMeses)} meses × ${formatarNumeroInterno(mesesDepreciacaoCalculados)} meses`
+      : null;
+
+    const regrasIgnoradasDetalhes = regras
+      .filter((regra) => !regraSeAplicaAoDirecionador(regra, item))
+      .map((regra) => ({
+        produto_id: regra.produto_id,
+        produto_nome: produtoPorId.get(regra.produto_id)?.nome ?? "Produto não encontrado",
+        direcionador: regra.direcionador,
+      }));
+    const regrasIgnoradas = regrasIgnoradasDetalhes.length;
     const produtosSemCusto = produtosResultado.filter((produto) => produto.custo_unitario_aplicado == null).length;
 
     resultados.push({
@@ -289,13 +397,22 @@ export async function calcularSimulacaoCustos(
       direcionador: item.direcionador,
       custo_operacional: custoOperacional,
       custo_manutencao: custoManutencao,
-      manutencao_ocorrencias_previstas: arredondar(manutencaoOcorrencias * quantidade),
+      manutencao_ocorrencias_previstas: arredondarQuantidade(manutencaoOcorrencias * quantidade),
       custo_recorrente: custoRecorrente,
-      custo_total: arredondar(custoOperacional + custoManutencao + custoRecorrente),
+      investimento_aquisicao: investimentoAquisicao,
+      depreciacao_projetada: depreciacaoProjetada,
+      dias_periodo: diasInclusivos(input.inicio, input.fim),
+      unidades_recorrencia_calculadas: arredondarQuantidade(unidadesRecorrenciaCalculadas),
+      valor_referencia_unitario: valorReferenciaUnitario,
+      vida_util_meses: vidaUtilMeses,
+      meses_depreciacao_calculados: mesesDepreciacaoCalculados,
+      formula_depreciacao: formulaDepreciacao,
+      custo_total: arredondarMoeda(custoOperacional + custoManutencao + custoRecorrente + depreciacaoProjetada),
       periodicidade_recorrente: periodicidadeRecorrente,
       custo_recorrente_unitario: custoRecorrenteUnitario,
       regras_aplicadas: aderentes.length,
       regras_ignoradas: regrasIgnoradas,
+      regras_ignoradas_detalhes: regrasIgnoradasDetalhes,
       produtos_sem_custo: produtosSemCusto,
       produtos: produtosResultado,
     });
@@ -304,14 +421,17 @@ export async function calcularSimulacaoCustos(
   const resumo = {
     projeto_id: projetoId,
     periodo: { inicio: input.inicio, fim: input.fim },
+    dias_periodo: diasInclusivos(input.inicio, input.fim),
     equipamentos: resultados,
-    custo_operacional: arredondar(resultados.reduce((total, item) => total + item.custo_operacional, 0)),
-    custo_manutencao: arredondar(resultados.reduce((total, item) => total + item.custo_manutencao, 0)),
-    manutencao_ocorrencias_previstas: arredondar(
+    custo_operacional: arredondarMoeda(resultados.reduce((total, item) => total + item.custo_operacional, 0)),
+    custo_manutencao: arredondarMoeda(resultados.reduce((total, item) => total + item.custo_manutencao, 0)),
+    manutencao_ocorrencias_previstas: arredondarQuantidade(
       resultados.reduce((total, item) => total + item.manutencao_ocorrencias_previstas, 0),
     ),
-    custo_recorrente: arredondar(resultados.reduce((total, item) => total + item.custo_recorrente, 0)),
-    custo_total: arredondar(resultados.reduce((total, item) => total + item.custo_total, 0)),
+    custo_recorrente: arredondarMoeda(resultados.reduce((total, item) => total + item.custo_recorrente, 0)),
+    investimento_aquisicao: arredondarMoeda(resultados.reduce((total, item) => total + item.investimento_aquisicao, 0)),
+    depreciacao_projetada: arredondarMoeda(resultados.reduce((total, item) => total + item.depreciacao_projetada, 0)),
+    custo_total: arredondarMoeda(resultados.reduce((total, item) => total + item.custo_total, 0)),
     produtos_sem_custo: resultados.reduce((total, item) => total + item.produtos_sem_custo, 0),
     regras_sem_aderencia: resultados.reduce((total, item) => total + item.regras_ignoradas, 0),
     dados_base_historicos: [...custosHistoricos.values()].some((valor) => valor != null),
@@ -331,13 +451,18 @@ export function aplicarPrecosManuaisNaSimulacao(
       return {
         ...produto,
         custo_unitario_aplicado: preco,
-        custo_total: arredondar(produto.quantidade_prevista * preco),
+        custo_total: arredondarMoeda(produto.quantidade_prevista * preco),
         fonte_custo: "MANUAL" as const,
       };
     });
 
-    const custoOperacional = arredondar(produtos.reduce((total, produto) => total + produto.custo_total, 0));
-    const custoTotal = arredondar(custoOperacional + equipamento.custo_manutencao + equipamento.custo_recorrente);
+    const custoOperacional = arredondarMoeda(produtos.reduce((total, produto) => total + produto.custo_total, 0));
+    const custoTotal = arredondarMoeda(
+      custoOperacional +
+        equipamento.custo_manutencao +
+        equipamento.custo_recorrente +
+        equipamento.depreciacao_projetada,
+    );
 
     return {
       ...equipamento,
@@ -351,10 +476,10 @@ export function aplicarPrecosManuaisNaSimulacao(
   return {
     ...resumo,
     equipamentos,
-    custo_operacional: arredondar(equipamentos.reduce((total, item) => total + item.custo_operacional, 0)),
-    custo_manutencao: arredondar(equipamentos.reduce((total, item) => total + item.custo_manutencao, 0)),
-    custo_recorrente: arredondar(equipamentos.reduce((total, item) => total + item.custo_recorrente, 0)),
-    custo_total: arredondar(equipamentos.reduce((total, item) => total + item.custo_total, 0)),
+    custo_operacional: arredondarMoeda(equipamentos.reduce((total, item) => total + item.custo_operacional, 0)),
+    custo_manutencao: arredondarMoeda(equipamentos.reduce((total, item) => total + item.custo_manutencao, 0)),
+    custo_recorrente: arredondarMoeda(equipamentos.reduce((total, item) => total + item.custo_recorrente, 0)),
+    custo_total: arredondarMoeda(equipamentos.reduce((total, item) => total + item.custo_total, 0)),
     produtos_sem_custo: equipamentos.reduce((total, item) => total + item.produtos_sem_custo, 0),
   };
 }

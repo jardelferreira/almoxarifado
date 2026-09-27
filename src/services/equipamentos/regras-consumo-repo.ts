@@ -123,7 +123,6 @@ async function validarConflito(
     if (regra.estoque_equipamento_id !== dados.estoqueEquipamentoId) return false;
     if (regra.produto_id !== dados.produtoId) return false;
     if (regra.direcionador !== dados.direcionador) return false;
-    if (regra.periodicidade !== dados.periodicidade) return false;
 
     return intervalosSobrepostos(
       regra.vigencia_inicio,

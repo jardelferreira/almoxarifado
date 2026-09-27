@@ -90,6 +90,8 @@ async function validarEquipamento(
     );
   }
 
+  if (equipamento.situacao === "PLANEJADO") throw new Error("Promova o equipamento planejado para ATIVO antes de registrar estoque.");
+
   if (!equipamento.ativo) {
     throw new Error(
       "O cadastro do equipamento está inativo.",

@@ -18,6 +18,7 @@ import {
   Save,
   RotateCcw,
   SlidersHorizontal,
+  ChevronDown,
   Trash2,
   Wrench,
 } from "lucide-react";
@@ -489,6 +490,7 @@ function SimulacaoCustosPage() {
               <p className="mt-2 font-display text-base font-semibold sm:text-lg">
                 {formatarData(periodoAplicado.inicio)} <span className="text-muted-foreground">até</span> {formatarData(periodoAplicado.fim)}
               </p>
+              <p className="mt-1 text-xs text-muted-foreground">{resultado ? `${formatarNumero(resultado.dias_periodo)} dias corridos contabilizados` : "O dia inicial e o dia final são incluídos no cálculo."}</p>
             </div>
           </div>
         </div>
@@ -550,7 +552,7 @@ function SimulacaoCustosPage() {
                     opcoes={equipamentosDisponiveis.map((equipamento) => ({
                       value: equipamento.id,
                       label: equipamento.modelo ? `${equipamento.nome} · ${equipamento.modelo}` : equipamento.nome,
-                      hint: equipamento.tipo_controle === "INDIVIDUAL" ? "Individual" : "Quantitativo",
+                      hint: `${equipamento.situacao === "PLANEJADO" ? "Planejado · " : ""}${equipamento.tipo_controle === "INDIVIDUAL" ? "Individual" : "Quantitativo"}`,
                     }))}
                   />
                 </div>
@@ -602,8 +604,8 @@ function SimulacaoCustosPage() {
                             <SelectContent>{DIRECIONADORES.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent>
                           </Select>
                         </Field>
-                        <Field label="Uso previsto" hint={`${direcionador.unidade} / unidade`}>
-                          <Input type="number" min="0" step="0.01" value={linha.uso_previsto} onFocus={selecionarConteudoAoFocar} onChange={(event) => atualizarLinha(linha.equipamento_id, { uso_previsto: Math.max(0, Number(event.target.value) || 0) })} />
+                        <Field label="Uso previsto" hint={linha.direcionador === "PERIODO" ? "manual se a regra não tiver periodicidade" : `${direcionador.unidade} / unidade`}>
+                          <Input type="number" min="0" step="0.01" value={linha.uso_previsto} disabled={linha.direcionador === "PERIODO"} onFocus={selecionarConteudoAoFocar} onChange={(event) => atualizarLinha(linha.equipamento_id, { uso_previsto: Math.max(0, Number(event.target.value) || 0) })} />
                         </Field>
                         <Field label="Manutenção · ocorrências" hint="por unidade">
                           <Input type="number" min="0" step="1" value={linha.manutencao_ocorrencias_por_unidade} onFocus={selecionarConteudoAoFocar} onChange={(event) => atualizarLinha(linha.equipamento_id, { manutencao_ocorrencias_por_unidade: Math.max(0, Number(event.target.value) || 0) })} />
@@ -706,6 +708,37 @@ function SimulacaoCustosPage() {
                 <QualityLine ok={resultado.produtos_sem_custo === 0} label="Todos os insumos têm custo" valor={formatarNumero(resultado.produtos_sem_custo)} />
                 <QualityLine ok={resultado.regras_sem_aderencia === 0} label="Regras compatíveis com o direcionador" valor={formatarNumero(resultado.regras_sem_aderencia)} />
                 <QualityLine ok={resultado.dados_base_historicos} label="Há preços históricos documentados" valor={resultado.dados_base_historicos ? "Sim" : "Não"} />
+
+                {resultado.produtos_sem_custo > 0 || resultado.regras_sem_aderencia > 0 ? (
+                  <details className="rounded-xl border bg-muted/15 px-3 py-2">
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-xs font-medium">
+                      <span>Ver itens que exigem atenção</span>
+                      <ChevronDown className="size-4 text-muted-foreground" />
+                    </summary>
+                    <div className="mt-3 space-y-3 border-t pt-3">
+                      {resultado.equipamentos.map((equipamento) => {
+                        const semCusto = equipamento.produtos.filter((produto) => produto.custo_unitario_aplicado == null);
+                        const regrasIgnoradas = equipamento.regras_ignoradas_detalhes;
+                        if (!semCusto.length && !regrasIgnoradas.length) return null;
+                        return (
+                          <div key={equipamento.equipamento_id} className="space-y-2">
+                            <p className="text-xs font-semibold">{equipamento.nome}</p>
+                            {semCusto.map((produto) => (
+                              <p key={`custo-${produto.produto_id}`} className="text-[11px] text-warning">
+                                Sem custo: {produto.nome}
+                              </p>
+                            ))}
+                            {regrasIgnoradas.map((regra) => (
+                              <p key={`regra-${regra.produto_id}-${regra.direcionador}`} className="text-[11px] text-muted-foreground">
+                                Regra ignorada: {regra.produto_nome} · direcionador {regra.direcionador}
+                              </p>
+                            ))}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </details>
+                ) : null}
               </CardContent>
             </Card>
           ) : null}
@@ -802,16 +835,21 @@ function ResultadoSimulacao({
         <div className="mt-1 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h2 className="font-display text-xl font-semibold tracking-tight">Como o custo foi formado</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Custos operacionais vêm das regras de consumo; manutenção e recorrência vêm das premissas informadas.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Custos operacionais vêm das regras de consumo; manutenção, recorrência e depreciação vêm das premissas financeiras do cenário.</p>
           </div>
-          <Badge variant="outline" className="w-fit border-primary/20 bg-primary/10 text-primary">{formatarData(resultado.periodo.inicio)} — {formatarData(resultado.periodo.fim)}</Badge>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline" className="w-fit border-primary/20 bg-primary/10 text-primary">{formatarData(resultado.periodo.inicio)} — {formatarData(resultado.periodo.fim)}</Badge>
+            <Badge variant="outline" className="w-fit">{formatarNumero(resultado.dias_periodo)} dias corridos</Badge>
+          </div>
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-5">
         <KpiCard label="Operação" valor={formatarMoeda(resultado.custo_operacional)} icon={Package} tone="primary" />
         <KpiCard label="Manutenção" valor={formatarMoeda(resultado.custo_manutencao)} icon={Wrench} tone="warning" />
         <KpiCard label="Recorrência" valor={formatarMoeda(resultado.custo_recorrente)} icon={RotateCcw} tone="success" />
+        <KpiCard label="Depreciação projetada" valor={formatarMoeda(resultado.depreciacao_projetada)} icon={CircleDollarSign} tone="neutral" />
+        <KpiCard label="Aquisição planejada" valor={formatarMoeda(resultado.investimento_aquisicao)} icon={HardHat} tone="neutral" />
       </div>
 
       <div className="grid gap-5 lg:grid-cols-2">
@@ -835,10 +873,11 @@ function ResultadoSimulacao({
               </div>
             </CardHeader>
             <CardContent className="space-y-4 p-4 sm:p-5">
-              <div className="grid grid-cols-3 divide-x rounded-xl border bg-muted/20 py-3">
+              <div className="grid grid-cols-2 divide-x rounded-xl border bg-muted/20 py-3 sm:grid-cols-4">
                 <MiniMetric label="Insumos" valor={formatarMoeda(equipamento.custo_operacional)} tone="primary" />
                 <MiniMetric label="Manutenção" valor={formatarMoeda(equipamento.custo_manutencao)} tone="warning" />
                 <MiniMetric label="Recorrência" valor={formatarMoeda(equipamento.custo_recorrente)} tone="success" />
+                <MiniMetric label="Depreciação" valor={formatarMoeda(equipamento.depreciacao_projetada)} tone="neutral" />
               </div>
 
               {equipamento.produtos.length ? (
@@ -858,8 +897,16 @@ function ResultadoSimulacao({
                             <span>{formatarNumero(produto.quantidade_prevista, 2)} {produto.unidade_consumo_sigla}</span>
                             <span>·</span>
                             <span>{formatarNumero(produto.fator, 4)} {produto.unidade_consumo_sigla}/{produto.unidade_base_sigla}</span>
+                            <span>·</span>
+                            <span>{formatarNumero(produto.dias_ativos)} dias ativos</span>
                             <Badge variant="outline" className="h-5 px-1.5 text-[10px]">{produto.fonte_custo === "MANUAL" ? "Manual" : produto.fonte_custo === "HISTORICO" ? "Histórico" : "Sem custo"}</Badge>
                           </div>
+                          <div className="mt-1 text-[10px] text-muted-foreground">Fórmula: {produto.formula_memoria}</div>
+                          {produto.fonte_historico ? (
+                            <div className="mt-1 text-[10px] text-muted-foreground">
+                              Histórico: {produto.fonte_historico.documento_numero || "sem número"} · {produto.fonte_historico.data ? formatarData(produto.fonte_historico.data) : "sem data"} · {formatarMoeda(produto.fonte_historico.valor_unitario)} / {produto.unidade_consumo_sigla}
+                            </div>
+                          ) : null}
                         </div>
                         <div>
                           <Label className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">R$ / unidade</Label>
@@ -898,10 +945,38 @@ function ResultadoSimulacao({
               )}
 
               {equipamento.periodicidade_recorrente && equipamento.custo_recorrente_unitario != null ? (
-                <div className="flex items-center gap-2 rounded-xl bg-success/10 px-3.5 py-3 text-xs">
-                  <RotateCcw className="size-3.5 shrink-0 text-success" />
-                  <span className="text-muted-foreground">Recorrência:</span>
-                  <strong>{formatarMoeda(equipamento.custo_recorrente_unitario)} / {equipamento.periodicidade_recorrente.toLowerCase()}</strong>
+                <div className="space-y-1.5 rounded-xl bg-success/10 px-3.5 py-3 text-xs">
+                  <div className="flex items-center gap-2">
+                    <RotateCcw className="size-3.5 shrink-0 text-success" />
+                    <span className="text-muted-foreground">Recorrência:</span>
+                    <strong>{formatarMoeda(equipamento.custo_recorrente_unitario)} / {equipamento.periodicidade_recorrente.toLowerCase()}</strong>
+                  </div>
+                  <p className="pl-5 text-[10px] text-muted-foreground">
+                    {formatarNumero(equipamento.unidades_recorrencia_calculadas, 4)} {equipamento.periodicidade_recorrente.toLowerCase()}{equipamento.unidades_recorrencia_calculadas === 1 ? "" : "s"} contabilizada{equipamento.unidades_recorrencia_calculadas === 1 ? "" : "s"} no período · {formatarNumero(equipamento.dias_periodo)} dias.
+                  </p>
+                </div>
+              ) : null}
+
+              {(equipamento.investimento_aquisicao > 0 || equipamento.depreciacao_projetada > 0) ? (
+                <div className="space-y-2 rounded-xl border bg-muted/10 px-3.5 py-3 text-xs">
+                  {equipamento.investimento_aquisicao > 0 ? (
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-muted-foreground">Aquisição planejada</span>
+                      <strong>{formatarMoeda(equipamento.investimento_aquisicao)}</strong>
+                    </div>
+                  ) : null}
+                  {equipamento.depreciacao_projetada > 0 ? (
+                    <div>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-muted-foreground">Depreciação linear projetada</span>
+                        <strong>{formatarMoeda(equipamento.depreciacao_projetada)}</strong>
+                      </div>
+                      <p className="mt-1 text-[10px] text-muted-foreground">
+                        {equipamento.vida_util_meses ? `Vida útil: ${formatarNumero(equipamento.vida_util_meses)} meses · ${formatarNumero(equipamento.meses_depreciacao_calculados, 2)} meses no período.` : "Vida útil não configurada."}
+                      </p>
+                      {equipamento.formula_depreciacao ? <p className="mt-1 text-[10px] text-muted-foreground">Fórmula: {equipamento.formula_depreciacao}</p> : null}
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
             </CardContent>
@@ -942,13 +1017,13 @@ function SummaryLine({ icon: Icon, label, valor, tone, last = false }: { icon: t
   );
 }
 
-function KpiCard({ icon: Icon, label, valor, tone }: { icon: typeof Package; label: string; valor: string; tone: "primary" | "success" | "warning" }) {
-  const iconClasses = tone === "primary" ? "bg-primary/10 text-primary" : tone === "success" ? "bg-success/10 text-success" : "bg-warning/10 text-warning";
-  const textClasses = tone === "primary" ? "text-primary" : tone === "success" ? "text-success" : "text-warning";
+function KpiCard({ icon: Icon, label, valor, tone }: { icon: typeof Package; label: string; valor: string; tone: "primary" | "success" | "warning" | "neutral" }) {
+  const iconClasses = tone === "primary" ? "bg-primary/10 text-primary" : tone === "success" ? "bg-success/10 text-success" : tone === "warning" ? "bg-warning/10 text-warning" : "bg-muted text-muted-foreground";
+  const textClasses = tone === "primary" ? "text-primary" : tone === "success" ? "text-success" : tone === "warning" ? "text-warning" : "text-muted-foreground";
   return (
     <Card className="overflow-hidden">
       <CardContent className="relative p-4 sm:p-5">
-        <span className={`absolute inset-x-0 top-0 h-0.5 ${tone === "primary" ? "bg-primary" : tone === "success" ? "bg-success" : "bg-warning"}`} />
+        <span className={`absolute inset-x-0 top-0 h-0.5 ${tone === "primary" ? "bg-primary" : tone === "success" ? "bg-success" : tone === "warning" ? "bg-warning" : "bg-muted-foreground"}`} />
         <div className="flex items-center gap-2 text-xs text-muted-foreground"><span className={`flex size-7 items-center justify-center rounded-lg ${iconClasses}`}><Icon className="size-3.5" /></span>{label}</div>
         <p className={`mt-3 font-display text-2xl font-semibold tabular-nums ${textClasses}`}>{valor}</p>
       </CardContent>
@@ -956,8 +1031,8 @@ function KpiCard({ icon: Icon, label, valor, tone }: { icon: typeof Package; lab
   );
 }
 
-function MiniMetric({ label, valor, tone }: { label: string; valor: string; tone: "primary" | "success" | "warning" }) {
-  const textClasses = tone === "primary" ? "text-primary" : tone === "success" ? "text-success" : "text-warning";
+function MiniMetric({ label, valor, tone }: { label: string; valor: string; tone: "primary" | "success" | "warning" | "neutral" }) {
+  const textClasses = tone === "primary" ? "text-primary" : tone === "success" ? "text-success" : tone === "warning" ? "text-warning" : "text-muted-foreground";
   return (
     <div className="px-2.5 text-center sm:px-3.5">
       <p className="text-[10px] uppercase tracking-[0.11em] text-muted-foreground">{label}</p>

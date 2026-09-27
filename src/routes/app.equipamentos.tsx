@@ -24,6 +24,7 @@ import {
   FileText,
   Link2,
   Unlink2,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -92,6 +93,7 @@ export const Route = createFileRoute("/app/equipamentos")({
 });
 
 type Formulario = {
+  situacao: "ATIVO" | "PLANEJADO";
   nome: string;
   categoria_id: string;
   tipo_controle: EquipamentoTipoControle;
@@ -100,6 +102,7 @@ type Formulario = {
   descricao: string;
   valor_referencia: string;
   custo_recorrente: string;
+  vida_util_meses: string;
   periodicidade_custo: "HORA" | "DIA" | "SEMANA" | "MES" | "ANO" | "";
 };
 
@@ -141,6 +144,7 @@ type EstoqueFormulario = {
 };
 
 const formularioInicial: Formulario = {
+  situacao: "ATIVO",
   nome: "",
   categoria_id: "",
   tipo_controle: "INDIVIDUAL",
@@ -149,6 +153,7 @@ const formularioInicial: Formulario = {
   descricao: "",
   valor_referencia: "",
   custo_recorrente: "",
+  vida_util_meses: "",
   periodicidade_custo: "",
 };
 
@@ -215,10 +220,12 @@ function EquipamentosPage() {
   const [manutencaoDocumentos, setManutencaoDocumentos] = useState<Map<string, ManutencaoDocumento[]>>(new Map());
   const [apropriacoesFinanceiras, setApropriacoesFinanceiras] = useState<ApropriacaoFinanceiraEquipamento[]>([]);
   const [busca, setBusca] = useState("");
+  const [filtroOperacional, setFiltroOperacional] = useState<"almoxarifado" | "emUso" | "manutencao" | null>(null);
   const [formulario, setFormulario] = useState<Formulario>(formularioInicial);
   const [estoqueFormulario, setEstoqueFormulario] = useState<EstoqueFormulario>(estoqueFormularioInicial());
   const [editando, setEditando] = useState<Equipamento | null>(null);
   const [equipamentoDetalhe, setEquipamentoDetalhe] = useState<Equipamento | null>(null);
+  const [equipamentoExclusaoPendente, setEquipamentoExclusaoPendente] = useState<Equipamento | null>(null);
   const [dialogAberto, setDialogAberto] = useState(false);
   const [dialogEstoque, setDialogEstoque] = useState(false);
   const [dialogNovaCategoria, setDialogNovaCategoria] = useState(false);
@@ -489,9 +496,25 @@ function EquipamentosPage() {
 
   const filtrados = useMemo(() => {
     const termo = busca.trim().toLowerCase();
-    if (!termo) return equipamentos;
-    return equipamentos.filter((e) => [e.nome, e.marca, e.modelo, e.descricao, categoriaPorId.get(e.categoria_id)].some((v) => String(v ?? "").toLowerCase().includes(termo)));
-  }, [equipamentos, busca, categoriaPorId]);
+
+    return equipamentos.filter((e) => {
+      const correspondeBusca = !termo || [
+        e.nome,
+        e.marca,
+        e.modelo,
+        e.descricao,
+        categoriaPorId.get(e.categoria_id),
+      ].some((v) => String(v ?? "").toLowerCase().includes(termo));
+
+      if (!correspondeBusca) return false;
+      if (!filtroOperacional) return true;
+
+      const resumo = resumoPorEquipamento.get(e.id);
+      if (filtroOperacional === "almoxarifado") return (resumo?.almoxarifado ?? 0) > 0;
+      if (filtroOperacional === "emUso") return (resumo?.apropriado ?? 0) > 0;
+      return (resumo?.manutencao ?? 0) > 0;
+    });
+  }, [equipamentos, busca, categoriaPorId, filtroOperacional, resumoPorEquipamento]);
 
   const atualizarCampo = <K extends keyof Formulario>(campo: K, valor: Formulario[K]) => setFormulario((atual) => ({ ...atual, [campo]: valor }));
   const atualizarEstoque = <K extends keyof EstoqueFormulario>(campo: K, valor: EstoqueFormulario[K]) => setEstoqueFormulario((atual) => ({ ...atual, [campo]: valor }));
@@ -500,6 +523,7 @@ function EquipamentosPage() {
   function abrirEdicao(e: Equipamento) {
     setEditando(e);
     setFormulario({
+      situacao: e.situacao ?? "ATIVO",
       nome: e.nome,
       categoria_id: e.categoria_id,
       tipo_controle: e.tipo_controle,
@@ -508,6 +532,7 @@ function EquipamentosPage() {
       descricao: e.descricao ?? "",
       valor_referencia: e.valor_referencia == null ? "" : String(e.valor_referencia),
       custo_recorrente: e.custo_recorrente == null ? "" : String(e.custo_recorrente),
+      vida_util_meses: e.vida_util_meses == null ? "" : String(e.vida_util_meses),
       periodicidade_custo: e.periodicidade_custo ?? "",
     });
     setDialogAberto(true);
@@ -527,6 +552,10 @@ function EquipamentosPage() {
   }
 
   function abrirNovoEstoque(equipamento?: Equipamento) {
+    if (equipamento?.situacao === "PLANEJADO") {
+      toast.error("Promova o equipamento planejado para ATIVO antes de adicionar ao estoque.");
+      return;
+    }
     if (equipamento?.ativo === false) {
       toast.error("Este equipamento está inativo. Ative o cadastro antes de adicionar ao estoque.");
       return;
@@ -587,9 +616,12 @@ function EquipamentosPage() {
         descricao: formulario.descricao.trim() || null,
         valor_referencia: financeiroEquipamentosAtivo && formulario.valor_referencia.trim() !== "" ? Number(formulario.valor_referencia) : null,
         custo_recorrente: financeiroEquipamentosAtivo && formulario.custo_recorrente.trim() !== "" ? Number(formulario.custo_recorrente) : null,
+        vida_util_meses: financeiroEquipamentosAtivo && formulario.vida_util_meses.trim() !== "" ? Number(formulario.vida_util_meses) : null,
+        metodo_depreciacao: financeiroEquipamentosAtivo && formulario.vida_util_meses.trim() !== "" ? "LINEAR" : null,
         periodicidade_custo: financeiroEquipamentosAtivo && formulario.periodicidade_custo ? formulario.periodicidade_custo : null,
         fonte_valor: financeiroEquipamentosAtivo && formulario.valor_referencia.trim() !== "" ? "INFORMADO" : null,
         ativo: editando?.ativo ?? true,
+        situacao: formulario.situacao,
       });
       await carregar(); setDialogAberto(false); setEditando(null);
       toast.success(editando ? "Equipamento atualizado." : "Equipamento cadastrado.");
@@ -614,6 +646,10 @@ function EquipamentosPage() {
     const equipamento = equipamentos.find((e) => e.id === estoqueFormulario.equipamento_id);
     if (!equipamento) {
       toast.error("Equipamento cadastrado não encontrado.");
+      return;
+    }
+    if (equipamento.situacao === "PLANEJADO") {
+      toast.error("Promova o equipamento planejado para ATIVO antes de adicionar ao estoque.");
       return;
     }
     if (equipamento.ativo === false) {
@@ -989,9 +1025,12 @@ function EquipamentosPage() {
         descricao: equipamento.descricao ?? null,
         valor_referencia: equipamento.valor_referencia ?? null,
         custo_recorrente: equipamento.custo_recorrente ?? null,
+        vida_util_meses: equipamento.vida_util_meses ?? null,
+        metodo_depreciacao: equipamento.metodo_depreciacao ?? null,
         periodicidade_custo: equipamento.periodicidade_custo ?? null,
         fonte_valor: equipamento.fonte_valor ?? null,
         ativo: equipamento.ativo === false,
+        situacao: equipamento.situacao ?? "ATIVO",
       });
       await carregar();
       setEquipamentoDetalhe((atual) =>
@@ -1012,10 +1051,34 @@ function EquipamentosPage() {
       );
     }
   }
-  async function excluir(e: Equipamento) {
-    if (!projetoId || !window.confirm(`Excluir o cadastro "${e.nome}"?`)) return;
-    try { await equipamentosRepo.excluir(projetoId, e.id); await carregar(); toast.success("Cadastro excluído."); }
-    catch (error) { toast.error(error instanceof Error ? error.message : "Não foi possível excluir o cadastro."); }
+  function solicitarExclusao(e: Equipamento) {
+    if (!projetoId) return;
+
+    const saldo = saldoTotal(e.id);
+    if (saldo > 0) {
+      toast.error(
+        `Não é possível excluir "${e.nome}" enquanto houver saldo físico (${saldo}). Encerre o equipamento no estoque antes de excluir o cadastro.`,
+      );
+      return;
+    }
+
+    setEquipamentoExclusaoPendente(e);
+  }
+
+  async function confirmarExclusao() {
+    if (!projetoId || !equipamentoExclusaoPendente) return;
+
+    try {
+      setSalvando(true);
+      await equipamentosRepo.excluir(projetoId, equipamentoExclusaoPendente.id);
+      await carregar();
+      setEquipamentoExclusaoPendente(null);
+      toast.success("Cadastro excluído.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível excluir o cadastro.");
+    } finally {
+      setSalvando(false);
+    }
   }
 
   const estoqueSelecionado = equipamentoDetalhe ? estoquePorEquipamento.get(equipamentoDetalhe.id) ?? [] : [];
@@ -1241,7 +1304,7 @@ function EquipamentosPage() {
 
 
   const resumoGeral = useMemo(() => {
-    const equipamentosAtivos = equipamentos.filter((equipamento) => equipamento.ativo !== false);
+    const equipamentosAtivos = equipamentos.filter((equipamento) => equipamento.ativo !== false && equipamento.situacao !== "PLANEJADO");
     const estoquesAtivos = estoques.filter((estoque) => estoque.ativo !== false);
 
     return {
@@ -1274,6 +1337,7 @@ function EquipamentosPage() {
       icon: PackageCheck,
       className: "border-primary/15 bg-primary/5",
       iconClassName: "text-primary",
+      filtro: null,
     },
     {
       label: "Saldo total",
@@ -1282,30 +1346,7 @@ function EquipamentosPage() {
       icon: ClipboardList,
       className: "border-sky-200 bg-sky-50/60",
       iconClassName: "text-sky-700",
-    },
-    {
-      label: "Almoxarifado",
-      value: resumoGeral.almoxarifado,
-      description: "disponíveis para retirada",
-      icon: Warehouse,
-      className: "border-emerald-200 bg-emerald-50/60",
-      iconClassName: "text-emerald-700",
-    },
-    {
-      label: "Em uso",
-      value: resumoGeral.emUso,
-      description: "apropriados a funcionários",
-      icon: UserRound,
-      className: "border-blue-200 bg-blue-50/60",
-      iconClassName: "text-blue-700",
-    },
-    {
-      label: "Manutenção",
-      value: resumoGeral.manutencao,
-      description: "em manutenção",
-      icon: Wrench,
-      className: "border-orange-200 bg-orange-50/60",
-      iconClassName: "text-orange-700",
+      filtro: null,
     },
     {
       label: "Registros físicos",
@@ -1314,6 +1355,34 @@ function EquipamentosPage() {
       icon: Box,
       className: "border-border bg-muted/20",
       iconClassName: "text-muted-foreground",
+      filtro: null,
+    },
+    {
+      label: "Almoxarifado",
+      value: resumoGeral.almoxarifado,
+      description: "disponíveis para retirada",
+      icon: Warehouse,
+      className: "border-emerald-200 bg-emerald-50/60",
+      iconClassName: "text-emerald-700",
+      filtro: "almoxarifado" as const,
+    },
+    {
+      label: "Em uso",
+      value: resumoGeral.emUso,
+      description: "apropriados a funcionários",
+      icon: UserRound,
+      className: "border-blue-200 bg-blue-50/60",
+      iconClassName: "text-blue-700",
+      filtro: "emUso" as const,
+    },
+    {
+      label: "Manutenção",
+      value: resumoGeral.manutencao,
+      description: "em manutenção",
+      icon: Wrench,
+      className: "border-orange-200 bg-orange-50/60",
+      iconClassName: "text-orange-700",
+      filtro: "manutencao" as const,
     },
   ];
 
@@ -1326,33 +1395,83 @@ function EquipamentosPage() {
         <div className="flex gap-2"><Button variant="outline" onClick={() => abrirNovoEstoque()}><ClipboardList className="mr-2 h-4 w-4" />Adicionar ao estoque</Button><Button onClick={abrirNovo}><Plus className="mr-2 h-4 w-4" />Novo equipamento</Button></div>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {cardsResumo.map(({ label, value, description, icon: Icon, className, iconClassName }) => (
-          <Card key={label} className={`overflow-hidden shadow-sm ${className}`}>
-            <CardContent className="p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-muted-foreground">{label}</p>
-                  <p className="mt-1 text-2xl font-bold tracking-tight">{value}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{description}</p>
+        {cardsResumo.map(({ label, value, description, icon: Icon, className, iconClassName, filtro }) => {
+          const selecionado = filtro !== null && filtroOperacional === filtro;
+          const clicavel = filtro !== null;
+
+          return (
+            <Card
+              key={label}
+              role={clicavel ? "button" : undefined}
+              tabIndex={clicavel ? 0 : undefined}
+              onClick={clicavel ? () => setFiltroOperacional(selecionado ? null : filtro) : undefined}
+              onKeyDown={clicavel ? (event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  setFiltroOperacional(selecionado ? null : filtro);
+                }
+              } : undefined}
+              className={`overflow-hidden shadow-sm transition-all ${className} ${
+                clicavel ? "cursor-pointer hover:-translate-y-0.5 hover:shadow-md" : ""
+              } ${
+                selecionado ? "ring-2 ring-primary ring-offset-2" : ""
+              }`}
+            >
+              <CardContent className="p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-muted-foreground">{label}</p>
+                    <p className="mt-1 text-2xl font-bold tracking-tight">{value}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{description}</p>
+                  </div>
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border bg-background/70">
+                    <Icon className={`h-5 w-5 ${iconClassName}`} />
+                  </div>
                 </div>
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border bg-background/70">
-                  <Icon className={`h-5 w-5 ${iconClassName}`} />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
       <Card className="overflow-hidden border-border/70 shadow-sm">
         <CardHeader className="border-b bg-muted/20 pb-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div className="flex items-center gap-2 font-semibold"><Box className="h-4 w-4 text-primary" /> Catálogo de equipamentos</div>
-              <p className="mt-1 text-xs text-muted-foreground">Visão consolidada do saldo e da situação operacional.</p>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2 font-semibold">
+                <Box className="h-4 w-4 text-primary" />
+                <span>Catálogo de equipamentos</span>
+                {filtroOperacional && (
+                  <Badge variant="outline" className="bg-background">
+                    {filtroOperacional === "almoxarifado" ? "Almoxarifado" : filtroOperacional === "emUso" ? "Em uso" : "Manutenção"}
+                  </Badge>
+                )}
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {filtroOperacional
+                  ? `Exibindo ${filtrados.length} equipamento(s) com estoque em ${filtroOperacional === "almoxarifado" ? "Almoxarifado" : filtroOperacional === "emUso" ? "uso" : "manutenção"}.`
+                  : "Visão consolidada do saldo e da situação operacional."}
+              </p>
             </div>
-            <div className="relative w-full max-w-md">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Pesquisar equipamento..." className="pl-9 bg-background" />
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+              {(filtroOperacional || busca.trim()) && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-10 shrink-0"
+                  onClick={() => {
+                    setFiltroOperacional(null);
+                    setBusca("");
+                  }}
+                >
+                  <X className="mr-2 h-4 w-4" />
+                  Limpar filtros
+                </Button>
+              )}
+              <div className="relative w-full sm:w-80 md:w-96">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Pesquisar equipamento..." className="h-10 pl-9 bg-background" />
+              </div>
             </div>
           </div>
         </CardHeader>
@@ -1373,7 +1492,7 @@ function EquipamentosPage() {
                     <td className="px-4 py-3.5">
                       <div className="flex items-center gap-3">
                         <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${e.ativo === false ? "border-muted bg-muted/50 text-muted-foreground" : "border-primary/15 bg-primary/5 text-primary"}`}><Box className="h-5 w-5" /></div>
-                        <div className="min-w-0"><div className="font-semibold leading-tight">{e.nome}</div>{(e.marca || e.modelo) && <div className="mt-1 text-xs text-muted-foreground">{[e.marca, e.modelo].filter(Boolean).join(" • ")}</div>}</div>
+                        <div className="min-w-0"><div className="font-semibold leading-tight">{e.nome}{e.situacao === "PLANEJADO" && <Badge variant="outline" className="ml-2">Planejado</Badge>}</div>{(e.marca || e.modelo) && <div className="mt-1 text-xs text-muted-foreground">{[e.marca, e.modelo].filter(Boolean).join(" • ")}</div>}</div>
                       </div>
                     </td>
                     <td className="px-4 py-3.5"><span className="text-sm">{categoriaPorId.get(e.categoria_id) ?? "—"}</span></td>
@@ -1389,7 +1508,14 @@ function EquipamentosPage() {
                         <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium ${e.ativo === false ? "border-red-200 bg-red-50 text-red-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>{e.ativo === false ? <CircleAlert className="h-3 w-3" /> : <CircleCheck className="h-3 w-3" />}{e.ativo === false ? "Inativo" : "Ativo"}</span>
                       </label>
                     </td>
-                    <td className="px-4 py-3.5"><div className="flex justify-end gap-1 opacity-80 transition-opacity group-hover:opacity-100"><Button variant="ghost" size="icon" className="h-8 w-8" title="Detalhes" onClick={() => void abrirDetalhes(e)}><Eye className="h-4 w-4" /></Button><Button variant="ghost" size="icon" className="h-8 w-8" title="Adicionar estoque" onClick={() => abrirNovoEstoque(e)}><Plus className="h-4 w-4" /></Button><Button variant="ghost" size="icon" className="h-8 w-8" title="Editar" onClick={() => abrirEdicao(e)}><Pencil className="h-4 w-4" /></Button><Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" title="Excluir" onClick={() => void excluir(e)}><Trash2 className="h-4 w-4" /></Button></div></td>
+                    <td className="px-4 py-3.5"><div className="flex justify-end gap-1 opacity-80 transition-opacity group-hover:opacity-100"><Button variant="ghost" size="icon" className="h-8 w-8" title="Detalhes" onClick={() => void abrirDetalhes(e)}><Eye className="h-4 w-4" /></Button><Button variant="ghost" size="icon" className="h-8 w-8" title="Adicionar estoque" onClick={() => abrirNovoEstoque(e)}><Plus className="h-4 w-4" /></Button><Button variant="ghost" size="icon" className="h-8 w-8" title="Editar" onClick={() => abrirEdicao(e)}><Pencil className="h-4 w-4" /></Button><Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-destructive hover:text-destructive disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-destructive"
+                        title={saldo > 0 ? `Exclusão bloqueada: saldo físico ${saldo}. Encerre o equipamento no estoque.` : "Excluir"}
+                        disabled={saldo > 0}
+                        onClick={() => solicitarExclusao(e)}
+                      ><Trash2 className="h-4 w-4" /></Button></div></td>
                   </tr>;
                 })}
                 {filtrados.length === 0 && <tr><td colSpan={10} className="py-14 text-center text-sm text-muted-foreground"><div className="flex flex-col items-center gap-2"><Box className="h-8 w-8 text-muted-foreground/50" /><span>{busca ? "Nenhum equipamento encontrado." : "Nenhum equipamento cadastrado."}</span></div></td></tr>}
@@ -1400,8 +1526,43 @@ function EquipamentosPage() {
       </Card>
     </div>
 
+    <Dialog
+      open={Boolean(equipamentoExclusaoPendente)}
+      onOpenChange={(open) => {
+        if (!open && !salvando) setEquipamentoExclusaoPendente(null);
+      }}
+    >
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Excluir equipamento?</DialogTitle>
+        </DialogHeader>
+        {equipamentoExclusaoPendente && (
+          <div className="space-y-4 py-2">
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+              <p className="font-semibold text-amber-950">{equipamentoExclusaoPendente.nome}</p>
+              <p className="mt-1 text-sm text-amber-900/80">
+                O equipamento está encerrado no estoque e não possui saldo físico.
+              </p>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Esta ação excluirá o cadastro do catálogo. Confirme somente se o encerramento do equipamento no estoque já foi concluído.
+            </p>
+            <p className="text-sm font-medium">Deseja realmente excluir este equipamento?</p>
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setEquipamentoExclusaoPendente(null)} disabled={salvando}>
+            Cancelar
+          </Button>
+          <Button variant="destructive" onClick={() => void confirmarExclusao()} disabled={salvando}>
+            {salvando ? "Excluindo..." : "Excluir equipamento"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
     <Dialog open={Boolean(equipamentoDetalhe)} onOpenChange={(open) => !open && setEquipamentoDetalhe(null)}><DialogContent className="w-[calc(100vw-1rem)] max-w-none max-h-[95vh] overflow-y-auto p-3 sm:w-[calc(100vw-2rem)] sm:max-w-[1400px] sm:p-5 lg:max-w-[1500px]"><DialogHeader><DialogTitle className="flex items-center gap-2"><Box className="h-5 w-5 text-primary" />Detalhes do equipamento</DialogTitle></DialogHeader>{equipamentoDetalhe && <div className="space-y-6">
-      <div className="rounded-lg border bg-muted/30 p-4"><div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"><div><h2 className="text-xl font-semibold">{equipamentoDetalhe.nome}</h2><div className="mt-2 flex flex-wrap items-center gap-2"><Badge variant="secondary">{categoriaPorId.get(equipamentoDetalhe.categoria_id) ?? "Sem categoria"}</Badge><Badge variant="outline">{equipamentoDetalhe.tipo_controle === "INDIVIDUAL" ? "Controle individual" : "Controle quantitativo"}</Badge><Badge variant={equipamentoDetalhe.ativo === false ? "outline" : "secondary"}>{equipamentoDetalhe.ativo === false ? "Inativo" : "Ativo"}</Badge></div><p className="mt-3 text-sm text-muted-foreground">{[equipamentoDetalhe.marca, equipamentoDetalhe.modelo].filter(Boolean).join(" • ") || "Marca/modelo não informados"}</p>{equipamentoDetalhe.descricao && <p className="mt-2 max-w-3xl text-sm">{equipamentoDetalhe.descricao}</p>}</div><Button onClick={() => abrirNovoEstoque(equipamentoDetalhe)} disabled={equipamentoDetalhe.ativo === false}><Plus className="mr-2 h-4 w-4" />Adicionar estoque</Button></div></div>
+      <div className="rounded-lg border bg-muted/30 p-4"><div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"><div><h2 className="text-xl font-semibold">{equipamentoDetalhe.nome}</h2><div className="mt-2 flex flex-wrap items-center gap-2"><Badge variant="secondary">{categoriaPorId.get(equipamentoDetalhe.categoria_id) ?? "Sem categoria"}</Badge><Badge variant="outline">{equipamentoDetalhe.tipo_controle === "INDIVIDUAL" ? "Controle individual" : "Controle quantitativo"}</Badge><Badge variant={equipamentoDetalhe.situacao === "PLANEJADO" ? "outline" : "secondary"}>{equipamentoDetalhe.situacao === "PLANEJADO" ? "Planejado" : "Operacional"}</Badge><Badge variant={equipamentoDetalhe.ativo === false ? "outline" : "secondary"}>{equipamentoDetalhe.ativo === false ? "Inativo" : "Ativo"}</Badge></div><p className="mt-3 text-sm text-muted-foreground">{[equipamentoDetalhe.marca, equipamentoDetalhe.modelo].filter(Boolean).join(" • ") || "Marca/modelo não informados"}</p>{equipamentoDetalhe.descricao && <p className="mt-2 max-w-3xl text-sm">{equipamentoDetalhe.descricao}</p>}</div><Button onClick={() => abrirNovoEstoque(equipamentoDetalhe)} disabled={equipamentoDetalhe.ativo === false || equipamentoDetalhe.situacao === "PLANEJADO"}><Plus className="mr-2 h-4 w-4" />Adicionar estoque</Button></div></div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5"><div className="rounded-xl border border-primary/15 bg-primary/5 p-4"><div className="flex items-center gap-2 text-xs font-medium text-primary"><Box className="h-4 w-4" />Saldo</div><p className="mt-2 text-2xl font-bold">{saldoTotal(equipamentoDetalhe.id)}</p></div><div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-4"><div className="flex items-center gap-2 text-xs font-medium text-emerald-700"><Warehouse className="h-4 w-4" />Almoxarifado</div><p className="mt-2 text-2xl font-bold text-emerald-800">{almoxarifadoTotal(equipamentoDetalhe.id)}</p></div><div className="rounded-xl border border-blue-200 bg-blue-50/60 p-4"><div className="flex items-center gap-2 text-xs font-medium text-blue-700"><UserRound className="h-4 w-4" />Em uso</div><p className="mt-2 text-2xl font-bold text-blue-800">{apropriadoTotal(equipamentoDetalhe.id)}</p></div><div className="rounded-xl border border-orange-200 bg-orange-50/60 p-4"><div className="flex items-center gap-2 text-xs font-medium text-orange-700"><Wrench className="h-4 w-4" />Manutenção</div><p className="mt-2 text-2xl font-bold text-orange-800">{manutencaoTotal(equipamentoDetalhe.id)}</p></div><div className="rounded-xl border bg-muted/20 p-4"><div className="flex items-center gap-2 text-xs font-medium text-muted-foreground"><ClipboardList className="h-4 w-4" />Registros físicos</div><p className="mt-2 text-2xl font-bold">{estoqueSelecionado.length}</p></div></div>
       <div className="space-y-3"><div><h3 className="font-semibold">Estoque físico</h3><p className="text-sm text-muted-foreground">Cada linha representa um registro físico independente. Com o financeiro ativo, os custos abaixo representam os valores efetivos dessa unidade/lote.</p></div><div className="overflow-x-auto rounded-lg border"><table className="min-w-[1120px] w-full text-sm"><thead><tr className="border-b bg-muted/30 text-left"><th className="px-3 py-3">Proprietário</th><th className="px-3 py-3">Vínculo</th><th className="px-3 py-3">Localização atual</th><th className="px-3 py-3">Identificação</th><th className="px-3 py-3">Serial</th><th className="px-3 py-3">Patrimônio</th><th className="px-3 py-3">Saldo</th>{financeiroEquipamentosAtivo && <><th className="px-3 py-3">Valor efetivo</th><th className="px-3 py-3">Recorrente</th></>}<th className="px-3 py-3">Ativo</th>{financeiroEquipamentosAtivo && <th className="px-3 py-3 text-right">Financeiro</th>}</tr></thead><tbody>{estoqueSelecionado.map((e) => { const equipamento = equipamentoDetalhe; const valorUnitario = resolverValorUnitario(equipamento, e); const custoRecorrente = resolverCustoRecorrenteUnitario(equipamento, e); const valorTotal = valorUnitario == null ? null : valorUnitario * Math.max(0, e.quantidade); const recorrenteTotal = custoRecorrente == null ? null : custoRecorrente * Math.max(0, e.quantidade); const valorEspecifico = e.valor_unitario != null; const recorrenteEspecifico = e.custo_recorrente_unitario != null; return <tr key={e.id} className="border-b last:border-0 align-top"><td className="px-3 py-3">{empresaPorId.get(e.empresa_id) ?? "—"}</td><td className="px-3 py-3">{vinculoLabel(e.vinculo)}</td><td className="px-3 py-3"><div className="space-y-1">{(alocacoesAtuais.get(e.id) ?? []).map((local) => <div key={`${local.tipo}:${local.id}`}><span>{rotuloLocal(local)}</span><span className="ml-2 text-xs text-muted-foreground">({local.quantidade})</span></div>)}{(alocacoesAtuais.get(e.id) ?? []).length === 0 && <span className={resumoPorEstoque.get(e.id)?.saldo === 0 ? "font-medium text-muted-foreground" : "text-muted-foreground"}>{situacaoSemLocalizacao(e.id)}</span>}</div></td><td className="px-3 py-3">{e.identificacao ?? "—"}</td><td className="px-3 py-3">{e.serial ?? "—"}</td><td className="px-3 py-3">{e.patrimonio ?? "—"}</td><td className="px-3 py-3 font-medium">{resumoPorEstoque.get(e.id)?.saldo ?? Math.max(0, e.quantidade - e.devolvido)}</td>{financeiroEquipamentosAtivo && <><td className="px-3 py-3"><div className="font-semibold">{valorTotal == null ? "—" : valorTotal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</div><div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground"><span>{valorUnitario == null ? "Sem valor" : `${valorUnitario.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} / un.`}</span><Badge variant="outline" className="h-5 px-1.5 text-[10px]">{valorEspecifico ? "Específico" : "Padrão"}</Badge></div></td><td className="px-3 py-3"><div className="font-medium">{recorrenteTotal == null ? "—" : recorrenteTotal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</div><div className="mt-1 text-xs text-muted-foreground">{(e.periodicidade_custo ?? equipamento.periodicidade_custo) === "HORA" ? "por hora" : (e.periodicidade_custo ?? equipamento.periodicidade_custo) === "DIA" ? "por dia" : (e.periodicidade_custo ?? equipamento.periodicidade_custo) === "SEMANA" ? "por semana" : (e.periodicidade_custo ?? equipamento.periodicidade_custo) === "MES" ? "por mês" : (e.periodicidade_custo ?? equipamento.periodicidade_custo) === "ANO" ? "por ano" : "sem periodicidade"}{recorrenteEspecifico ? " · específico" : " · padrão"}</div></td></>}<td className="px-3 py-3"><label className="inline-flex cursor-pointer items-center gap-2" title={e.ativo === false ? "Ativar registro" : "Desativar registro"}><input type="checkbox" checked={e.ativo !== false} onChange={() => void alternarEstoqueAtivo(e)} className="h-4 w-4 cursor-pointer rounded border-input accent-primary" /><span className="text-xs text-muted-foreground">{e.ativo === false ? "Inativo" : "Ativo"}</span></label></td>{financeiroEquipamentosAtivo && <td className="px-3 py-3 text-right"><Button variant="outline" size="sm" className="h-8" onClick={() => abrirEdicaoFinanceiro(e)}><DollarSign className="mr-1.5 h-3.5 w-3.5" />Editar custos</Button></td>}</tr>; })}{estoqueSelecionado.length === 0 && <tr><td colSpan={financeiroEquipamentosAtivo ? 11 : 8} className="py-8 text-center text-muted-foreground">Nenhum registro de estoque.</td></tr>}</tbody></table></div></div>
       {(manutencaoEquipamentosAtivo || manutencoesSelecionadas.length > 0) && <div className="space-y-3">
@@ -1642,9 +1803,9 @@ function EquipamentosPage() {
 
     <Dialog open={dialogNovaCategoria} onOpenChange={setDialogNovaCategoria}><DialogContent className="sm:max-w-md"><DialogHeader><DialogTitle>Nova categoria de equipamento</DialogTitle></DialogHeader><div className="space-y-2 py-2"><Label>Nome da categoria</Label><Input value={novaCategoria} onChange={(e) => setNovaCategoria(e.target.value)} autoFocus onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void criarCategoria(); } }} /></div><DialogFooter><Button variant="outline" onClick={() => setDialogNovaCategoria(false)}>Cancelar</Button><Button onClick={() => void criarCategoria()} disabled={salvando}>{salvando ? "Criando..." : "Criar categoria"}</Button></DialogFooter></DialogContent></Dialog>
 
-    <Dialog open={dialogAberto} onOpenChange={setDialogAberto}><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl"><DialogHeader><DialogTitle>{editando ? "Editar equipamento" : "Novo equipamento"}</DialogTitle></DialogHeader><div className="grid gap-4 py-2"><div className="space-y-2"><Label>Nome *</Label><Input value={formulario.nome} onChange={(e) => atualizarCampo("nome", e.target.value)} /></div><div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><Label>Categoria *</Label><Select value={formulario.categoria_id} onValueChange={(v) => { if (v === "__nova__") { setNovaCategoria(""); setDialogNovaCategoria(true); } else atualizarCampo("categoria_id", v); }}><SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger><SelectContent>{categorias.map((c) => <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>)}<SelectItem value="__nova__">+ Nova categoria</SelectItem></SelectContent></Select></div><div className="space-y-2"><Label>Tipo de controle *</Label><Select value={formulario.tipo_controle} onValueChange={(v) => atualizarCampo("tipo_controle", v as EquipamentoTipoControle)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="INDIVIDUAL">Individual</SelectItem><SelectItem value="QUANTITATIVO">Quantitativo</SelectItem></SelectContent></Select></div></div><div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><Label>Marca</Label><Input value={formulario.marca} onChange={(e) => atualizarCampo("marca", e.target.value)} /></div><div className="space-y-2"><Label>Modelo</Label><Input value={formulario.modelo} onChange={(e) => atualizarCampo("modelo", e.target.value)} /></div></div><div className="space-y-2"><Label>Descrição</Label><textarea value={formulario.descricao} onChange={(e) => atualizarCampo("descricao", e.target.value)} rows={4} className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm outline-none placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring" /></div>{financeiroEquipamentosAtivo && <div className="rounded-xl border bg-muted/20 p-4"><div className="mb-3"><p className="text-sm font-semibold">Parâmetros financeiros padrão</p><p className="mt-1 text-xs text-muted-foreground">Servem como referência para as unidades deste cadastro. Podem ser sobrescritos no estoque físico.</p></div><div className="grid gap-4 sm:grid-cols-3"><div className="space-y-2"><Label>Valor de referência</Label><Input type="number" min="0" step="0.01" value={formulario.valor_referencia} onChange={(e) => atualizarCampo("valor_referencia", e.target.value)} placeholder="0,00" /></div><div className="space-y-2"><Label>Custo recorrente</Label><Input type="number" min="0" step="0.01" value={formulario.custo_recorrente} onChange={(e) => atualizarCampo("custo_recorrente", e.target.value)} placeholder="0,00" /></div><div className="space-y-2"><Label>Periodicidade</Label><Select value={formulario.periodicidade_custo || "__nenhuma__"} onValueChange={(v) => atualizarCampo("periodicidade_custo", v === "__nenhuma__" ? "" : v as Formulario["periodicidade_custo"])}><SelectTrigger><SelectValue placeholder="Sem periodicidade" /></SelectTrigger><SelectContent><SelectItem value="__nenhuma__">Sem periodicidade</SelectItem><SelectItem value="HORA">Por hora</SelectItem><SelectItem value="DIA">Por dia</SelectItem><SelectItem value="SEMANA">Por semana</SelectItem><SelectItem value="MES">Por mês</SelectItem><SelectItem value="ANO">Por ano</SelectItem></SelectContent></Select></div></div></div>}</div><DialogFooter><Button variant="outline" onClick={() => setDialogAberto(false)}>Cancelar</Button><Button onClick={() => void salvar()} disabled={salvando}>{salvando ? "Salvando..." : "Salvar equipamento"}</Button></DialogFooter></DialogContent></Dialog>
+    <Dialog open={dialogAberto} onOpenChange={setDialogAberto}><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl"><DialogHeader><DialogTitle>{editando ? "Editar equipamento" : "Novo equipamento"}</DialogTitle></DialogHeader><div className="grid gap-4 py-2"><div className="space-y-2"><Label>Nome *</Label><Input value={formulario.nome} onChange={(e) => atualizarCampo("nome", e.target.value)} /></div><div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><Label>Categoria *</Label><Select value={formulario.categoria_id} onValueChange={(v) => { if (v === "__nova__") { setNovaCategoria(""); setDialogNovaCategoria(true); } else atualizarCampo("categoria_id", v); }}><SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger><SelectContent>{categorias.map((c) => <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>)}<SelectItem value="__nova__">+ Nova categoria</SelectItem></SelectContent></Select></div><div className="space-y-2"><Label>Tipo de controle *</Label><Select value={formulario.tipo_controle} onValueChange={(v) => atualizarCampo("tipo_controle", v as EquipamentoTipoControle)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="INDIVIDUAL">Individual</SelectItem><SelectItem value="QUANTITATIVO">Quantitativo</SelectItem></SelectContent></Select></div></div><div className="space-y-2"><Label>Situação do cadastro</Label><Select value={formulario.situacao} onValueChange={(v) => atualizarCampo("situacao", v as Formulario["situacao"])}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ATIVO">Operacional</SelectItem><SelectItem value="PLANEJADO">Planejado (somente simulação)</SelectItem></SelectContent></Select><p className="text-xs text-muted-foreground">Para registrar entrada física, altere para Operacional.</p></div><div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><Label>Marca</Label><Input value={formulario.marca} onChange={(e) => atualizarCampo("marca", e.target.value)} /></div><div className="space-y-2"><Label>Modelo</Label><Input value={formulario.modelo} onChange={(e) => atualizarCampo("modelo", e.target.value)} /></div></div><div className="space-y-2"><Label>Descrição</Label><textarea value={formulario.descricao} onChange={(e) => atualizarCampo("descricao", e.target.value)} rows={4} className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm outline-none placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring" /></div>{financeiroEquipamentosAtivo && <div className="rounded-xl border bg-muted/20 p-4"><div className="mb-3"><p className="text-sm font-semibold">Parâmetros financeiros padrão</p><p className="mt-1 text-xs text-muted-foreground">Servem como referência para as unidades deste cadastro. Podem ser sobrescritos no estoque físico.</p></div><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"><div className="space-y-2"><Label>Valor de referência</Label><Input type="number" min="0" step="0.01" value={formulario.valor_referencia} onChange={(e) => atualizarCampo("valor_referencia", e.target.value)} placeholder="0,00" /><p className="text-xs text-muted-foreground">Base para investimento e depreciação projetada.</p></div><div className="space-y-2"><Label>Vida útil (meses)</Label><Input type="number" min="1" step="1" value={formulario.vida_util_meses} onChange={(e) => atualizarCampo("vida_util_meses", e.target.value)} placeholder="Ex.: 60" /><p className="text-xs text-muted-foreground">Usada na depreciação linear.</p></div><div className="space-y-2"><Label>Custo recorrente</Label><Input type="number" min="0" step="0.01" value={formulario.custo_recorrente} onChange={(e) => atualizarCampo("custo_recorrente", e.target.value)} placeholder="0,00" /></div><div className="space-y-2"><Label>Periodicidade</Label><Select value={formulario.periodicidade_custo || "__nenhuma__"} onValueChange={(v) => atualizarCampo("periodicidade_custo", v === "__nenhuma__" ? "" : v as Formulario["periodicidade_custo"])}><SelectTrigger><SelectValue placeholder="Sem periodicidade" /></SelectTrigger><SelectContent><SelectItem value="__nenhuma__">Sem periodicidade</SelectItem><SelectItem value="HORA">Por hora</SelectItem><SelectItem value="DIA">Por dia</SelectItem><SelectItem value="SEMANA">Por semana</SelectItem><SelectItem value="MES">Por mês</SelectItem><SelectItem value="ANO">Por ano</SelectItem></SelectContent></Select></div></div></div>}</div><DialogFooter><Button variant="outline" onClick={() => setDialogAberto(false)}>Cancelar</Button><Button onClick={() => void salvar()} disabled={salvando}>{salvando ? "Salvando..." : "Salvar equipamento"}</Button></DialogFooter></DialogContent></Dialog>
 
-    <Dialog open={dialogEstoque} onOpenChange={setDialogEstoque}><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl"><DialogHeader><DialogTitle>Adicionar equipamento ao estoque</DialogTitle></DialogHeader><div className="grid gap-4 py-2"><div className="space-y-2"><Label>Equipamento *</Label><Select value={estoqueFormulario.equipamento_id} onValueChange={(v) => atualizarEstoque("equipamento_id", v)}><SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger><SelectContent>{equipamentos.filter((e) => e.ativo !== false).map((e) => <SelectItem key={e.id} value={e.id}>{e.nome}</SelectItem>)}</SelectContent></Select></div><div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><Label>Empresa proprietária *</Label><Select value={estoqueFormulario.empresa_id} onValueChange={(v) => atualizarEstoque("empresa_id", v)}><SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger><SelectContent>{empresas.map((e) => <SelectItem key={e.id} value={e.id}>{e.nome}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><Label>Vínculo *</Label><Select value={estoqueFormulario.vinculo} onValueChange={(v) => atualizarEstoque("vinculo", v as EquipamentoVinculo)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="PROPRIO">Próprio</SelectItem><SelectItem value="ALUGADO">Alugado</SelectItem><SelectItem value="EMPRESTIMO">Empréstimo</SelectItem></SelectContent></Select></div></div><div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><Label>Quantidade *</Label><Input type="number" min={1} step={1} disabled={equipamentos.find((e) => e.id === estoqueFormulario.equipamento_id)?.tipo_controle === "INDIVIDUAL"} value={estoqueFormulario.quantidade} onChange={(e) => atualizarEstoque("quantidade", e.target.value)} /></div><div className="space-y-2"><Label>Equipe de destino</Label><Select value={estoqueFormulario.equipe_id || "__projeto__"} onValueChange={(v) => atualizarEstoque("equipe_id", v === "__projeto__" ? "" : v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="__projeto__">Projeto inteiro</SelectItem>{equipes.map((e) => <SelectItem key={e.id} value={e.id}>{e.nome}</SelectItem>)}</SelectContent></Select></div></div><div className="grid gap-4 sm:grid-cols-3"><div className="space-y-2"><Label>Patrimônio</Label><Input value={estoqueFormulario.patrimonio} onChange={(e) => atualizarEstoque("patrimonio", e.target.value)} /></div><div className="space-y-2"><Label>Identificação</Label><Input value={estoqueFormulario.identificacao} onChange={(e) => atualizarEstoque("identificacao", e.target.value)} /></div><div className="space-y-2"><Label>Serial</Label><Input value={estoqueFormulario.serial} onChange={(e) => atualizarEstoque("serial", e.target.value)} /></div></div><div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><Label>Data de entrada *</Label><Input type="date" value={estoqueFormulario.data_entrada} onChange={(e) => atualizarEstoque("data_entrada", e.target.value)} /></div><div className="space-y-2"><Label>Documento de referência</Label><Input value={estoqueFormulario.referencia_documento} onChange={(e) => atualizarEstoque("referencia_documento", e.target.value)} /></div></div>{financeiroEquipamentosAtivo && <div className="rounded-xl border bg-muted/20 p-4"><div className="mb-3"><p className="text-sm font-semibold">Parâmetros financeiros da unidade/lote</p><p className="mt-1 text-xs text-muted-foreground">Preencha apenas quando o valor ou custo desta unidade for diferente do padrão do cadastro.</p></div><div className="grid gap-4 sm:grid-cols-3"><div className="space-y-2"><Label>Valor unitário</Label><Input type="number" min="0" step="0.01" value={estoqueFormulario.valor_unitario} onChange={(e) => atualizarEstoque("valor_unitario", e.target.value)} placeholder="Usar padrão" /></div><div className="space-y-2"><Label>Custo recorrente unitário</Label><Input type="number" min="0" step="0.01" value={estoqueFormulario.custo_recorrente_unitario} onChange={(e) => atualizarEstoque("custo_recorrente_unitario", e.target.value)} placeholder="Usar padrão" /></div><div className="space-y-2"><Label>Periodicidade</Label><Select value={estoqueFormulario.periodicidade_custo || "__nenhuma__"} onValueChange={(v) => atualizarEstoque("periodicidade_custo", v === "__nenhuma__" ? "" : v as EstoqueFormulario["periodicidade_custo"])}><SelectTrigger><SelectValue placeholder="Usar padrão" /></SelectTrigger><SelectContent><SelectItem value="__nenhuma__">Usar padrão</SelectItem><SelectItem value="HORA">Por hora</SelectItem><SelectItem value="DIA">Por dia</SelectItem><SelectItem value="SEMANA">Por semana</SelectItem><SelectItem value="MES">Por mês</SelectItem><SelectItem value="ANO">Por ano</SelectItem></SelectContent></Select></div></div></div>}<div className="space-y-2"><Label>Observações</Label><textarea value={estoqueFormulario.observacoes} onChange={(e) => atualizarEstoque("observacoes", e.target.value)} rows={4} className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm outline-none placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring" /></div></div><DialogFooter><Button variant="outline" onClick={() => setDialogEstoque(false)}>Cancelar</Button><Button onClick={() => void salvarEstoque()} disabled={salvando}>{salvando ? "Registrando entrada..." : "Registrar entrada"}</Button></DialogFooter></DialogContent></Dialog>
+    <Dialog open={dialogEstoque} onOpenChange={setDialogEstoque}><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl"><DialogHeader><DialogTitle>Adicionar equipamento ao estoque</DialogTitle></DialogHeader><div className="grid gap-4 py-2"><div className="space-y-2"><Label>Equipamento *</Label><Select value={estoqueFormulario.equipamento_id} onValueChange={(v) => atualizarEstoque("equipamento_id", v)}><SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger><SelectContent>{equipamentos.filter((e) => e.ativo !== false && e.situacao !== "PLANEJADO").map((e) => <SelectItem key={e.id} value={e.id}>{e.nome}</SelectItem>)}</SelectContent></Select></div><div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><Label>Empresa proprietária *</Label><Select value={estoqueFormulario.empresa_id} onValueChange={(v) => atualizarEstoque("empresa_id", v)}><SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger><SelectContent>{empresas.map((e) => <SelectItem key={e.id} value={e.id}>{e.nome}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><Label>Vínculo *</Label><Select value={estoqueFormulario.vinculo} onValueChange={(v) => atualizarEstoque("vinculo", v as EquipamentoVinculo)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="PROPRIO">Próprio</SelectItem><SelectItem value="ALUGADO">Alugado</SelectItem><SelectItem value="EMPRESTIMO">Empréstimo</SelectItem></SelectContent></Select></div></div><div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><Label>Quantidade *</Label><Input type="number" min={1} step={1} disabled={equipamentos.find((e) => e.id === estoqueFormulario.equipamento_id)?.tipo_controle === "INDIVIDUAL"} value={estoqueFormulario.quantidade} onChange={(e) => atualizarEstoque("quantidade", e.target.value)} /></div><div className="space-y-2"><Label>Equipe de destino</Label><Select value={estoqueFormulario.equipe_id || "__projeto__"} onValueChange={(v) => atualizarEstoque("equipe_id", v === "__projeto__" ? "" : v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="__projeto__">Projeto inteiro</SelectItem>{equipes.map((e) => <SelectItem key={e.id} value={e.id}>{e.nome}</SelectItem>)}</SelectContent></Select></div></div><div className="grid gap-4 sm:grid-cols-3"><div className="space-y-2"><Label>Patrimônio</Label><Input value={estoqueFormulario.patrimonio} onChange={(e) => atualizarEstoque("patrimonio", e.target.value)} /></div><div className="space-y-2"><Label>Identificação</Label><Input value={estoqueFormulario.identificacao} onChange={(e) => atualizarEstoque("identificacao", e.target.value)} /></div><div className="space-y-2"><Label>Serial</Label><Input value={estoqueFormulario.serial} onChange={(e) => atualizarEstoque("serial", e.target.value)} /></div></div><div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><Label>Data de entrada *</Label><Input type="date" value={estoqueFormulario.data_entrada} onChange={(e) => atualizarEstoque("data_entrada", e.target.value)} /></div><div className="space-y-2"><Label>Documento de referência</Label><Input value={estoqueFormulario.referencia_documento} onChange={(e) => atualizarEstoque("referencia_documento", e.target.value)} /></div></div>{financeiroEquipamentosAtivo && <div className="rounded-xl border bg-muted/20 p-4"><div className="mb-3"><p className="text-sm font-semibold">Parâmetros financeiros da unidade/lote</p><p className="mt-1 text-xs text-muted-foreground">Preencha apenas quando o valor ou custo desta unidade for diferente do padrão do cadastro.</p></div><div className="grid gap-4 sm:grid-cols-3"><div className="space-y-2"><Label>Valor unitário</Label><Input type="number" min="0" step="0.01" value={estoqueFormulario.valor_unitario} onChange={(e) => atualizarEstoque("valor_unitario", e.target.value)} placeholder="Usar padrão" /></div><div className="space-y-2"><Label>Custo recorrente unitário</Label><Input type="number" min="0" step="0.01" value={estoqueFormulario.custo_recorrente_unitario} onChange={(e) => atualizarEstoque("custo_recorrente_unitario", e.target.value)} placeholder="Usar padrão" /></div><div className="space-y-2"><Label>Periodicidade</Label><Select value={estoqueFormulario.periodicidade_custo || "__nenhuma__"} onValueChange={(v) => atualizarEstoque("periodicidade_custo", v === "__nenhuma__" ? "" : v as EstoqueFormulario["periodicidade_custo"])}><SelectTrigger><SelectValue placeholder="Usar padrão" /></SelectTrigger><SelectContent><SelectItem value="__nenhuma__">Usar padrão</SelectItem><SelectItem value="HORA">Por hora</SelectItem><SelectItem value="DIA">Por dia</SelectItem><SelectItem value="SEMANA">Por semana</SelectItem><SelectItem value="MES">Por mês</SelectItem><SelectItem value="ANO">Por ano</SelectItem></SelectContent></Select></div></div></div>}<div className="space-y-2"><Label>Observações</Label><textarea value={estoqueFormulario.observacoes} onChange={(e) => atualizarEstoque("observacoes", e.target.value)} rows={4} className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm outline-none placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring" /></div></div><DialogFooter><Button variant="outline" onClick={() => setDialogEstoque(false)}>Cancelar</Button><Button onClick={() => void salvarEstoque()} disabled={salvando}>{salvando ? "Registrando entrada..." : "Registrar entrada"}</Button></DialogFooter></DialogContent></Dialog>
   </>;
 }
 

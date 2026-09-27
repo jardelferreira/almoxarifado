@@ -1,7 +1,9 @@
 import type { ID } from "./common";
+import type { EquipamentoMetodoDepreciacao } from "./financeiro-equipamento";
 
 export type EquipamentoTipoControle = "INDIVIDUAL" | "QUANTITATIVO";
 export type EquipamentoVinculo = "PROPRIO" | "ALUGADO" | "EMPRESTIMO";
+export type EquipamentoSituacaoCadastro = "ATIVO" | "PLANEJADO";
 export type EquipamentoStatus = "ATIVO" | "ENCERRADO";
 
 export type EquipamentoPeriodicidadeCusto =
@@ -44,7 +46,14 @@ export interface Equipamento {
   periodicidade_custo?: EquipamentoPeriodicidadeCusto | null | undefined;
   fonte_valor?: EquipamentoFonteValor | null | undefined;
 
+  /** Vida útil utilizada na projeção de depreciação linear, em meses. */
+  vida_util_meses?: number | null | undefined;
+  /** Método utilizado na projeção financeira. Atualmente somente LINEAR. */
+  metodo_depreciacao?: EquipamentoMetodoDepreciacao | null | undefined;
+
   ativo: boolean;
+  /** Cadastros legados sem situação são considerados ATIVO. */
+  situacao?: EquipamentoSituacaoCadastro;
   criado_em: string;
   atualizado_em: string;
 }

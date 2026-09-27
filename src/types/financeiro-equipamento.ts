@@ -12,6 +12,9 @@ export interface ManutencaoDocumento {
 
 export type ApropriacaoFinanceiraEquipamentoTipo = "MANUTENCAO";
 
+/** Método de depreciação usado apenas para projeções financeiras do equipamento. */
+export type EquipamentoMetodoDepreciacao = "LINEAR";
+
 /**
  * Rateio financeiro rastreável de um documento para um equipamento.
  *
