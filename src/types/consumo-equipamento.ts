@@ -1,6 +1,6 @@
 import type { ID } from "./common";
 
-export type ConsumoEquipamentoOrigem = "MANUAL";
+export type ConsumoEquipamentoOrigem = "MANUAL" | "AUTOMATICO";
 
 /**
  * Apropriação física de uma saída de material para um registro de estoque

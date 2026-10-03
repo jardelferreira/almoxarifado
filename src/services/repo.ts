@@ -1,6 +1,11 @@
 import { getDB, uid } from "@/db/db";
 import { configuracoesRepo } from "@/services/configuracoes-repo";
 import { normalizarDataHoraLocal } from "@/utils/format";
+import {
+  reduzirConsumoPelaDevolucao,
+  restaurarConsumoDaDevolucao,
+  type ResultadoRestauracaoConsumo,
+} from "@/services/equipamentos/consumo-devolucao";
 import type {
   Categoria,
   Empresa,
@@ -13,6 +18,13 @@ import type {
   Projeto,
   Unidade,
 } from "@/types";
+
+/**
+ * Quantidades são ponto flutuante: 0,3 − 0,1 − 0,2 dá −2,7e-17, e a checagem
+ * `saldo < 0` rejeitaria uma saída que zera o estoque exatamente. Toda
+ * comparação de saldo/quantidade passa por aqui.
+ */
+const arredondar = (valor: number): number => Number(valor.toFixed(6));
 
 type ProjetoEntity =
   | Empresa
@@ -530,10 +542,15 @@ export const repo = {
       const devolvido = await db.movimentacoes
         .where("projeto_id")
         .equals(m.projeto_id)
-        .filter((item) => item.tipo === "DEVOLUCAO" && item.movimentacao_origem_id === origem.id)
+        .filter(
+          (item) =>
+            item.tipo === "DEVOLUCAO" &&
+            item.movimentacao_origem_id === origem.id &&
+            item.id !== m.id,
+        )
         .toArray();
       const totalDevolvido = devolvido.reduce((total, item) => total + item.quantidade, 0);
-      if (totalDevolvido + m.quantidade > origem.quantidade) {
+      if (arredondar(totalDevolvido + m.quantidade) > arredondar(origem.quantidade)) {
         throw new Error("A quantidade devolvida excede o saldo disponível da saída de origem.");
       }
     }
@@ -553,19 +570,73 @@ export const repo = {
           return saldo;
         }, 0);
 
-      const saldoResultante = saldoAtual + (m.tipo === "AJUSTE" ? (m.sinal ?? 1) * m.quantidade : -m.quantidade);
+      const saldoResultante = arredondar(saldoAtual + (m.tipo === "AJUSTE" ? (m.sinal ?? 1) * m.quantidade : -m.quantidade));
       if (saldoResultante < 0 && !configuracao.estoque.permitir_estoque_negativo) {
         throw new Error(`Quantidade insuficiente na equipe "${equipe.nome}". Disponível: ${saldoAtual}.`);
       }
     }
 
-    const mov: Movimentacao = {
+    const existente = m.id ? await db.movimentacoes.get(m.id) : undefined;
+
+    // Editar uma saída já apropriada a equipamentos não pode deixar o
+    // consumo maior que a própria saída (nem apontar para outro produto).
+    if (existente && existente.tipo === "SAIDA") {
+      const consumos = await db.consumos_equipamentos
+        .where("movimentacao_id")
+        .equals(existente.id)
+        .toArray();
+
+      if (consumos.length > 0) {
+        if (m.tipo !== "SAIDA" || m.produto_id !== existente.produto_id) {
+          throw new Error(
+            "Esta saída possui consumo apropriado a equipamentos; remova as apropriações antes de alterar o tipo ou o produto.",
+          );
+        }
+        const apropriado = arredondar(
+          consumos.reduce((total, consumo) => total + consumo.quantidade, 0),
+        );
+        if (arredondar(m.quantidade) < apropriado) {
+          throw new Error(
+            `Esta saída possui ${apropriado} apropriado(s) a equipamentos; a quantidade não pode ser menor que isso.`,
+          );
+        }
+      }
+    }
+
+    // O rastro de redução é sempre gerado aqui; nunca aceito de fora.
+    const base: Movimentacao = {
       ...m,
       id: m.id ?? uid(),
       data: normalizarDataHoraLocal(m.data) ?? m.data,
+      criado_em: m.criado_em ?? existente?.criado_em ?? new Date().toISOString(),
     };
+    delete base.consumo_reduzido;
 
-    await db.movimentacoes.put(mov);
+    let mov: Movimentacao = base;
+
+    // Gravação da movimentação + efeito sobre o consumo por equipamento são
+    // atômicos: ou a devolução e a redução do consumo acontecem juntas, ou
+    // nenhuma. Dentro da transação só há chamadas Dexie.
+    await db.transaction(
+      "rw",
+      [db.movimentacoes, db.consumos_equipamentos],
+      async () => {
+        // Reescrever uma devolução existente: primeiro desfaz o efeito antigo.
+        if (existente?.tipo === "DEVOLUCAO") {
+          await restaurarConsumoDaDevolucao(existente);
+        }
+
+        await db.movimentacoes.put(base);
+
+        if (base.tipo === "DEVOLUCAO") {
+          const rastro = await reduzirConsumoPelaDevolucao(base);
+          if (rastro.length > 0) {
+            mov = { ...base, consumo_reduzido: rastro };
+            await db.movimentacoes.put(mov);
+          }
+        }
+      },
+    );
 
     return mov;
   },
@@ -633,11 +704,12 @@ export const repo = {
         return saldo;
       }, 0);
 
-    if (saldoOrigem - quantidade < 0 && !configuracao.estoque.permitir_estoque_negativo) {
+    if (arredondar(saldoOrigem - quantidade) < 0 && !configuracao.estoque.permitir_estoque_negativo) {
       throw new Error(`Quantidade insuficiente na equipe de origem "${equipeOrigem.nome}". Disponível: ${saldoOrigem}.`);
     }
 
     const dataMovimentacao = normalizarDataHoraLocal(data) ?? data;
+    const criadoEm = new Date().toISOString();
     const origemId = uid();
     const destinoId = uid();
     const nota = observacao?.trim() || null;
@@ -659,6 +731,7 @@ export const repo = {
       equipe_id: equipeOrigemId,
       documento_id: documentoId,
       documento_item_id: null,
+      criado_em: criadoEm,
     };
 
     const destino: Movimentacao = {
@@ -679,6 +752,7 @@ export const repo = {
       documento_id: documentoId,
       documento_item_id: null,
       movimentacao_origem_id: origemId,
+      criado_em: criadoEm,
     };
 
     await db.transaction("rw", db.movimentacoes, async () => {
@@ -688,19 +762,49 @@ export const repo = {
     return { origem, destino };
   },
 
-  async deleteMovimentacao(id: string) {
+  async deleteMovimentacao(
+    id: string,
+  ): Promise<{ consumoRestaurado: ResultadoRestauracaoConsumo | null }> {
     const db = getDB();
 
     const movimentacao = await db.movimentacoes.get(id);
 
     if (!movimentacao) {
-      return;
+      return { consumoRestaurado: null };
     }
+
+    let consumoRestaurado: ResultadoRestauracaoConsumo | null = null;
 
     await db.transaction(
       "rw",
       [db.movimentacoes, db.consumos_equipamentos],
       async () => {
+        // Excluir uma saída que tem devoluções deixaria as devoluções
+        // apontando para um registro inexistente e ainda somando estoque.
+        if (movimentacao.tipo === "SAIDA") {
+          const devolucoes = await db.movimentacoes
+            .where("projeto_id")
+            .equals(movimentacao.projeto_id)
+            .filter(
+              (item) =>
+                item.tipo === "DEVOLUCAO" &&
+                item.movimentacao_origem_id === movimentacao.id,
+            )
+            .count();
+
+          if (devolucoes > 0) {
+            throw new Error(
+              `Esta saída possui ${devolucoes} devolução(ões) vinculada(s). Exclua as devoluções antes de excluir a saída.`,
+            );
+          }
+        }
+
+        // Excluir uma devolução devolve ao consumo dos equipamentos o que ela
+        // havia reduzido (limitado ao saldo da saída).
+        if (movimentacao.tipo === "DEVOLUCAO") {
+          consumoRestaurado = await restaurarConsumoDaDevolucao(movimentacao);
+        }
+
         await db.consumos_equipamentos
           .where("movimentacao_id")
           .equals(id)
@@ -708,6 +812,8 @@ export const repo = {
         await db.movimentacoes.delete(id);
       },
     );
+
+    return { consumoRestaurado };
   },
 
   async movimentacoesDoProduto(

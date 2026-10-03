@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,6 +14,11 @@ import { useDados, useProjetoAtivoId } from "@/hooks/useAppData";
 import { repo } from "@/services/repo";
 import { estoqueDoProduto } from "@/services/estoque";
 import { configuracoesRepo } from "@/services/configuracoes-repo";
+import {
+  arredondarQuantidade,
+  consumoEquipamentoRepo,
+  descreverResultadoApropriacao,
+} from "@/services/equipamentos/consumo-equipamento-repo";
 import { getDB } from "@/db/db";
 import { formatarData, hoje, num } from "@/utils/format";
 import type { Documento, Movimentacao, MovimentacaoTipo } from "@/types";
@@ -143,6 +148,22 @@ function Formulario({ modo, produtoInicial }: { modo: string; produtoInicial: st
   const [sinal, setSinal] = useState<1 | -1>(1);
   const [observacao, setObservacao] = useState("");
   const [documentoId, setDocumentoId] = useState<string | null>(null);
+  // Trava contra duplo clique: sem ela, dois cliques rápidos registravam DUAS
+  // saídas (o estado `salvando` sozinho é assíncrono e não fecha a janela).
+  const salvandoRef = useRef(false);
+  const [salvando, setSalvando] = useState(false);
+
+  useEffect(() => {
+    if (!dados || equipeId !== null) return;
+
+    const equipeAlmoxarifado = dados.equipes.find(
+      (equipe) => equipe.ativo && equipe.nome.trim().toLowerCase() === "almoxarifado",
+    );
+
+    if (equipeAlmoxarifado) {
+      setEquipeId(equipeAlmoxarifado.id);
+    }
+  }, [dados, equipeId]);
 
   const produtos = useMemo(() => (dados?.produtos ?? []).filter((p) => p.ativo), [dados]);
 
@@ -184,7 +205,7 @@ function Formulario({ modo, produtoInicial }: { modo: string; produtoInicial: st
     setEquipeDestinoId(null);
   };
 
-  const salvar = async () => {
+  const registrar = async () => {
     if (!equipeId) {
       toast.error("Defina a equipe responsável pelo estoque");
       return;
@@ -197,7 +218,7 @@ function Formulario({ modo, produtoInicial }: { modo: string; produtoInicial: st
       toast.error("Informe uma quantidade maior que zero");
       return;
     }
-    if (limitaEstoque && qtd > disponivel) {
+    if (limitaEstoque && arredondarQuantidade(qtd) > arredondarQuantidade(disponivel)) {
       toast.error(`Quantidade acima do disponível (${num(disponivel)} ${unidade?.sigla ?? ""})`);
       return;
     }
@@ -280,10 +301,67 @@ function Formulario({ modo, produtoInicial }: { modo: string; produtoInicial: st
         observacao: `Transferência: ${nomeOrigem} → ${nomeDestino}. ${nota}`.trim(),
       });
     } else {
-      await repo.saveMovimentacao(base);
+      const movimentacao = await repo.saveMovimentacao(base);
+
+      if (cfg.tipo === "SAIDA" && funcionarioId) {
+        try {
+          // A leitura do módulo é feita novamente no momento do lançamento para
+          // evitar uma corrida caso a configuração ainda não tenha chegado ao
+          // estado reativo da tela.
+          const configuracaoAtual =
+            configuracao ?? (await configuracoesRepo.obter(projetoId));
+
+          if (configuracaoAtual.modulos.equipamentos !== true) {
+            toast.success(`${cfg.titulo} registrada`);
+            limpar();
+            return;
+          }
+
+          const resultado = await consumoEquipamentoRepo.apropriarAutomaticamente(
+            projetoId,
+            movimentacao.id,
+          );
+          const aviso = descreverResultadoApropriacao(resultado);
+
+          if (aviso.nivel === "sucesso") {
+            toast.success(`${cfg.titulo} registrada. ${aviso.mensagem}`);
+          } else {
+            toast.success(`${cfg.titulo} registrada.`);
+            toast.info(aviso.mensagem, { duration: 12000 });
+          }
+        } catch (error) {
+          toast.success(`${cfg.titulo} registrada`);
+          toast.warning(
+            error instanceof Error
+              ? `A saída foi registrada, mas o vínculo automático não foi criado: ${error.message}`
+              : "A saída foi registrada, mas o vínculo automático não foi criado.",
+          );
+        }
+      } else {
+        toast.success(`${cfg.titulo} registrada`);
+      }
     }
-    toast.success(`${cfg.titulo} registrada`);
     limpar();
+  };
+
+  const salvar = async () => {
+    if (salvandoRef.current) return;
+    salvandoRef.current = true;
+    setSalvando(true);
+    try {
+      await registrar();
+    } catch (error) {
+      // Antes, uma falha ao gravar virava "unhandled rejection": o botão
+      // parecia não fazer nada e o usuário não recebia nenhum aviso.
+      toast.error(
+        error instanceof Error
+          ? `Não foi possível registrar: ${error.message}`
+          : "Não foi possível registrar a movimentação.",
+      );
+    } finally {
+      salvandoRef.current = false;
+      setSalvando(false);
+    }
   };
 
   const opt = <T extends { id: string; nome: string, tipo?: string }>(arr: T[]) =>
@@ -541,7 +619,9 @@ function Formulario({ modo, produtoInicial }: { modo: string; produtoInicial: st
             <Textarea rows={2} value={observacao} onChange={(e) => setObservacao(e.target.value)} />
           </div>
           <div className="sm:col-span-2 flex gap-2">
-            <Button onClick={salvar}>Registrar {cfg.titulo.toLowerCase()}</Button>
+            <Button onClick={salvar} disabled={salvando}>
+              Registrar {cfg.titulo.toLowerCase()}
+            </Button>
             <Button variant="outline" onClick={limpar}>
               Limpar
             </Button>
@@ -583,6 +663,8 @@ function FormularioDevolucao() {
   const [quantidade, setQuantidade] = useState("");
   const [observacao, setObservacao] = useState("");
   const [documentoId, setDocumentoId] = useState<string | null>(null);
+  const salvandoRef = useRef(false);
+  const [salvando, setSalvando] = useState(false);
 
   if (!dados || !projetoId) return <p className="text-sm text-muted-foreground">Carregando…</p>;
 
@@ -625,6 +707,7 @@ function FormularioDevolucao() {
   const documentosDisponiveis = (documentos ?? []).filter((documento) => documento.status !== "CANCELADO");
 
   const salvar = async () => {
+    if (salvandoRef.current) return;
     if (!origem) {
       toast.error("Selecione a movimentação de saída");
       return;
@@ -633,7 +716,7 @@ function FormularioDevolucao() {
       toast.error("A quantidade devolvida deve ser maior que zero");
       return;
     }
-    if (qtd > maximo) {
+    if (arredondarQuantidade(qtd) > arredondarQuantidade(maximo)) {
       toast.error(`A devolução não pode passar de ${num(maximo)} ${unidade?.sigla ?? ""}`);
       return;
     }
@@ -641,29 +724,71 @@ function FormularioDevolucao() {
       toast.error("Selecione o documento exigido para esta devolução");
       return;
     }
-    await repo.saveMovimentacao({
-      projeto_id: projetoId,
-      data,
-      tipo: "DEVOLUCAO",
-      produto_id: origem.produto_id,
-      quantidade: qtd,
-      sinal: 1,
-      funcionario_id: origem.funcionario_id ?? null,
-      encarregado_id: origem.encarregado_id ?? null,
-      empresa_id: origem.empresa_id ?? null,
-      local_id: origem.local_id ?? null,
-      equipe_id: origem.equipe_id,
-      movimentacao_origem_id: origem.id,
-      documento_id: documentoObrigatorio ? documentoId : null,
-      documento_item_id: null,
-      observacao:
-        `Devolução da saída de ${formatarData(origem.data)} (${nomeFunc(origem.funcionario_id)}). ${observacao.trim()}`.trim(),
-    });
-    toast.success("Devolução registrada");
-    setOrigemId(null);
-    setQuantidade("");
-    setObservacao("");
-    setDocumentoId(null);
+
+    salvandoRef.current = true;
+    setSalvando(true);
+    try {
+      // A redução do consumo por equipamento acontece DENTRO de
+      // `repo.saveMovimentacao` (atômica com a devolução). Aqui só medimos
+      // antes/depois para informar o usuário.
+      let apropriadoAntes = 0;
+      try {
+        apropriadoAntes = await consumoEquipamentoRepo.quantidadeApropriada(
+          projetoId,
+          origem.id,
+        );
+      } catch {
+        // Informativo apenas.
+      }
+
+      await repo.saveMovimentacao({
+        projeto_id: projetoId,
+        data,
+        tipo: "DEVOLUCAO",
+        produto_id: origem.produto_id,
+        quantidade: qtd,
+        sinal: 1,
+        funcionario_id: origem.funcionario_id ?? null,
+        encarregado_id: origem.encarregado_id ?? null,
+        empresa_id: origem.empresa_id ?? null,
+        local_id: origem.local_id ?? null,
+        equipe_id: origem.equipe_id,
+        movimentacao_origem_id: origem.id,
+        documento_id: documentoObrigatorio ? documentoId : null,
+        documento_item_id: null,
+        observacao:
+          `Devolução da saída de ${formatarData(origem.data)} (${nomeFunc(origem.funcionario_id)}). ${observacao.trim()}`.trim(),
+      });
+      toast.success("Devolução registrada");
+      setOrigemId(null);
+      setQuantidade("");
+      setObservacao("");
+      setDocumentoId(null);
+
+      try {
+        const apropriadoDepois = await consumoEquipamentoRepo.quantidadeApropriada(
+          projetoId,
+          origem.id,
+        );
+        const reduzido = arredondarQuantidade(apropriadoAntes - apropriadoDepois);
+        if (reduzido > 0) {
+          toast.info(
+            `Consumo apropriado a equipamentos reduzido em ${num(reduzido)} ${unidade?.sigla ?? ""}.`.replace(" .", "."),
+          );
+        }
+      } catch {
+        // Informativo apenas; a devolução já foi registrada.
+      }
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? `Não foi possível registrar a devolução: ${error.message}`
+          : "Não foi possível registrar a devolução.",
+      );
+    } finally {
+      salvandoRef.current = false;
+      setSalvando(false);
+    }
   };
 
   return (
@@ -747,7 +872,15 @@ function FormularioDevolucao() {
           </div>
 
           <div className="sm:col-span-2 flex gap-2">
-            <Button onClick={salvar} disabled={!origem || !(qtd > 0) || qtd > maximo}>
+            <Button
+              onClick={salvar}
+              disabled={
+                salvando ||
+                !origem ||
+                !(qtd > 0) ||
+                arredondarQuantidade(qtd) > arredondarQuantidade(maximo)
+              }
+            >
               Registrar devolução
             </Button>
             <Button

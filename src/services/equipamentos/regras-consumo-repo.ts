@@ -139,6 +139,51 @@ async function validarConflito(
   }
 }
 
+/**
+ * Resolve, em memória, as regras efetivas de um equipamento/registro físico
+ * numa data: regra padrão do equipamento, sobrescrita por regra específica do
+ * registro físico com a mesma chave (produto + direcionador + periodicidade).
+ *
+ * Função pura: permite carregar as regras do projeto UMA vez e resolver para
+ * centenas de equipamentos sem uma consulta ao banco por equipamento.
+ */
+export function resolverRegrasEfetivas(
+  regras: RegraConsumoEquipamento[],
+  equipamentoId: string,
+  estoqueEquipamentoId: string | null,
+  dataReferencia: string,
+): RegraConsumoEquipamento[] {
+  const vigentes = regras.filter(
+    (regra) =>
+      regra.equipamento_id === equipamentoId &&
+      regra.ativo &&
+      dataDentroDaVigencia(
+        dataReferencia,
+        regra.vigencia_inicio,
+        regra.vigencia_fim,
+      ),
+  );
+
+  const chave = (regra: RegraConsumoEquipamento) =>
+    `${regra.produto_id}|${regra.direcionador}|${regra.periodicidade ?? ""}`;
+
+  const efetivas = new Map<string, RegraConsumoEquipamento>();
+
+  for (const regra of vigentes.filter((item) => item.estoque_equipamento_id === null)) {
+    efetivas.set(chave(regra), regra);
+  }
+
+  if (estoqueEquipamentoId) {
+    for (const regra of vigentes.filter(
+      (item) => item.estoque_equipamento_id === estoqueEquipamentoId,
+    )) {
+      efetivas.set(chave(regra), regra);
+    }
+  }
+
+  return [...efetivas.values()].sort((a, b) => a.produto_id.localeCompare(b.produto_id));
+}
+
 export const regrasConsumoEquipamentosRepo = {
   async listarProjeto(projetoId: string): Promise<RegraConsumoEquipamento[]> {
     const rows = await getDB().regras_consumo_equipamentos
@@ -173,37 +218,12 @@ export const regrasConsumoEquipamentosRepo = {
     dataReferencia = new Date().toISOString().slice(0, 10),
   ): Promise<RegraConsumoEquipamento[]> {
     const regras = await this.listarPorEquipamento(projetoId, equipamentoId);
-    const vigentes = regras.filter(
-      (regra) =>
-        regra.ativo &&
-        dataDentroDaVigencia(
-          dataReferencia,
-          regra.vigencia_inicio,
-          regra.vigencia_fim,
-        ),
+    return resolverRegrasEfetivas(
+      regras,
+      equipamentoId,
+      estoqueEquipamentoId,
+      dataReferencia,
     );
-
-    const efetivas = new Map<string, RegraConsumoEquipamento>();
-
-    for (const regra of vigentes.filter((item) => item.estoque_equipamento_id === null)) {
-      efetivas.set(
-        `${regra.produto_id}|${regra.direcionador}|${regra.periodicidade ?? ""}`,
-        regra,
-      );
-    }
-
-    if (estoqueEquipamentoId) {
-      for (const regra of vigentes.filter(
-        (item) => item.estoque_equipamento_id === estoqueEquipamentoId,
-      )) {
-        efetivas.set(
-          `${regra.produto_id}|${regra.direcionador}|${regra.periodicidade ?? ""}`,
-          regra,
-        );
-      }
-    }
-
-    return [...efetivas.values()].sort((a, b) => a.produto_id.localeCompare(b.produto_id));
   },
 
   async criar(

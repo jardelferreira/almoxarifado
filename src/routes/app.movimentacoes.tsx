@@ -13,6 +13,7 @@ import {
   FileText,
   MapPin,
   Printer,
+  RefreshCw,
   RotateCcw,
   Search,
   Trash2,
@@ -44,7 +45,11 @@ import { Combobox } from "@/components/common/Combobox";
 import { useDados, useProjetoAtivoId } from "@/hooks/useAppData";
 import { repo } from "@/services/repo";
 import { configuracoesRepo } from "@/services/configuracoes-repo";
-import { consumoEquipamentoRepo } from "@/services/equipamentos/consumo-equipamento-repo";
+import {
+  arredondarQuantidade,
+  consumoEquipamentoRepo,
+  descreverResultadoApropriacao,
+} from "@/services/equipamentos/consumo-equipamento-repo";
 import { getDB } from "@/db/db";
 import { num } from "@/utils/format";
 import type { ConsumoEquipamento, Equipamento, EstoqueEquipamento, Movimentacao } from "@/types";
@@ -156,6 +161,11 @@ function efeitoMovimentacao(movimentacao: Movimentacao) {
   return movimentacao.quantidade;
 }
 
+/** Registros antigos não têm `criado_em`; nesse caso o desempate cai no id. */
+function criadoEmDaMovimentacao(movimentacao: Movimentacao): string | undefined {
+  return movimentacao.criado_em;
+}
+
 function saldoAnteriorDaMovimentacao(
   movimentacoes: Movimentacao[],
   selecionada: Movimentacao,
@@ -168,8 +178,15 @@ function saldoAnteriorDaMovimentacao(
         movimentacao.equipe_id === selecionada.equipe_id,
     )
     .sort((a, b) => {
+      // Ordem: instante da movimentação (data + hora quando houver) e, no
+      // empate, o instante de criação do registro. `id` é UUID aleatório e só
+      // entra como último recurso (por isso não pode ser o desempate real).
       const data = a.data.localeCompare(b.data);
-      return data !== 0 ? data : a.id.localeCompare(b.id);
+      if (data !== 0) return data;
+      const criacao = (criadoEmDaMovimentacao(a) ?? "").localeCompare(
+        criadoEmDaMovimentacao(b) ?? "",
+      );
+      return criacao !== 0 ? criacao : a.id.localeCompare(b.id);
     });
 
   let saldo = 0;
@@ -282,6 +299,8 @@ export function MovimentacoesPage() {
   const [consumoEstoqueId, setConsumoEstoqueId] = useState("");
   const [consumoQuantidade, setConsumoQuantidade] = useState("");
   const [consumoObservacao, setConsumoObservacao] = useState("");
+  const [vinculando, setVinculando] = useState(false);
+  const [atualizandoPrecos, setAtualizandoPrecos] = useState(false);
 
   const configuracao = useLiveQuery(
     () => (projetoId ? configuracoesRepo.obter(projetoId) : undefined),
@@ -313,6 +332,15 @@ export function MovimentacoesPage() {
         ? consumoEquipamentoRepo.listarPorMovimentacao(projetoId, detalhe.id)
         : Promise.resolve([] as ConsumoEquipamento[]),
     [projetoId, detalhe?.id],
+    [],
+  );
+
+  const opcoesApropriacao = useLiveQuery(
+    () =>
+      projetoId && detalhe?.tipo === "SAIDA"
+        ? consumoEquipamentoRepo.listarOpcoesApropriacao(projetoId, detalhe.id)
+        : Promise.resolve([]),
+    [projetoId, detalhe?.id, detalhe?.tipo],
     [],
   );
 
@@ -427,16 +455,45 @@ export function MovimentacoesPage() {
 
   const quantidadeConsumidaPorEquipamento = useMemo(
     () =>
-      (consumosDetalhe ?? []).reduce(
-        (total, consumo) => total + consumo.quantidade,
-        0,
+      arredondarQuantidade(
+        (consumosDetalhe ?? []).reduce(
+          (total, consumo) => total + consumo.quantidade,
+          0,
+        ),
       ),
     [consumosDetalhe],
   );
 
+  const quantidadeDevolvidaDetalhe = useMemo(() => {
+    if (!dados || detalhe?.tipo !== "SAIDA") return 0;
+    return arredondarQuantidade(
+      dados.movimentacoes
+        .filter(
+          (item) =>
+            item.tipo === "DEVOLUCAO" &&
+            item.movimentacao_origem_id === detalhe.id,
+        )
+        .reduce((total, item) => total + item.quantidade, 0),
+    );
+  }, [dados, detalhe]);
+
+  // Teto do rateio = saída − devoluções (o devolvido não é consumo).
+  const quantidadeLiquidaDetalhe =
+    detalhe?.tipo === "SAIDA"
+      ? Math.max(
+          0,
+          arredondarQuantidade(detalhe.quantidade - quantidadeDevolvidaDetalhe),
+        )
+      : 0;
+
   const saldoRateioConsumo =
     detalhe?.tipo === "SAIDA"
-      ? Math.max(0, detalhe.quantidade - quantidadeConsumidaPorEquipamento)
+      ? Math.max(
+          0,
+          arredondarQuantidade(
+            quantidadeLiquidaDetalhe - quantidadeConsumidaPorEquipamento,
+          ),
+        )
       : 0;
 
   const linhas = useMemo(() => {
@@ -577,15 +634,78 @@ export function MovimentacoesPage() {
       return;
     }
 
+    let restauracao: Awaited<ReturnType<typeof repo.deleteMovimentacao>> | null = null;
+
     try {
-      await repo.deleteMovimentacao(movimentacao.id);
-      toast.success("Movimentação excluída");
+      restauracao = await repo.deleteMovimentacao(movimentacao.id);
     } catch (error) {
       toast.error(
         error instanceof Error
           ? error.message
           : "Não foi possível excluir a movimentação.",
       );
+      return;
+    }
+
+    toast.success("Movimentação excluída");
+
+    // A exclusão da saída já remove as apropriações (cascata no repo). A
+    // exclusão de uma devolução restaura o consumo que ela havia reduzido.
+    const consumo = restauracao?.consumoRestaurado;
+    if (movimentacao.tipo === "DEVOLUCAO" && consumo) {
+      if (consumo.quantidadeRestaurada > 0) {
+        toast.info(
+          `Consumo apropriado a equipamentos restaurado em ${num(consumo.quantidadeRestaurada)}.`,
+        );
+      }
+      if (consumo.excedenteNaoRestaurado > 0 || consumo.ignoradas > 0) {
+        toast.warning(
+          `Parte do consumo não foi restaurada (${num(consumo.excedenteNaoRestaurado)} acima do saldo da saída; ${consumo.ignoradas} apropriação(ões) removida(s) manualmente). Revise nos detalhes da saída de origem.`,
+          { duration: 12000 },
+        );
+      }
+    }
+  };
+
+  const atualizarPrecosDosConsumos = async () => {
+    if (!projetoId || atualizandoPrecos) return;
+
+    if (
+      !confirm(
+        "Atualizar o custo de TODAS as apropriações de consumo a equipamentos pelo último preço disponível de cada produto?",
+      )
+    ) {
+      return;
+    }
+
+    setAtualizandoPrecos(true);
+    try {
+      const resultado =
+        await consumoEquipamentoRepo.recalcularCustosPeloUltimoPreco(projetoId);
+
+      if (resultado.total === 0) {
+        toast.info("Não há consumos apropriados a equipamentos neste projeto.");
+        return;
+      }
+
+      const partes = [
+        `${resultado.atualizados} atualizado(s)`,
+        `${resultado.inalterados} já estavam corretos`,
+      ];
+      if (resultado.semPreco > 0) {
+        partes.push(`${resultado.semPreco} sem preço disponível (mantidos)`);
+      }
+      toast.success(`Preços dos consumos: ${partes.join(" · ")}.`, {
+        duration: 10000,
+      });
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? `Não foi possível atualizar os preços: ${error.message}`
+          : "Não foi possível atualizar os preços.",
+      );
+    } finally {
+      setAtualizandoPrecos(false);
     }
   };
 
@@ -604,10 +724,23 @@ export function MovimentacoesPage() {
       return;
     }
 
-    if (quantidade > saldoRateioConsumo) {
+    if (arredondarQuantidade(quantidade) > arredondarQuantidade(saldoRateioConsumo)) {
       toast.error(
         `Apropriação acima do saldo disponível da saída (${num(saldoRateioConsumo)}).`,
       );
+      return;
+    }
+
+    const opcaoEscolhida = (opcoesApropriacao ?? []).find(
+      (opcao) => opcao.estoqueEquipamentoId === consumoEstoqueId,
+    );
+    if (
+      opcaoEscolhida &&
+      !opcaoEscolhida.compativelComProduto &&
+      !confirm(
+        "Este equipamento não possui regra de consumo vigente para este produto na data da saída. Apropriar mesmo assim?",
+      )
+    ) {
       return;
     }
 
@@ -655,18 +788,75 @@ export function MovimentacoesPage() {
     }
   };
 
-  const opcoesEquipamentos = (equipamentosContexto?.estoques ?? [])
-    .map((estoque) => ({
-      estoque,
-      equipamento: equipamentosContexto?.equipamentos.find(
-        (item) => item.id === estoque.equipamento_id,
-      ),
-    }))
-    .filter(
-      (item): item is { estoque: EstoqueEquipamento; equipamento: Equipamento } =>
-        Boolean(item.equipamento),
-    )
-    .sort((a, b) => a.equipamento.nome.localeCompare(b.equipamento.nome));
+  const tentarVinculoAutomatico = async () => {
+    if (!projetoId || !detalhe || detalhe.tipo !== "SAIDA" || vinculando) return;
+
+    setVinculando(true);
+    try {
+      const resultado = await consumoEquipamentoRepo.apropriarAutomaticamente(
+        projetoId,
+        detalhe.id,
+      );
+      const aviso = descreverResultadoApropriacao(resultado);
+
+      if (aviso.nivel === "sucesso") {
+        toast.success(aviso.mensagem);
+      } else {
+        toast.info(aviso.mensagem, { duration: 12000 });
+      }
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível executar a vinculação automática.",
+      );
+    } finally {
+      setVinculando(false);
+    }
+  };
+
+  const rotuloStatusEquipamento = (status: string): string => {
+    switch (status) {
+      case "EM_USO_PELO_DESTINATARIO":
+        return "Em uso pelo destinatário";
+      case "EM_USO":
+        return "Em uso";
+      case "DISPONIVEL":
+        return "Disponível";
+      case "MANUTENCAO":
+        return "Em manutenção";
+      case "ENCERRADO":
+        return "Encerrado";
+      case "ESTADO_INVALIDO":
+        return "Histórico inconsistente";
+      default:
+        return "Status não informado";
+    }
+  };
+
+  const textoUsuariosEquipamento = (
+    usuarios: Array<{ funcionarioNome: string; quantidade: number }>,
+  ): string => {
+    if (usuarios.length === 0) return "Sem usuário atual";
+    return usuarios
+      .map((usuario) => `${usuario.funcionarioNome}${usuario.quantidade > 1 ? ` (${num(usuario.quantidade)})` : ""}`)
+      .join(", ");
+  };
+
+  const opcoesEquipamentos = (opcoesApropriacao ?? []).map((opcao) => ({
+    value: opcao.estoqueEquipamentoId,
+    label: `${opcao.equipamentoNome}${opcao.identificacao ? ` · ${opcao.identificacao}` : ""}`,
+    hint: [
+      rotuloStatusEquipamento(opcao.status),
+      textoUsuariosEquipamento(opcao.usuarios),
+      opcao.compativelComProduto ? "Regra compatível" : "Sem regra para este produto",
+    ].join(" · "),
+  }));
+
+  const opcaoSelecionada = (opcoesApropriacao ?? []).find(
+    (opcao) => opcao.estoqueEquipamentoId === consumoEstoqueId,
+  );
+
 
   if (!dados || !nomeMap) {
     return (
@@ -695,6 +885,18 @@ export function MovimentacoesPage() {
         </div>
 
         <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void atualizarPrecosDosConsumos()}
+            disabled={atualizandoPrecos}
+            title="Recalcula o custo dos consumos por equipamento com o último preço de cada produto"
+          >
+            <RefreshCw
+              className={`mr-2 size-4 ${atualizandoPrecos ? "animate-spin" : ""}`}
+            />
+            Atualizar preços
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -1274,9 +1476,26 @@ export function MovimentacoesPage() {
                             </p>
                           </div>
 
-                          <Badge variant="outline">
-                            {num(quantidadeConsumidaPorEquipamento)} / {num(detalhe.quantidade)} {unidade ?? "un"}
-                          </Badge>
+                          <div className="flex flex-wrap items-center gap-2">
+                            {detalhe.funcionario_id &&
+                            (consumosDetalhe ?? []).length === 0 ? (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                disabled={vinculando}
+                                onClick={() => void tentarVinculoAutomatico()}
+                              >
+                                Vincular automaticamente
+                              </Button>
+                            ) : null}
+                            <Badge variant="outline">
+                              {num(quantidadeConsumidaPorEquipamento)} / {num(quantidadeLiquidaDetalhe)} {unidade ?? "un"}
+                              {quantidadeDevolvidaDetalhe > 0
+                                ? ` (${num(quantidadeDevolvidaDetalhe)} devolvido)`
+                                : ""}
+                            </Badge>
+                          </div>
                         </div>
 
                         {consumosDetalhe && consumosDetalhe.length > 0 ? (
@@ -1290,11 +1509,16 @@ export function MovimentacoesPage() {
                                   <p className="truncate text-sm font-medium">
                                     {nomesEquipamentos.get(consumo.equipamento_id) ?? "Equipamento não encontrado"}
                                   </p>
-                                  <p className="mt-0.5 text-xs text-muted-foreground">
-                                    {num(consumo.quantidade)} {unidade ?? "un"}
-                                    {consumo.custo_total != null
-                                      ? ` · R$ ${consumo.custo_total.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                                      : " · custo não disponível"}
+                                  <p className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                    <span>
+                                      {num(consumo.quantidade)} {unidade ?? "un"}
+                                      {consumo.custo_total != null
+                                        ? ` · R$ ${consumo.custo_total.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                        : " · custo não disponível"}
+                                    </span>
+                                    <Badge variant="outline" className="text-[10px]">
+                                      {consumo.origem === "AUTOMATICO" ? "Automático" : "Manual"}
+                                    </Badge>
                                   </p>
                                   {consumo.observacao ? (
                                     <p className="mt-1 text-xs text-muted-foreground">
@@ -1324,26 +1548,33 @@ export function MovimentacoesPage() {
 
                         {saldoRateioConsumo > 0 ? (
                           <div className="grid gap-3 rounded-xl border bg-muted/10 p-3 sm:grid-cols-2 lg:grid-cols-4">
-                            <div className="lg:col-span-2">
+                            <div className="sm:col-span-2 lg:col-span-3">
                               <Label>Equipamento / registro físico</Label>
                               <Combobox
                                 placeholder="Selecionar equipamento"
-                                value={consumoEstoqueId}
+                                value={consumoEstoqueId || null}
                                 onChange={(value) => setConsumoEstoqueId(value ?? "")}
                                 vazio="Nenhum equipamento cadastrado"
-                                opcoes={opcoesEquipamentos.map(({ estoque, equipamento }) => {
-                                  const identificador =
-                                    estoque.identificacao ||
-                                    estoque.patrimonio ||
-                                    estoque.serial ||
-                                    estoque.id;
-                                  return {
-                                    value: estoque.id,
-                                    label: `${equipamento.nome} · ${identificador}`,
-                                    hint: estoque.vinculo,
-                                  };
-                                })}
+                                opcoes={opcoesEquipamentos}
                               />
+                              <p className="mt-1.5 text-xs text-muted-foreground">
+                                A lista prioriza equipamentos em uso, especialmente o que está com o funcionário da saída. Depois aparecem os demais equipamentos para permitir apropriações tardias.
+                              </p>
+                              {opcaoSelecionada ? (
+                                <div className="mt-2 rounded-lg border bg-muted/20 px-3 py-2 text-xs">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <Badge variant="outline">{rotuloStatusEquipamento(opcaoSelecionada.status)}</Badge>
+                                    {opcaoSelecionada.compativelComProduto ? (
+                                      <Badge variant="outline">Regra compatível</Badge>
+                                    ) : (
+                                      <Badge variant="outline">Sem regra para este produto</Badge>
+                                    )}
+                                  </div>
+                                  <p className="mt-1 text-muted-foreground">
+                                    {textoUsuariosEquipamento(opcaoSelecionada.usuarios)}
+                                  </p>
+                                </div>
+                              ) : null}
                             </div>
 
                             <div>
