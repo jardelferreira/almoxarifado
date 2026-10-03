@@ -136,6 +136,10 @@ export interface DatasetImportado {
   tabelas: Record<string, Linha[]>;
   contagens: Record<string, number>;
   problemas: string[];
+  compatibilizado?: {
+    idsGerados: number;
+    catalogosReutilizados: number;
+  };
 }
 
 const S = (valor: unknown): string =>
@@ -671,6 +675,32 @@ function serializarEstavel(valor: unknown): string {
   return JSON.stringify(valor);
 }
 
+export async function verificarCompatibilidadeImportacao(
+  dataset: DatasetImportado,
+): Promise<{
+  compativel: boolean;
+  motivo?: string;
+}> {
+  const projeto = dataset.projetos[0];
+  if (!projeto?.id) {
+    return { compativel: false, motivo: "A planilha não possui um projeto com ID válido." };
+  }
+
+  if (dataset.problemas.length > 0) {
+    return { compativel: false, motivo: "A planilha possui inconsistências estruturais." };
+  }
+
+  try {
+    await validarConflitosInterprojetos(dataset.tabelas, projeto.id, true);
+    return { compativel: true };
+  } catch (error) {
+    return {
+      compativel: false,
+      motivo: error instanceof Error ? error.message : "Existe conflito com dados já armazenados.",
+    };
+  }
+}
+
 async function validarConflitosInterprojetos(
   tabelas: Record<string, Linha[]>,
   projetoDestinoId: string,
@@ -1201,6 +1231,460 @@ function validarReferencias(
   }
 
   void manutencoes;
+}
+
+export async function compatibilizarDataset(
+  dataset: DatasetImportado,
+): Promise<DatasetImportado> {
+  if (dataset.projetos.length !== 1) {
+    throw new Error("A planilha precisa conter exatamente um projeto para ser compatibilizada.");
+  }
+
+  const projetoOrigem = dataset.projetos[0];
+  if (!projetoOrigem) {
+    throw new Error("A planilha não contém um projeto válido.");
+  }
+
+  // Usa as entidades tipadas para preencher IDs que eventualmente não vieram
+  // na planilha. As abas avançadas continuam sendo preservadas integralmente.
+  const tabelas: Record<string, Linha[]> = Object.fromEntries(
+    TABELAS_IMPORTACAO.map((tabela) => [
+      tabela,
+      (dataset.tabelas[tabela] ?? []).map((linha) => ({ ...linha })),
+    ]),
+  );
+
+  tabelas["projetos"] = dataset.projetos.map((item) => ({ ...item } as Linha));
+  tabelas["categorias"] = dataset.categorias.map((item) => ({ ...item } as Linha));
+  tabelas["unidades"] = dataset.unidades.map((item) => ({ ...item } as Linha));
+  tabelas["empresas"] = dataset.empresas.map((item) => ({ ...item } as Linha));
+  tabelas["funcionarios"] = dataset.funcionarios.map((item) => ({ ...item } as Linha));
+  tabelas["locais"] = dataset.locais.map((item) => ({ ...item } as Linha));
+  tabelas["produtos"] = dataset.produtos.map((item) => ({ ...item } as Linha));
+  tabelas["equipes"] = dataset.equipes.map((item) => ({ ...item } as Linha));
+  tabelas["equipe_membros"] = dataset.equipeMembros.map((item) => ({ ...item } as Linha));
+  tabelas["movimentacoes"] = dataset.movimentacoes.map((item) => ({ ...item } as Linha));
+
+  const mapas = new Map<string, Map<string, string>>();
+  let idsGerados = 0;
+  let catalogosReutilizados = 0;
+
+  const criarMapa = (tabela: string) => {
+    const mapa = new Map<string, string>();
+    mapas.set(tabela, mapa);
+    return mapa;
+  };
+
+  const mapearIds = (tabela: string, linhas: Linha[]) => {
+    const mapa = criarMapa(tabela);
+    for (const linha of linhas) {
+      const antigo = S(linha["id"]);
+      if (antigo) {
+        if (mapa.has(antigo)) continue;
+        mapa.set(antigo, uid());
+        idsGerados += 1;
+        continue;
+      }
+
+      // Arquivos antigos podem ter linhas sem ID. Atribuímos o ID antes de
+      // remapear as relações para que a própria linha também fique estável.
+      const gerado = uid();
+      linha["id"] = gerado;
+      mapa.set(gerado, gerado);
+      idsGerados += 1;
+    }
+    return mapa;
+  };
+
+  const projetoIds = mapearIds("projetos", tabelas["projetos"]);
+  const novoProjetoId = projetoIds.get(S(projetoOrigem.id)) ?? uid();
+  if (!projetoIds.has(S(projetoOrigem.id))) {
+    projetoIds.set(S(projetoOrigem.id), novoProjetoId);
+    idsGerados += 1;
+  }
+
+  const tabelasProjeto = TABELAS_PROJETO_DIRETO;
+  for (const tabela of tabelasProjeto) {
+    mapearIds(tabela, tabelas[tabela] ?? []);
+  }
+
+  const tabelasRelacionadas = [
+    "equipe_membros",
+    "apropriacoes",
+    "documento_itens",
+    "documento_referencias",
+    "inventario_itens",
+  ];
+  for (const tabela of tabelasRelacionadas) {
+    mapearIds(tabela, tabelas[tabela] ?? []);
+  }
+
+  // Todos os registros avançados também têm identidade própria.
+  for (const tabela of [
+    "manutencao_documentos",
+    "apropriacoes_financeiras_equipamentos",
+  ]) {
+    mapearIds(tabela, tabelas[tabela] ?? []);
+  }
+
+  // Perfis possuem duas identidades: o registro da versão e a família do perfil.
+  const perfilIds = mapearIds(
+    "perfis_parametros_custos",
+    tabelas["perfis_parametros_custos"] ?? [],
+  );
+  const perfilFamiliaIds = new Map<string, string>();
+  for (const linha of tabelas["perfis_parametros_custos"] ?? []) {
+    const antigo = S(linha["perfil_id"]);
+    if (antigo && !perfilFamiliaIds.has(antigo)) {
+      perfilFamiliaIds.set(antigo, uid());
+      idsGerados += 1;
+    }
+  }
+
+  // Catálogos globais: reutiliza o registro existente por identidade humana.
+  const db = getDB();
+  const categoriasExistentes = (await db.categorias.toArray()) as unknown as Linha[];
+  const unidadesExistentes = (await db.unidades.toArray()) as unknown as Linha[];
+  const categoriasPorNome = new Map(
+    categoriasExistentes.map((item) => [normalizar(S(item["nome"])), S(item["id"])]),
+  );
+  const unidadesPorSigla = new Map(
+    unidadesExistentes.map((item) => [normalizar(S(item["sigla"])), S(item["id"])]),
+  );
+
+  const categoriasMap = criarMapa("categorias");
+  for (const linha of tabelas["categorias"] ?? []) {
+    const antigo = S(linha["id"]);
+    if (!antigo) continue;
+    const chave = normalizar(S(linha["nome"]));
+    const existente = chave ? categoriasPorNome.get(chave) : undefined;
+    if (existente) {
+      categoriasMap.set(antigo, existente);
+      catalogosReutilizados += 1;
+    } else {
+      categoriasMap.set(antigo, uid());
+      idsGerados += 1;
+    }
+  }
+
+  const unidadesMap = criarMapa("unidades");
+  for (const linha of tabelas["unidades"] ?? []) {
+    const antigo = S(linha["id"]);
+    if (!antigo) continue;
+    const chave = normalizar(S(linha["sigla"]));
+    const existente = chave ? unidadesPorSigla.get(chave) : undefined;
+    if (existente) {
+      unidadesMap.set(antigo, existente);
+      catalogosReutilizados += 1;
+    } else {
+      unidadesMap.set(antigo, uid());
+      idsGerados += 1;
+    }
+  }
+
+  const novoId = (tabela: string, antigo: unknown): string => {
+    const valor = S(antigo);
+    if (!valor) return "";
+    return mapas.get(tabela)?.get(valor) ?? valor;
+  };
+
+  const projetoId = (antigo: unknown): string => {
+    const valor = S(antigo);
+    return projetoIds.get(valor) ?? novoProjetoId;
+  };
+
+  const remapDireto = (tabela: string) => {
+    tabelas[tabela] = (tabelas[tabela] ?? []).map((linha) => ({
+      ...linha,
+      id: novoId(tabela, linha["id"]),
+      projeto_id: projetoId(linha["projeto_id"]),
+    }));
+  };
+
+  for (const tabela of tabelasProjeto) remapDireto(tabela);
+
+  tabelas["projetos"] = (tabelas["projetos"] ?? []).map((linha) => ({
+    ...linha,
+    id: novoId("projetos", linha["id"]),
+    ...(S(linha["empresa_id"])
+      ? { empresa_id: novoId("empresas", linha["empresa_id"]) }
+      : { empresa_id: null }),
+  }));
+
+  tabelas["categorias"] = (tabelas["categorias"] ?? []).map((linha) => ({
+    ...linha,
+    id: novoId("categorias", linha["id"]),
+  }));
+
+  tabelas["unidades"] = (tabelas["unidades"] ?? []).map((linha) => ({
+    ...linha,
+    id: novoId("unidades", linha["id"]),
+  }));
+
+  tabelas["empresas"] = tabelas["empresas"].map((linha) => ({
+    ...linha,
+    id: novoId("empresas", linha["id"]),
+    projeto_id: novoProjetoId,
+  }));
+
+  tabelas["funcionarios"] = tabelas["funcionarios"].map((linha) => ({
+    ...linha,
+    id: novoId("funcionarios", linha["id"]),
+    projeto_id: novoProjetoId,
+    empresa_id: S(linha["empresa_id"]) ? novoId("empresas", linha["empresa_id"]) : null,
+    encarregado_id: S(linha["encarregado_id"]) ? novoId("funcionarios", linha["encarregado_id"]) : null,
+    equipe_raiz_id: S(linha["equipe_raiz_id"]) ? novoId("equipes", linha["equipe_raiz_id"]) : null,
+  }));
+
+  tabelas["locais"] = tabelas["locais"].map((linha) => ({
+    ...linha,
+    id: novoId("locais", linha["id"]),
+    projeto_id: novoProjetoId,
+    local_pai_id: S(linha["local_pai_id"]) ? novoId("locais", linha["local_pai_id"]) : null,
+  }));
+
+  tabelas["produtos"] = tabelas["produtos"].map((linha) => ({
+    ...linha,
+    id: novoId("produtos", linha["id"]),
+    projeto_id: novoProjetoId,
+    categoria_id: S(linha["categoria_id"]) ? novoId("categorias", linha["categoria_id"]) : null,
+    unidade_id: S(linha["unidade_id"]) ? novoId("unidades", linha["unidade_id"]) : null,
+  }));
+
+  tabelas["equipes"] = tabelas["equipes"].map((linha) => ({
+    ...linha,
+    id: novoId("equipes", linha["id"]),
+    projeto_id: novoProjetoId,
+  }));
+
+  tabelas["movimentacoes"] = tabelas["movimentacoes"].map((linha) => ({
+    ...linha,
+    id: novoId("movimentacoes", linha["id"]),
+    projeto_id: novoProjetoId,
+    produto_id: novoId("produtos", linha["produto_id"]),
+    funcionario_id: S(linha["funcionario_id"]) ? novoId("funcionarios", linha["funcionario_id"]) : null,
+    encarregado_id: S(linha["encarregado_id"]) ? novoId("funcionarios", linha["encarregado_id"]) : null,
+    empresa_id: S(linha["empresa_id"]) ? novoId("empresas", linha["empresa_id"]) : null,
+    local_id: S(linha["local_id"]) ? novoId("locais", linha["local_id"]) : null,
+    local_destino_id: S(linha["local_destino_id"]) ? novoId("locais", linha["local_destino_id"]) : undefined,
+    equipe_id: novoId("equipes", linha["equipe_id"]),
+    documento_id: S(linha["documento_id"]) ? novoId("documentos", linha["documento_id"]) : undefined,
+    documento_item_id: S(linha["documento_item_id"]) ? novoId("documento_itens", linha["documento_item_id"]) : undefined,
+    movimentacao_origem_id: S(linha["movimentacao_origem_id"]) ? novoId("movimentacoes", linha["movimentacao_origem_id"]) : undefined,
+  }));
+
+  tabelas["equipe_membros"] = (tabelas["equipe_membros"] ?? []).map((linha) => ({
+    ...linha,
+    id: novoId("equipe_membros", linha["id"]),
+    equipe_id: novoId("equipes", linha["equipe_id"]),
+    funcionario_id: novoId("funcionarios", linha["funcionario_id"]),
+  }));
+
+  tabelas["equipamentos"] = (tabelas["equipamentos"] ?? []).map((linha) => ({
+    ...linha,
+    id: novoId("equipamentos", linha["id"]),
+    projeto_id: novoProjetoId,
+    categoria_id: novoId("categorias_equipamentos", linha["categoria_id"]),
+  }));
+
+  tabelas["estoque_equipamentos"] = (tabelas["estoque_equipamentos"] ?? []).map((linha) => ({
+    ...linha,
+    id: novoId("estoque_equipamentos", linha["id"]),
+    projeto_id: novoProjetoId,
+    equipamento_id: novoId("equipamentos", linha["equipamento_id"]),
+    empresa_id: novoId("empresas", linha["empresa_id"]),
+    equipe_id: S(linha["equipe_id"]) ? novoId("equipes", linha["equipe_id"]) : null,
+  }));
+
+  tabelas["apropriacoes"] = (tabelas["apropriacoes"] ?? []).map((linha) => ({
+    ...linha,
+    id: novoId("apropriacoes", linha["id"]),
+    estoque_equipamento_id: novoId("estoque_equipamentos", linha["estoque_equipamento_id"]),
+    funcionario_id: novoId("funcionarios", linha["funcionario_id"]),
+  }));
+
+  tabelas["movimentacoes_equipamentos"] = (tabelas["movimentacoes_equipamentos"] ?? []).map((linha) => {
+    const tipoOrigem = S(linha["tipo_origem"]).toUpperCase();
+    const tipoDestino = S(linha["tipo_destino"]).toUpperCase();
+    const mapaParticipante = (tipo: string) =>
+      tipo === "EMPRESA" ? "empresas" : tipo === "EQUIPE" ? "equipes" : "funcionarios";
+
+    return {
+      ...linha,
+      id: novoId("movimentacoes_equipamentos", linha["id"]),
+      projeto_id: novoProjetoId,
+      estoque_equipamento_id: novoId("estoque_equipamentos", linha["estoque_equipamento_id"]),
+      origem_id: novoId(mapaParticipante(tipoOrigem), linha["origem_id"]),
+      destino_id: novoId(mapaParticipante(tipoDestino), linha["destino_id"]),
+    };
+  });
+
+  tabelas["configuracoes"] = (tabelas["configuracoes"] ?? []).map((linha) => ({
+    ...linha,
+    id: novoId("configuracoes", linha["id"]),
+    projeto_id: novoProjetoId,
+  }));
+
+  tabelas["documentos"] = (tabelas["documentos"] ?? []).map((linha) => ({
+    ...linha,
+    id: novoId("documentos", linha["id"]),
+    projeto_id: novoProjetoId,
+    empresa_id: S(linha["empresa_id"]) ? novoId("empresas", linha["empresa_id"]) : null,
+  }));
+
+  tabelas["documento_itens"] = (tabelas["documento_itens"] ?? []).map((linha) => ({
+    ...linha,
+    id: novoId("documento_itens", linha["id"]),
+    documento_id: novoId("documentos", linha["documento_id"]),
+    produto_id: S(linha["produto_id"]) ? novoId("produtos", linha["produto_id"]) : null,
+    equipe_destino_id: S(linha["equipe_destino_id"]) ? novoId("equipes", linha["equipe_destino_id"]) : null,
+  }));
+
+  tabelas["documento_referencias"] = (tabelas["documento_referencias"] ?? []).map((linha) => ({
+    ...linha,
+    id: novoId("documento_referencias", linha["id"]),
+    projeto_id: novoProjetoId,
+    documento_id: novoId("documentos", linha["documento_id"]),
+    documento_referenciado_id: novoId("documentos", linha["documento_referenciado_id"]),
+  }));
+
+  tabelas["inventarios"] = (tabelas["inventarios"] ?? []).map((linha) => ({
+    ...linha,
+    id: novoId("inventarios", linha["id"]),
+    projeto_id: novoProjetoId,
+    equipe_id: S(linha["equipe_id"]) ? novoId("equipes", linha["equipe_id"]) : null,
+    responsavel_id: S(linha["responsavel_id"]) ? novoId("funcionarios", linha["responsavel_id"]) : null,
+  }));
+
+  tabelas["inventario_itens"] = (tabelas["inventario_itens"] ?? []).map((linha) => ({
+    ...linha,
+    id: novoId("inventario_itens", linha["id"]),
+    inventario_id: novoId("inventarios", linha["inventario_id"]),
+    produto_id: novoId("produtos", linha["produto_id"]),
+    equipe_id: novoId("equipes", linha["equipe_id"]),
+  }));
+
+  tabelas["manutencoes_equipamentos"] = (tabelas["manutencoes_equipamentos"] ?? []).map((linha) => ({
+    ...linha,
+    id: novoId("manutencoes_equipamentos", linha["id"]),
+    projeto_id: novoProjetoId,
+    estoque_equipamento_id: novoId("estoque_equipamentos", linha["estoque_equipamento_id"]),
+    equipamento_id: novoId("equipamentos", linha["equipamento_id"]),
+    empresa_id: S(linha["empresa_id"]) ? novoId("empresas", linha["empresa_id"]) : null,
+    movimento_sinalizacao_id: S(linha["movimento_sinalizacao_id"]) ? novoId("movimentacoes_equipamentos", linha["movimento_sinalizacao_id"]) : null,
+    movimento_envio_id: S(linha["movimento_envio_id"]) ? novoId("movimentacoes_equipamentos", linha["movimento_envio_id"]) : null,
+    movimento_retorno_id: S(linha["movimento_retorno_id"]) ? novoId("movimentacoes_equipamentos", linha["movimento_retorno_id"]) : null,
+  }));
+
+  tabelas["manutencao_documentos"] = (tabelas["manutencao_documentos"] ?? []).map((linha) => ({
+    ...linha,
+    id: novoId("manutencao_documentos", linha["id"]),
+    projeto_id: novoProjetoId,
+    manutencao_id: novoId("manutencoes_equipamentos", linha["manutencao_id"]),
+    documento_id: novoId("documentos", linha["documento_id"]),
+  }));
+
+  tabelas["apropriacoes_financeiras_equipamentos"] = (tabelas["apropriacoes_financeiras_equipamentos"] ?? []).map((linha) => ({
+    ...linha,
+    id: novoId("apropriacoes_financeiras_equipamentos", linha["id"]),
+    projeto_id: novoProjetoId,
+    documento_id: novoId("documentos", linha["documento_id"]),
+    documento_item_id: S(linha["documento_item_id"]) ? novoId("documento_itens", linha["documento_item_id"]) : null,
+    manutencao_id: S(linha["manutencao_id"]) ? novoId("manutencoes_equipamentos", linha["manutencao_id"]) : null,
+    estoque_equipamento_id: novoId("estoque_equipamentos", linha["estoque_equipamento_id"]),
+    equipamento_id: novoId("equipamentos", linha["equipamento_id"]),
+  }));
+
+  tabelas["consumos_equipamentos"] = (tabelas["consumos_equipamentos"] ?? []).map((linha) => ({
+    ...linha,
+    id: novoId("consumos_equipamentos", linha["id"]),
+    projeto_id: novoProjetoId,
+    movimentacao_id: novoId("movimentacoes", linha["movimentacao_id"]),
+    estoque_equipamento_id: novoId("estoque_equipamentos", linha["estoque_equipamento_id"]),
+    equipamento_id: novoId("equipamentos", linha["equipamento_id"]),
+    unidade_id: S(linha["unidade_id"]) ? novoId("unidades", linha["unidade_id"]) : null,
+  }));
+
+  tabelas["regras_consumo_equipamentos"] = (tabelas["regras_consumo_equipamentos"] ?? []).map((linha) => ({
+    ...linha,
+    id: novoId("regras_consumo_equipamentos", linha["id"]),
+    projeto_id: novoProjetoId,
+    equipamento_id: novoId("equipamentos", linha["equipamento_id"]),
+    estoque_equipamento_id: S(linha["estoque_equipamento_id"]) ? novoId("estoque_equipamentos", linha["estoque_equipamento_id"]) : null,
+    produto_id: novoId("produtos", linha["produto_id"]),
+    unidade_base_id: novoId("unidades", linha["unidade_base_id"]),
+    unidade_consumo_id: novoId("unidades", linha["unidade_consumo_id"]),
+  }));
+
+  tabelas["perfis_parametros_custos"] = (tabelas["perfis_parametros_custos"] ?? []).map((linha) => ({
+    ...linha,
+    id: novoId("perfis_parametros_custos", linha["id"]),
+    perfil_id: perfilFamiliaIds.get(S(linha["perfil_id"])) ?? uid(),
+    projeto_id: novoProjetoId,
+  }));
+
+  tabelas["inteligencia_acoes"] = (tabelas["inteligencia_acoes"] ?? []).map((linha) => {
+    const origem = S(linha["origem"]).toUpperCase();
+    const tabelaReferencia = origem === "VIGIA"
+      ? "equipamentos"
+      : origem === "INVENTARIO"
+        ? "inventarios"
+        : "produtos";
+
+    return {
+      ...linha,
+      id: novoId("inteligencia_acoes", linha["id"]),
+      projeto_id: novoProjetoId,
+      produto_id: S(linha["produto_id"]) ? novoId("produtos", linha["produto_id"]) : null,
+      equipe_id: S(linha["equipe_id"]) ? novoId("equipes", linha["equipe_id"]) : null,
+      referencia_id: S(linha["referencia_id"]) ? novoId(tabelaReferencia, linha["referencia_id"]) : null,
+    };
+  });
+
+  tabelas["arquivos"] = (tabelas["arquivos"] ?? []).map((linha) => ({
+    ...linha,
+    id: novoId("arquivos", linha["id"]),
+    projeto_id: novoProjetoId,
+  }));
+
+  const projetos = tabelas["projetos"].map((linha) => projetoDeLinha(linha));
+  const categorias = tabelas["categorias"].map((linha) => categoriaDeLinha(linha));
+  const unidades = tabelas["unidades"].map((linha) => unidadeDeLinha(linha));
+  const empresas = tabelas["empresas"].map((linha) => empresaDeLinha(linha));
+  const funcionarios = tabelas["funcionarios"].map((linha) => funcionarioDeLinha(linha));
+  const locais = tabelas["locais"].map((linha) => localDeLinha(linha));
+  const produtos = tabelas["produtos"].map((linha) => produtoDeLinha(linha));
+  const equipes = tabelas["equipes"].map((linha) => equipeDeLinha(linha));
+  const equipeMembros = tabelas["equipe_membros"].map((linha) => equipeMembroDeLinha(linha));
+  const movimentacoes = tabelas["movimentacoes"].map((linha) => movimentacaoDeLinha(linha));
+
+  const problemas: string[] = [];
+  if (projetos.length !== 1) {
+    problemas.push(`A planilha deve conter exatamente 1 projeto. Encontrados: ${projetos.length}.`);
+  } else if (projetos[0]) {
+    validarEscopoProjeto(problemas, tabelas, projetos[0].id);
+  }
+  validarDuplicados(problemas, tabelas);
+  validarReferencias(problemas, tabelas);
+
+  return {
+    projetos,
+    categorias,
+    unidades,
+    empresas,
+    funcionarios,
+    locais,
+    produtos,
+    equipes,
+    equipeMembros,
+    movimentacoes,
+    tabelas,
+    contagens: Object.fromEntries(
+      TABELAS_IMPORTACAO.map((tabela) => [tabela, (tabelas[tabela] ?? []).length]),
+    ),
+    problemas,
+    compatibilizado: { idsGerados, catalogosReutilizados },
+  };
 }
 
 export function lerArquivo(

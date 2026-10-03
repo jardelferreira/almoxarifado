@@ -77,272 +77,199 @@ export const repo = {
 
   async deleteProjeto(id: string) {
     const db = getDB();
-
-    const tabelas = [
-      db.projetos,
-      db.movimentacoes,
-      db.empresas,
-      db.funcionarios,
-      db.locais,
-      db.produtos,
-      db.equipes,
-      db.consumos_equipamentos,
-      db.regras_consumo_equipamentos,
+    const tabelasProjeto = [
+      "categorias_equipamentos", "empresas", "funcionarios", "locais", "produtos",
+      "movimentacoes", "equipes", "arquivos", "equipamentos", "estoque_equipamentos",
+      "movimentacoes_equipamentos", "configuracoes", "documentos", "documento_referencias",
+      "inventarios", "inteligencia_acoes", "manutencoes_equipamentos", "manutencao_documentos",
+      "apropriacoes_financeiras_equipamentos", "consumos_equipamentos",
+      "regras_consumo_equipamentos", "perfis_parametros_custos",
     ];
 
-    await db.transaction("rw", tabelas, async () => {
-      await db.movimentacoes
-        .where("projeto_id")
-        .equals(id)
-        .delete();
+    const [equipes, estoques, documentos, inventarios] = await Promise.all([
+      db.equipes.where("projeto_id").equals(id).toArray(),
+      db.estoque_equipamentos.where("projeto_id").equals(id).toArray(),
+      db.documentos.where("projeto_id").equals(id).toArray(),
+      db.inventarios.where("projeto_id").equals(id).toArray(),
+    ]);
 
-      await db.consumos_equipamentos
-        .where("projeto_id")
-        .equals(id)
-        .delete();
+    const equipeIds = equipes.map((item) => item.id);
+    const estoqueIds = estoques.map((item) => item.id);
+    const documentoIds = documentos.map((item) => item.id);
+    const inventarioIds = inventarios.map((item) => item.id);
 
-      await db.regras_consumo_equipamentos
-        .where("projeto_id")
-        .equals(id)
-        .delete();
+    await db.transaction(
+      "rw",
+      [db.projetos, ...tabelasProjeto.map((nome) => db.table(nome)), db.equipe_membros, db.apropriacoes, db.documento_itens, db.inventario_itens],
+      async () => {
+        if (equipeIds.length) await db.equipe_membros.where("equipe_id").anyOf(equipeIds).delete();
+        if (estoqueIds.length) await db.apropriacoes.where("estoque_equipamento_id").anyOf(estoqueIds).delete();
+        if (documentoIds.length) await db.documento_itens.where("documento_id").anyOf(documentoIds).delete();
+        if (inventarioIds.length) await db.inventario_itens.where("inventario_id").anyOf(inventarioIds).delete();
 
-      await db.empresas
-        .where("projeto_id")
-        .equals(id)
-        .delete();
+        for (const tabela of tabelasProjeto) {
+          await db.table(tabela).where("projeto_id").equals(id).delete();
+        }
 
-      await db.funcionarios
-        .where("projeto_id")
-        .equals(id)
-        .delete();
+        // Limpa órfãos históricos deixados por versões anteriores.
+        const equipesAtuais = new Set((await db.equipes.toArray()).map((item) => item.id));
+        const estoquesAtuais = new Set((await db.estoque_equipamentos.toArray()).map((item) => item.id));
+        const documentosAtuais = new Set((await db.documentos.toArray()).map((item) => item.id));
+        const inventariosAtuais = new Set((await db.inventarios.toArray()).map((item) => item.id));
 
-      await db.locais
-        .where("projeto_id")
-        .equals(id)
-        .delete();
+        const membrosOrfaos = (await db.equipe_membros.toArray()).filter((item) => !equipesAtuais.has(item.equipe_id));
+        if (membrosOrfaos.length) await db.equipe_membros.bulkDelete(membrosOrfaos.map((item) => item.id));
+        const apropriacoesOrfas = (await db.apropriacoes.toArray()).filter((item) => !estoquesAtuais.has(item.estoque_equipamento_id));
+        if (apropriacoesOrfas.length) await db.apropriacoes.bulkDelete(apropriacoesOrfas.map((item) => item.id));
+        const itensDocumentoOrfaos = (await db.documento_itens.toArray()).filter((item) => !documentosAtuais.has(item.documento_id));
+        if (itensDocumentoOrfaos.length) await db.documento_itens.bulkDelete(itensDocumentoOrfaos.map((item) => item.id));
+        const itensInventarioOrfaos = (await db.inventario_itens.toArray()).filter((item) => !inventariosAtuais.has(item.inventario_id));
+        if (itensInventarioOrfaos.length) await db.inventario_itens.bulkDelete(itensInventarioOrfaos.map((item) => item.id));
 
-      await db.produtos
-        .where("projeto_id")
-        .equals(id)
-        .delete();
-
-      await db.equipes
-        .where("projeto_id")
-        .equals(id)
-        .delete();
-
-      await db.projetos.delete(id);
-    });
+        await db.projetos.delete(id);
+      },
+    );
   },
 
   async duplicarProjeto(id: string) {
     const db = getDB();
+    const original = await db.projetos.get(id);
+    if (!original) throw new Error("Projeto não encontrado");
 
-    const orig = await db.projetos.get(id);
-
-    if (!orig) {
-      throw new Error("Projeto não encontrado");
-    }
-
+    const novoProjetoId = uid();
     const novo: Projeto = {
-      ...orig,
-      id: uid(),
-      codigo: `${orig.codigo}-COPIA`,
-      nome: `${orig.nome} (cópia)`,
+      ...original,
+      id: novoProjetoId,
+      codigo: `${original.codigo}-COPIA`,
+      nome: `${original.nome} (cópia)`,
     };
 
-    const [
-      empresas,
-      funcionarios,
-      locais,
-      produtos,
-      equipes,
-      membros,
-      movimentacoes,
-    ] = await Promise.all([
-      db.empresas.where("projeto_id").equals(id).toArray(),
-      db.funcionarios.where("projeto_id").equals(id).toArray(),
-      db.locais.where("projeto_id").equals(id).toArray(),
-      db.produtos.where("projeto_id").equals(id).toArray(),
-      db.equipes.where("projeto_id").equals(id).toArray(),
-      Promise.resolve([] as EquipeMembro[]),
-      db.movimentacoes.where("projeto_id").equals(id).toArray(),
-    ]);
+    const tabelasProjeto = [
+      "categorias_equipamentos", "empresas", "funcionarios", "locais", "produtos",
+      "movimentacoes", "equipes", "arquivos", "equipamentos", "estoque_equipamentos",
+      "movimentacoes_equipamentos", "configuracoes", "documentos", "documento_referencias",
+      "inventarios", "inteligencia_acoes", "manutencoes_equipamentos", "manutencao_documentos",
+      "apropriacoes_financeiras_equipamentos", "consumos_equipamentos",
+      "regras_consumo_equipamentos", "perfis_parametros_custos",
+    ];
 
-    /**
-     * Mapeamentos antigos -> novos IDs.
-     *
-     * Isso é fundamental para impedir que o projeto duplicado
-     * continue apontando para produtos/equipes/locais do original.
-     */
-    const produtoIds = new Map<string, string>();
-    const equipeIds = new Map<string, string>();
-    const localIds = new Map<string, string>();
-    const funcionarioIds = new Map<string, string>();
-    const empresaIds = new Map<string, string>();
-
-    const novasEmpresas = empresas.map((empresa) => {
-      const novoId = uid();
-
-      empresaIds.set(empresa.id, novoId);
-
-      return {
-        ...empresa,
-        id: novoId,
-        projeto_id: novo.id,
-      };
-    });
-
-    const novosFuncionarios = funcionarios.map((funcionario) => {
-      const novoId = uid();
-
-      funcionarioIds.set(funcionario.id, novoId);
-
-      return {
-        ...funcionario,
-        id: novoId,
-        projeto_id: novo.id,
-      };
-    });
-
-    const novosLocais = locais.map((local) => {
-      const novoId = uid();
-
-      localIds.set(local.id, novoId);
-
-      return {
-        ...local,
-        id: novoId,
-        projeto_id: novo.id,
-      };
-    });
-
-    const novosProdutos = produtos.map((produto) => {
-      const novoId = uid();
-
-      produtoIds.set(produto.id, novoId);
-
-      return {
-        ...produto,
-        id: novoId,
-        projeto_id: novo.id,
-      };
-    });
-
-    const novasEquipes = equipes.map((equipe) => {
-      const novoId = uid();
-
-      equipeIds.set(equipe.id, novoId);
-
-      return {
-        ...equipe,
-        id: novoId,
-        projeto_id: novo.id,
-      };
-    });
-
-    /**
-     * Corrige referências internas dos registros duplicados.
-     */
-
-    for (const funcionario of novosFuncionarios) {
-      if (funcionario.empresa_id) {
-        funcionario.empresa_id =
-          empresaIds.get(funcionario.empresa_id) ??
-          funcionario.empresa_id;
-      }
-
-      if (funcionario.encarregado_id) {
-        funcionario.encarregado_id =
-          funcionarioIds.get(funcionario.encarregado_id) ??
-          funcionario.encarregado_id;
-      }
-
-      if (funcionario.equipe_raiz_id) {
-        funcionario.equipe_raiz_id =
-          equipeIds.get(funcionario.equipe_raiz_id) ??
-          funcionario.equipe_raiz_id;
-      }
+    const linhasPorTabela = new Map<string, Array<Record<string, unknown>>>();
+    for (const tabela of tabelasProjeto) {
+      linhasPorTabela.set(tabela, (await db.table(tabela).where("projeto_id").equals(id).toArray()) as Array<Record<string, unknown>>);
     }
 
-    for (const local of novosLocais) {
-      if (local.local_pai_id) {
-        local.local_pai_id =
-          localIds.get(local.local_pai_id) ??
-          local.local_pai_id;
+    const filhosPorIds = async (tabela: string, campo: string, ids: string[]) => {
+      if (!ids.length) return [] as Array<Record<string, unknown>>;
+      const conjunto = new Set(ids);
+      const registros = (await db.table(tabela).toArray()) as Array<Record<string, unknown>>;
+      return registros.filter((registro) => conjunto.has(String(registro[campo] ?? "")));
+    };
+
+    const equipes = (linhasPorTabela.get("equipes") ?? []).map((item) => String(item["id"] ?? ""));
+    const estoques = (linhasPorTabela.get("estoque_equipamentos") ?? []).map((item) => String(item["id"] ?? ""));
+    const documentos = (linhasPorTabela.get("documentos") ?? []).map((item) => String(item["id"] ?? ""));
+    const inventarios = (linhasPorTabela.get("inventarios") ?? []).map((item) => String(item["id"] ?? ""));
+
+    const relacionamentos: Record<string, Array<Record<string, unknown>>> = {
+      equipe_membros: await filhosPorIds("equipe_membros", "equipe_id", equipes),
+      apropriacoes: await filhosPorIds("apropriacoes", "estoque_equipamento_id", estoques),
+      documento_itens: await filhosPorIds("documento_itens", "documento_id", documentos),
+      inventario_itens: await filhosPorIds("inventario_itens", "inventario_id", inventarios),
+    };
+
+    const mapas = new Map<string, Map<string, string>>();
+    const gerarMapa = (tabela: string, linhas: Array<Record<string, unknown>>) => {
+      const mapa = new Map<string, string>();
+      for (const linha of linhas) {
+        const antigo = String(linha["id"] ?? "");
+        if (antigo) mapa.set(antigo, uid());
       }
+      mapas.set(tabela, mapa);
+    };
+
+    for (const [tabela, linhas] of linhasPorTabela) gerarMapa(tabela, linhas);
+    for (const [tabela, linhas] of Object.entries(relacionamentos)) gerarMapa(tabela, linhas);
+
+    // Cada família de perfil mantém suas versões, mas recebe uma nova identidade.
+    const perfilFamilias = new Map<string, string>();
+    for (const linha of linhasPorTabela.get("perfis_parametros_custos") ?? []) {
+      const antigo = String(linha["perfil_id"] ?? "");
+      if (antigo && !perfilFamilias.has(antigo)) perfilFamilias.set(antigo, uid());
     }
 
-    const novosMembros: EquipeMembro[] = membros
-      .filter((membro) => equipeIds.has(membro.equipe_id))
-      .map((membro) => ({
-        ...membro,
-        id: uid(),
-        equipe_id: equipeIds.get(membro.equipe_id)!,
-        funcionario_id:
-          funcionarioIds.get(membro.funcionario_id) ??
-          membro.funcionario_id,
-      }));
+    const mapId = (tabela: string, valor: unknown) => {
+      const antigo = String(valor ?? "");
+      return antigo ? mapas.get(tabela)?.get(antigo) ?? antigo : valor;
+    };
+    const mapOptional = (tabela: string, valor: unknown) => {
+      const antigo = String(valor ?? "");
+      return antigo ? mapId(tabela, antigo) : null;
+    };
 
-    const novasMovimentacoes = movimentacoes.map((mov) => ({
-      ...mov,
-      id: uid(),
-      projeto_id: novo.id,
-      produto_id:
-        produtoIds.get(mov.produto_id) ??
-        mov.produto_id,
-      equipe_id:
-        equipeIds.get(mov.equipe_id) ??
-        mov.equipe_id,
-      funcionario_id: mov.funcionario_id
-        ? funcionarioIds.get(mov.funcionario_id) ??
-          mov.funcionario_id
-        : null,
-      encarregado_id: mov.encarregado_id
-        ? funcionarioIds.get(mov.encarregado_id) ??
-          mov.encarregado_id
-        : null,
-      empresa_id: mov.empresa_id
-        ? empresaIds.get(mov.empresa_id) ??
-          mov.empresa_id
-        : null,
-      local_id: mov.local_id
-        ? localIds.get(mov.local_id) ??
-          mov.local_id
-        : null,
-      local_destino_id: mov.local_destino_id
-        ? localIds.get(mov.local_destino_id) ??
-          mov.local_destino_id
-        : null,
-      movimentacao_origem_id: mov.movimentacao_origem_id
-        ? undefined
-        : undefined,
-    }));
+    if (original.empresa_id) {
+      novo.empresa_id = String(mapId("empresas", original.empresa_id));
+    } else {
+      novo.empresa_id = null;
+    }
 
-    await db.transaction(
-      "rw",
-      [
-        db.projetos,
-        db.empresas,
-        db.funcionarios,
-        db.locais,
-        db.produtos,
-        db.equipes,
-        db.equipe_membros,
-        db.movimentacoes,
-      ],
-      async () => {
-        await db.projetos.put(novo);
+    const remap = (tabela: string, linha: Record<string, unknown>): Record<string, unknown> => {
+      const row: Record<string, unknown> = { ...linha, id: mapId(tabela, linha["id"]), projeto_id: novoProjetoId };
+      const set = (campo: string, destino: string, opcional = true) => {
+        if (!Object.prototype.hasOwnProperty.call(row, campo)) return;
+        row[campo] = opcional ? mapOptional(destino, row[campo]) : mapId(destino, row[campo]);
+      };
 
-        await db.empresas.bulkPut(novasEmpresas);
-        await db.funcionarios.bulkPut(novosFuncionarios);
-        await db.locais.bulkPut(novosLocais);
-        await db.produtos.bulkPut(novosProdutos);
-        await db.equipes.bulkPut(novasEquipes);
-        await db.equipe_membros.bulkPut(novosMembros);
-        await db.movimentacoes.bulkPut(novasMovimentacoes);
-      },
-    );
+      switch (tabela) {
+        case "funcionarios": set("empresa_id", "empresas"); set("encarregado_id", "funcionarios"); set("equipe_raiz_id", "equipes"); break;
+        case "locais": set("local_pai_id", "locais"); break;
+        case "produtos": set("categoria_id", "categorias"); set("unidade_id", "unidades"); break;
+        case "movimentacoes":
+          set("produto_id", "produtos", false); set("funcionario_id", "funcionarios"); set("encarregado_id", "funcionarios"); set("empresa_id", "empresas"); set("local_id", "locais"); set("local_destino_id", "locais"); set("equipe_id", "equipes", false); set("documento_id", "documentos"); set("documento_item_id", "documento_itens"); set("movimentacao_origem_id", "movimentacoes"); break;
+        case "equipamentos": set("categoria_id", "categorias_equipamentos", false); break;
+        case "estoque_equipamentos": set("equipamento_id", "equipamentos", false); set("empresa_id", "empresas", false); set("equipe_id", "equipes"); break;
+        case "apropriacoes": set("estoque_equipamento_id", "estoque_equipamentos", false); set("funcionario_id", "funcionarios", false); break;
+        case "movimentacoes_equipamentos": {
+          set("estoque_equipamento_id", "estoque_equipamentos", false);
+          const participante = (tipo: unknown) => String(tipo ?? "").toUpperCase() === "EMPRESA" ? "empresas" : String(tipo ?? "").toUpperCase() === "EQUIPE" ? "equipes" : "funcionarios";
+          set("origem_id", participante(row["tipo_origem"]), false); set("destino_id", participante(row["tipo_destino"]), false); break;
+        }
+        case "documentos": set("empresa_id", "empresas"); break;
+        case "documento_itens": set("documento_id", "documentos", false); set("produto_id", "produtos"); set("equipe_destino_id", "equipes"); break;
+        case "documento_referencias": set("documento_id", "documentos", false); set("documento_referenciado_id", "documentos", false); break;
+        case "inventarios": set("equipe_id", "equipes"); set("responsavel_id", "funcionarios"); break;
+        case "inventario_itens": set("inventario_id", "inventarios", false); set("produto_id", "produtos", false); set("equipe_id", "equipes"); break;
+        case "manutencoes_equipamentos": set("estoque_equipamento_id", "estoque_equipamentos", false); set("equipamento_id", "equipamentos", false); set("empresa_id", "empresas"); set("movimento_sinalizacao_id", "movimentacoes_equipamentos"); set("movimento_envio_id", "movimentacoes_equipamentos"); set("movimento_retorno_id", "movimentacoes_equipamentos"); break;
+        case "manutencao_documentos": set("manutencao_id", "manutencoes_equipamentos", false); set("documento_id", "documentos", false); break;
+        case "apropriacoes_financeiras_equipamentos": set("documento_id", "documentos", false); set("documento_item_id", "documento_itens"); set("manutencao_id", "manutencoes_equipamentos"); set("estoque_equipamento_id", "estoque_equipamentos", false); set("equipamento_id", "equipamentos", false); break;
+        case "consumos_equipamentos": set("movimentacao_id", "movimentacoes", false); set("estoque_equipamento_id", "estoque_equipamentos", false); set("equipamento_id", "equipamentos", false); set("unidade_id", "unidades"); break;
+        case "regras_consumo_equipamentos": set("equipamento_id", "equipamentos", false); set("estoque_equipamento_id", "estoque_equipamentos"); set("produto_id", "produtos", false); set("unidade_base_id", "unidades", false); set("unidade_consumo_id", "unidades", false); break;
+        case "perfis_parametros_custos": {
+          const perfil = String(row["perfil_id"] ?? "");
+          if (perfil) row["perfil_id"] = perfilFamilias.get(perfil) ?? uid();
+          break;
+        }
+        case "inteligencia_acoes": {
+          set("produto_id", "produtos"); set("equipe_id", "equipes");
+          const origem = String(row["origem"] ?? "").toUpperCase();
+          const tabelaReferencia = origem === "VIGIA" ? "equipamentos" : origem === "INVENTARIO" ? "inventarios" : "produtos";
+          set("referencia_id", tabelaReferencia);
+          break;
+        }
+      }
+      return row;
+    };
+
+    const novasLinhas: Array<[string, Array<Record<string, unknown>>]> = [];
+    for (const [tabela, linhas] of linhasPorTabela) novasLinhas.push([tabela, linhas.map((linha) => remap(tabela, linha))]);
+    for (const [tabela, linhas] of Object.entries(relacionamentos)) novasLinhas.push([tabela, linhas.map((linha) => remap(tabela, linha))]);
+
+    const tabelasTransacao = [db.projetos, ...tabelasProjeto.map((nome) => db.table(nome)), db.equipe_membros, db.apropriacoes, db.documento_itens, db.inventario_itens];
+    await db.transaction("rw", tabelasTransacao, async () => {
+      await db.projetos.put(novo);
+      for (const [tabela, linhas] of novasLinhas) {
+        if (linhas.length) await db.table(tabela).bulkPut(linhas);
+      }
+    });
 
     return novo;
   },

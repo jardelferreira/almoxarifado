@@ -7,6 +7,7 @@ import {
   Copy,
   Download,
   FileSpreadsheet,
+  Fingerprint,
   FolderOpen,
   HardDrive,
   Linkedin,
@@ -34,7 +35,13 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { useProjetoAtivoId, useProjetos, useOnline } from "@/hooks/useAppData";
 import { repo } from "@/services/repo";
-import { lerArquivo, salvarDataset, type DatasetImportado } from "@/services/excel";
+import {
+  compatibilizarDataset,
+  verificarCompatibilidadeImportacao,
+  lerArquivo,
+  salvarDataset,
+  type DatasetImportado,
+} from "@/services/excel";
 import { formatarData, hoje } from "@/utils/format";
 import { uid } from "@/db/db";
 
@@ -325,13 +332,15 @@ function CabecalhoDialogo({
   descricao: string;
 }) {
   return (
-    <DialogHeader className="-mx-2 flex-row items-center gap-3 rounded-lg border-b border-border bg-primary/10 px-4 py-3 text-left">
+    <DialogHeader className="min-w-0 flex-row items-center gap-3 rounded-lg border border-border bg-primary/10 p-3 pr-10 text-left sm:pr-12">
       <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground">
         {icone}
       </span>
-      <span className="min-w-0">
-        <DialogTitle className="text-left">{titulo}</DialogTitle>
-        <DialogDescription className="text-left">{descricao}</DialogDescription>
+      <span className="min-w-0 flex-1">
+        <DialogTitle className="break-words text-left text-base leading-tight sm:text-lg">{titulo}</DialogTitle>
+        <DialogDescription className="mt-0.5 break-words text-left text-xs sm:text-sm">
+          {descricao}
+        </DialogDescription>
       </span>
     </DialogHeader>
   );
@@ -372,7 +381,7 @@ function DialogoProjeto({
 
   return (
     <Dialog open={aberto} onOpenChange={(o) => !o && !salvando && onFechar()}>
-      <DialogContent className="max-h-[90dvh] w-[calc(100%-2rem)] max-w-2xl overflow-y-auto">
+      <DialogContent className="max-h-[90dvh] w-[calc(100%-1.5rem)] max-w-2xl grid-cols-1 gap-4 overflow-x-hidden overflow-y-auto p-4 sm:w-full sm:p-6 [&>*]:min-w-0">
         <CabecalhoDialogo
           icone={criar ? <Plus className="size-5" /> : <Pencil className="size-5" />}
           titulo={criar ? "Novo projeto" : "Editar projeto"}
@@ -435,7 +444,7 @@ function DialogoProjeto({
               />
             </Campo>
           </div>
-          <DialogFooter>
+          <DialogFooter className="flex-col-reverse gap-2 sm:flex-row [&>button]:w-full sm:[&>button]:w-auto">
             <Button type="button" variant="outline" disabled={salvando} onClick={onFechar}>
               Cancelar
             </Button>
@@ -477,6 +486,7 @@ function Home() {
   const [limpando, setLimpando] = useState(false);
 
   const [preview, setPreview] = useState<DatasetImportado | null>(null);
+  const [compatibilizando, setCompatibilizando] = useState(false);
   const [importando, setImportando] = useState(false);
   const inputXlsx = useRef<HTMLInputElement>(null);
 
@@ -696,14 +706,52 @@ function Home() {
           },
         ];
       }
+      const compatibilidade = await verificarCompatibilidadeImportacao(ds);
+      if (compatibilidade.compativel) {
+        ds.compatibilizado = {
+          idsGerados: 0,
+          catalogosReutilizados: 0,
+        };
+      }
       setPreview(ds);
     } catch (e) {
       toast.error(`Não foi possível ler a planilha: ${(e as Error).message}`);
     }
   };
 
+  const tornarPlanilhaCompativel = async () => {
+    if (!preview || preview.compatibilizado) return;
+
+    setCompatibilizando(true);
+    try {
+      const compatibilizado = await compatibilizarDataset(preview);
+      setPreview(compatibilizado);
+
+      if (compatibilizado.problemas.length > 0) {
+        toast.error("A planilha foi reidentificada, mas ainda possui inconsistências que precisam ser corrigidas.");
+        return;
+      }
+
+      toast.success(
+        `Planilha compatível: ${compatibilizado.compatibilizado?.idsGerados ?? 0} IDs recriados e relações preservadas.`,
+      );
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível tornar a planilha compatível.",
+      );
+    } finally {
+      setCompatibilizando(false);
+    }
+  };
+
   const confirmarImportacao = async () => {
     if (!preview) return;
+    if (!preview.compatibilizado) {
+      toast.error("Torne a planilha compatível antes de importar.");
+      return;
+    }
     if (preview.problemas.length > 0) {
       toast.error("A planilha possui inconsistências e não pode ser importada.");
       return;
@@ -1127,18 +1175,18 @@ function Home() {
 
       {/* Excluir projeto */}
       <Dialog open={!!excluindo} onOpenChange={(o) => !o && !excluindoEmCurso && setExcluindo(null)}>
-        <DialogContent className="w-[calc(100%-2rem)] max-w-md">
+        <DialogContent className="max-h-[90dvh] w-[calc(100%-1.5rem)] max-w-md grid-cols-1 gap-4 overflow-x-hidden overflow-y-auto p-4 sm:w-full sm:p-6 [&>*]:min-w-0">
           <CabecalhoDialogo
             icone={<Trash2 className="size-5" />}
             titulo="Excluir projeto"
             descricao="Esta ação não pode ser desfeita."
           />
           {excluindo && (
-            <p className="text-sm">
+            <p className="break-words text-sm">
               Excluir <strong>{excluindo.codigo} · {excluindo.nome}</strong> e todas as suas movimentações?
             </p>
           )}
-          <DialogFooter>
+          <DialogFooter className="flex-col-reverse gap-2 sm:flex-row [&>button]:w-full sm:[&>button]:w-auto">
             <Button variant="outline" disabled={excluindoEmCurso} onClick={() => setExcluindo(null)}>
               Cancelar
             </Button>
@@ -1157,7 +1205,7 @@ function Home() {
 
       {/* Limpar dados */}
       <Dialog open={limparAberto} onOpenChange={(o) => !o && !limpando && setLimparAberto(false)}>
-        <DialogContent className="w-[calc(100%-2rem)] max-w-md">
+        <DialogContent className="max-h-[90dvh] w-[calc(100%-1.5rem)] max-w-md grid-cols-1 gap-4 overflow-x-hidden overflow-y-auto p-4 sm:w-full sm:p-6 [&>*]:min-w-0">
           <CabecalhoDialogo
             icone={<AlertTriangle className="size-5" />}
             titulo="Limpar todos os dados"
@@ -1178,7 +1226,7 @@ function Home() {
               />
             </Campo>
           </div>
-          <DialogFooter>
+          <DialogFooter className="flex-col-reverse gap-2 sm:flex-row [&>button]:w-full sm:[&>button]:w-auto">
             <Button variant="outline" disabled={limpando} onClick={() => setLimparAberto(false)}>
               Cancelar
             </Button>
@@ -1197,7 +1245,7 @@ function Home() {
 
       {/* Pré-visualização da importação */}
       <Dialog open={!!preview} onOpenChange={(o) => !o && !importando && setPreview(null)}>
-        <DialogContent className="max-h-[90dvh] w-[calc(100%-2rem)] max-w-lg overflow-y-auto">
+        <DialogContent className="max-h-[90dvh] w-[calc(100%-1.5rem)] max-w-lg grid-cols-1 gap-4 overflow-x-hidden overflow-y-auto p-4 sm:w-full sm:p-6 [&>*]:min-w-0">
           <CabecalhoDialogo
             icone={<FileSpreadsheet className="size-5" />}
             titulo="Revisar importação"
@@ -1213,7 +1261,7 @@ function Home() {
                   <span className="text-sm font-normal text-muted-foreground">módulos</span>
                 </p>
                 {preview.projetos[0] && (
-                  <p className="mt-1 truncate text-xs text-muted-foreground">
+                  <p className="mt-1 line-clamp-2 break-words text-xs text-muted-foreground">
                     Projeto a criar:{" "}
                     <strong className="text-foreground">
                       {preview.projetos[0].codigo} · {preview.projetos[0].nome}
@@ -1223,21 +1271,39 @@ function Home() {
               </div>
 
               {modulosPreview.length > 0 && (
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                <div className="grid grid-cols-2 gap-2 min-[480px]:grid-cols-3">
+                  {/* rótulos longos quebram em vez de estourar a coluna */}
                   {modulosPreview.map(([label, n]) => (
-                    <div key={label} className="rounded-lg border border-border bg-muted/30 p-2">
+                    <div key={label} className="min-w-0 rounded-lg border border-border bg-muted/30 p-2">
                       <p className="num text-lg font-semibold">{n}</p>
-                      <p className="text-xs leading-tight text-muted-foreground">{label}</p>
+                      <p className="break-words text-xs leading-tight text-muted-foreground">{label}</p>
                     </div>
                   ))}
                 </div>
               )}
 
               {preview.problemas.length === 0 ? (
-                <p className="flex items-center gap-2 text-xs font-medium text-emerald-600 dark:text-emerald-400">
-                  <CheckCircle2 className="size-4 shrink-0" />
-                  Nenhum problema detectado. Pronto para importar.
-                </p>
+                <div className="space-y-2 rounded-lg border border-primary/25 bg-primary/5 p-3">
+                  <p className="flex items-center gap-2 text-xs font-semibold text-primary">
+                    <CheckCircle2 className="size-4 shrink-0" />
+                    {preview.compatibilizado
+                      ? "Planilha compatível com este dispositivo."
+                      : "A estrutura está válida, mas existem conflitos de identidade que precisam ser resolvidos."}
+                  </p>
+                  {!preview.compatibilizado && (
+                    <p className="text-xs leading-relaxed text-muted-foreground">
+                      A planilha só precisa ser reidentificada quando houver conflito com dados já existentes neste dispositivo. Em um dispositivo sem o projeto, a exportação original pode ser importada diretamente.
+                    </p>
+                  )}
+                  {preview.compatibilizado && preview.compatibilizado.idsGerados > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      {preview.compatibilizado.idsGerados} IDs foram recriados.
+                      {preview.compatibilizado.catalogosReutilizados > 0
+                        ? ` ${preview.compatibilizado.catalogosReutilizados} itens de catálogo foram reutilizados.`
+                        : ""}
+                    </p>
+                  )}
+                </div>
               ) : (
                 <div role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 p-3">
                   <p className="flex items-center gap-2 text-sm font-semibold text-destructive">
@@ -1246,7 +1312,9 @@ function Home() {
                   </p>
                   <ul className="mt-2 max-h-40 list-disc space-y-0.5 overflow-y-auto pl-5 text-xs text-destructive">
                     {preview.problemas.map((p) => (
-                      <li key={p}>{p}</li>
+                      <li key={p} className="break-words">
+                        {p}
+                      </li>
                     ))}
                   </ul>
                   <p className="mt-2 text-xs text-muted-foreground">
@@ -1256,15 +1324,35 @@ function Home() {
               )}
             </div>
           )}
-          <DialogFooter>
-            <Button variant="outline" disabled={importando} onClick={() => setPreview(null)}>
+          <DialogFooter className="flex-col-reverse gap-2 sm:flex-row [&>button]:w-full sm:[&>button]:w-auto">
+            <Button
+              variant="outline"
+              disabled={importando || compatibilizando}
+              onClick={() => setPreview(null)}
+            >
               Cancelar
             </Button>
+            {!preview?.compatibilizado && (
+              <Button
+                size="lg"
+                variant="secondary"
+                className="gap-2 font-semibold"
+                onClick={() => void tornarPlanilhaCompativel()}
+                disabled={!preview || compatibilizando}
+              >
+                {compatibilizando ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Fingerprint className="size-4" />
+                )}
+                Tornar compatível
+              </Button>
+            )}
             <Button
               size="lg"
               className="gap-2 font-semibold shadow-sm"
               onClick={() => void confirmarImportacao()}
-              disabled={!preview || preview.problemas.length > 0 || importando}
+              disabled={!preview?.compatibilizado || preview.problemas.length > 0 || importando || compatibilizando}
             >
               {importando ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
               Importar projeto
