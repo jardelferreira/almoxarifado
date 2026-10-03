@@ -74,6 +74,28 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
 }
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
+  headers: ({ ssr }) => {
+    const nonce = ssr?.nonce;
+
+    if (!nonce) return;
+
+    return {
+      "Content-Security-Policy": [
+        "default-src 'self'",
+        `script-src 'self' 'nonce-${nonce}'`,
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+        "font-src 'self' https://fonts.gstatic.com data:",
+        "img-src 'self' data: blob:",
+        "connect-src 'self'",
+        "worker-src 'self' blob:",
+        "object-src 'none'",
+        "base-uri 'self'",
+        "form-action 'self'",
+        "frame-ancestors 'none'",
+        "upgrade-insecure-requests",
+      ].join("; "),
+    };
+  },
   head: () => ({
     meta: [
       { charSet: "utf-8" },
@@ -106,6 +128,9 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 });
 
 function RootShell({ children }: { children: ReactNode }) {
+  const router = useRouter();
+  const nonce = router.options.ssr?.nonce;
+
   useEffect(() => {
     if ("serviceWorker" in navigator) {
       void navigator.serviceWorker.register("/sw.js").catch((error: unknown) => {
@@ -117,6 +142,7 @@ function RootShell({ children }: { children: ReactNode }) {
   return (
     <html lang="pt-BR">
       <head>
+        {nonce ? <meta property="csp-nonce" content={nonce} /> : null}
         <HeadContent />
       </head>
       <body>
