@@ -69,6 +69,14 @@ function formatarCurto(data: Date) {
   }).format(data);
 }
 
+function formatarDataBrasileira(data: Date) {
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(data);
+}
+
 function formatarCompleto(data: Date) {
   return new Intl.DateTimeFormat("pt-BR", {
     weekday: "long",
@@ -136,9 +144,10 @@ function CronologiaPage() {
   const copiarData = async () => {
     if (!dataSelecionada) return;
 
-    const texto = `${dataSelecionada.relative} — ${dataSelecionada.iso}`;
+    const dataBrasileira = formatarDataBrasileira(adicionarDias(hoje, dataSelecionada.offset));
+    const texto = `${dataSelecionada.relative} — ${dataBrasileira}`;
     try {
-      await navigator.clipboard.writeText(dataSelecionada.iso);
+      await navigator.clipboard.writeText(dataBrasileira);
       toast.success(`Data copiada: ${texto}`);
     } catch {
       toast.error("Não foi possível copiar a data automaticamente.");
@@ -293,7 +302,7 @@ function CronologiaPage() {
                         key={item.iso}
                         type="button"
                         onClick={() => setSelecionado(item.offset)}
-                        title={`${item.relative} — ${item.iso}`}
+                        title={`${item.relative} — ${formatarDataBrasileira(adicionarDias(hoje, item.offset))}`}
                         className={`group relative flex w-14 shrink-0 flex-col items-center justify-end rounded-lg px-1.5 pb-2 pt-2 transition-colors ${
                           selecionadoAtual
                             ? "bg-sidebar-primary/[0.12] text-foreground"
@@ -340,7 +349,7 @@ function CronologiaPage() {
                         Data selecionada
                       </p>
                       <p className="mt-1 font-display text-3xl font-bold uppercase tracking-tight md:text-4xl">
-                        {dataSelecionada.iso}
+                        {formatarDataBrasileira(adicionarDias(hoje, dataSelecionada.offset))}
                       </p>
                       <p className="mt-1 capitalize text-sm text-muted-foreground">
                         {dataSelecionada.long}

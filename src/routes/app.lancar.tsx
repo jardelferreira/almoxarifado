@@ -274,8 +274,8 @@ function Formulario({ modo, produtoInicial }: { modo: string; produtoInicial: st
     };
 
     if (cfg.tipo === "TRANSFERENCIA") {
-      const nomeOrigem = dados.locais.find((l) => l.id === localId)?.nome ?? "";
-      const nomeDestino = dados.locais.find((l) => l.id === localDestinoId)?.nome ?? "";
+      const nomeOrigem = localId ? nomeLocalCompleto(localId) : "";
+      const nomeDestino = localDestinoId ? nomeLocalCompleto(localDestinoId) : "";
       const respO = dados.funcionarios.find((f) => f.id === respOrigemId)?.nome ?? "—";
       const respD = dados.funcionarios.find((f) => f.id === respDestinoId)?.nome ?? "—";
       const nota = [
@@ -364,8 +364,31 @@ function Formulario({ modo, produtoInicial }: { modo: string; produtoInicial: st
     }
   };
 
-  const opt = <T extends { id: string; nome: string, tipo?: string }>(arr: T[]) =>
+  const nomeLocalCompleto = (localId: string) => {
+    const porId = new Map(dados.locais.map((local) => [local.id, local]));
+    const partes: string[] = [];
+    const visitados = new Set<string>();
+    let atualLocal = porId.get(localId);
+
+    while (atualLocal && !visitados.has(atualLocal.id)) {
+      visitados.add(atualLocal.id);
+      if (atualLocal.nome.trim()) partes.unshift(atualLocal.nome.trim());
+      atualLocal = atualLocal.local_pai_id
+        ? porId.get(atualLocal.local_pai_id)
+        : undefined;
+    }
+
+    return partes.join(" → ");
+  };
+
+  const opt = <T extends { id: string; nome: string; tipo?: string }>(arr: T[]) =>
     arr.map((x) => ({ value: x.id, label: `${x.nome} ${x.tipo ?? ""}` }));
+
+  const optLocais = (arr: typeof locAtivos) =>
+    arr.map((local) => ({
+      value: local.id,
+      label: nomeLocalCompleto(local.id),
+    }));
 
   const funcAtivos = dados.funcionarios.filter((f) => f.status === "ATIVO");
   const empAtivas = dados.empresas.filter((e) => e.ativo);
@@ -527,7 +550,7 @@ function Formulario({ modo, produtoInicial }: { modo: string; produtoInicial: st
                 placeholder="Selecionar"
                 value={localId}
                 onChange={setLocalId}
-                opcoes={opt(locAtivos)}
+                opcoes={optLocais(locAtivos)}
               />
             </div>
           )}
@@ -551,7 +574,7 @@ function Formulario({ modo, produtoInicial }: { modo: string; produtoInicial: st
                   placeholder="Selecionar"
                   value={localId}
                   onChange={setLocalId}
-                  opcoes={opt(locAtivos)}
+                  opcoes={optLocais(locAtivos)}
                 />
               </div>
               <div className="space-y-1.5">
@@ -560,7 +583,7 @@ function Formulario({ modo, produtoInicial }: { modo: string; produtoInicial: st
                   placeholder="Selecionar"
                   value={localDestinoId}
                   onChange={setLocalDestinoId}
-                  opcoes={opt(locAtivos)}
+                  opcoes={optLocais(locAtivos)}
                 />
               </div>
               <div className="space-y-1.5">
