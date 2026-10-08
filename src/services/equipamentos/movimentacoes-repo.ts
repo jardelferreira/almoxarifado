@@ -37,7 +37,9 @@ function ordenarMovimentacoes(
   movimentacoes: MovimentacaoEquipamento[],
 ): MovimentacaoEquipamento[] {
   return [...movimentacoes].sort((a, b) =>
-    `${a.criado_em}|${a.id}`.localeCompare(`${b.criado_em}|${b.id}`),
+    `${a.data}|${a.criado_em}|${a.id}`.localeCompare(
+      `${b.data}|${b.criado_em}|${b.id}`,
+    ),
   );
 }
 

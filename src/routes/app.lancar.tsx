@@ -17,7 +17,6 @@ import { configuracoesRepo } from "@/services/configuracoes-repo";
 import {
   arredondarQuantidade,
   consumoEquipamentoRepo,
-  descreverResultadoApropriacao,
 } from "@/services/equipamentos/consumo-equipamento-repo";
 import { getDB } from "@/db/db";
 import { formatarData, hoje, num } from "@/utils/format";
@@ -305,38 +304,29 @@ function Formulario({ modo, produtoInicial }: { modo: string; produtoInicial: st
 
       if (cfg.tipo === "SAIDA" && funcionarioId) {
         try {
-          // A leitura do módulo é feita novamente no momento do lançamento para
-          // evitar uma corrida caso a configuração ainda não tenha chegado ao
-          // estado reativo da tela.
+          // O vínculo com equipamento é automático e silencioso.
+          // O resultado dessa rotina pertence ao controle interno do módulo
+          // de equipamentos, não ao fluxo operacional de saída de materiais.
           const configuracaoAtual =
             configuracao ?? (await configuracoesRepo.obter(projetoId));
 
-          if (configuracaoAtual.modulos.equipamentos !== true) {
-            toast.success(`${cfg.titulo} registrada`);
-            limpar();
-            return;
-          }
-
-          const resultado = await consumoEquipamentoRepo.apropriarAutomaticamente(
-            projetoId,
-            movimentacao.id,
-          );
-          const aviso = descreverResultadoApropriacao(resultado);
-
-          if (aviso.nivel === "sucesso") {
-            toast.success(`${cfg.titulo} registrada. ${aviso.mensagem}`);
-          } else {
-            toast.success(`${cfg.titulo} registrada.`);
-            toast.info(aviso.mensagem, { duration: 12000 });
+          if (configuracaoAtual.modulos.equipamentos === true) {
+            await consumoEquipamentoRepo.apropriarAutomaticamente(
+              projetoId,
+              movimentacao.id,
+            );
           }
         } catch (error) {
-          toast.success(`${cfg.titulo} registrada`);
+          // A saída já foi registrada. Somente uma falha real no vínculo
+          // automático merece aviso ao operador.
           toast.warning(
             error instanceof Error
               ? `A saída foi registrada, mas o vínculo automático não foi criado: ${error.message}`
               : "A saída foi registrada, mas o vínculo automático não foi criado.",
           );
         }
+
+        toast.success(`${cfg.titulo} registrada`);
       } else {
         toast.success(`${cfg.titulo} registrada`);
       }
@@ -751,19 +741,6 @@ function FormularioDevolucao() {
     salvandoRef.current = true;
     setSalvando(true);
     try {
-      // A redução do consumo por equipamento acontece DENTRO de
-      // `repo.saveMovimentacao` (atômica com a devolução). Aqui só medimos
-      // antes/depois para informar o usuário.
-      let apropriadoAntes = 0;
-      try {
-        apropriadoAntes = await consumoEquipamentoRepo.quantidadeApropriada(
-          projetoId,
-          origem.id,
-        );
-      } catch {
-        // Informativo apenas.
-      }
-
       await repo.saveMovimentacao({
         projeto_id: projetoId,
         data,
@@ -788,20 +765,6 @@ function FormularioDevolucao() {
       setObservacao("");
       setDocumentoId(null);
 
-      try {
-        const apropriadoDepois = await consumoEquipamentoRepo.quantidadeApropriada(
-          projetoId,
-          origem.id,
-        );
-        const reduzido = arredondarQuantidade(apropriadoAntes - apropriadoDepois);
-        if (reduzido > 0) {
-          toast.info(
-            `Consumo apropriado a equipamentos reduzido em ${num(reduzido)} ${unidade?.sigla ?? ""}.`.replace(" .", "."),
-          );
-        }
-      } catch {
-        // Informativo apenas; a devolução já foi registrada.
-      }
     } catch (error) {
       toast.error(
         error instanceof Error

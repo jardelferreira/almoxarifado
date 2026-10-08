@@ -45,9 +45,11 @@ function ordenarMovimentacoes(
   movimentacoes: MovimentacaoEquipamento[],
 ): MovimentacaoEquipamento[] {
   return [...movimentacoes].sort((a, b) => {
-    // A ordem do histórico é determinada pelo instante real de criação.
-    // `data` é a data operacional informada pelo usuário e pode ser retroativa.
-    return `${a.criado_em}|${a.id}`.localeCompare(`${b.criado_em}|${b.id}`);
+    // O estado físico deve seguir a ordem operacional da movimentação.
+    // `criado_em` fica como desempate para lançamentos feitos no mesmo dia.
+    return `${a.data}|${a.criado_em}|${a.id}`.localeCompare(
+      `${b.data}|${b.criado_em}|${b.id}`,
+    );
   });
 }
 
