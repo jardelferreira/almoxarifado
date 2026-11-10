@@ -211,16 +211,38 @@ export function ApropriacoesPage() {
 
         setSalvando(true);
         try {
-            if (selecionado.responsavel && selecionado.responsavel.id !== funcionarioId) {
+            const estadoAtual = await estadoEquipamentosRepo.calcular(
+                projetoId,
+                selecionado.estoque.id,
+            );
+            const responsaveisAtuais = [...estadoAtual.funcionarios.entries()].filter(([, quantidade]) => quantidade > 0);
+            const responsavelAtualId = responsaveisAtuais[0]?.[0];
+
+            if (responsaveisAtuais.length > 1) {
+                throw new Error("Este equipamento possui mais de um responsável no histórico. Corrija as movimentações antes de alterar a apropriação.");
+            }
+
+            if (responsavelAtualId === funcionarioId) {
+                toast.info("Este equipamento já está apropriado para este funcionário.");
+                setDialogApropriar(false);
+                return;
+            }
+
+            if (!responsavelAtualId && (estadoAtual.manutencao > 0 || estadoAtual.almoxarifado < 1)) {
+                throw new Error("Este equipamento não está disponível no Almoxarifado para apropriação.");
+            }
+
+            if (responsavelAtualId && responsavelAtualId !== funcionarioId) {
+                const almoxarifadoId = await obterAlmoxarifadoId(projetoId);
                 await movimentacoesEquipamentosRepo.salvar({
                     projeto_id: projetoId,
                     estoque_equipamento_id: selecionado.estoque.id,
                     tipo: "DEVOLUCAO",
                     quantidade: 1,
                     tipo_origem: "FUNCIONARIO",
-                    origem_id: selecionado.responsavel.id,
+                    origem_id: responsavelAtualId,
                     tipo_destino: "EQUIPE",
-                    destino_id: (await obterAlmoxarifadoId(projetoId)),
+                    destino_id: almoxarifadoId,
                     data: new Date().toISOString().slice(0, 10),
                     referencia_documento: null,
                     observacoes: "Troca de responsável pela Central de Apropriações.",
@@ -269,6 +291,14 @@ export function ApropriacoesPage() {
         setSalvando(true);
 
         try {
+            const estadoAtual = await estadoEquipamentosRepo.calcular(
+                projetoId,
+                alvo.estoque.id,
+            );
+            if ((estadoAtual.funcionarios.get(alvo.responsavel.id) ?? 0) < 1) {
+                throw new Error("A apropriação exibida está desatualizada. Atualize a tela e tente novamente.");
+            }
+
             const almoxarifadoId = await obterAlmoxarifadoId(projetoId);
 
             await movimentacoesEquipamentosRepo.salvar({
