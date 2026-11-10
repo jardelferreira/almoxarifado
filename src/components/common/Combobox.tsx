@@ -25,6 +25,7 @@ export function Combobox({
   placeholder = "Selecionar…",
   vazio = "Nada encontrado",
   disabled = false,
+  allowClear = true,
   className,
 }: {
   opcoes: Opcao[];
@@ -33,6 +34,7 @@ export function Combobox({
   placeholder?: string;
   vazio?: string;
   disabled?: boolean;
+  allowClear?: boolean;
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -64,16 +66,18 @@ export function Combobox({
           <CommandList>
             <CommandEmpty>{vazio}</CommandEmpty>
             <CommandGroup>
-              <CommandItem
-                value="__todos__"
-                onSelect={() => {
-                  onChange(null);
-                  setOpen(false);
-                }}
-              >
-                <Check className={cn("size-4", value ? "opacity-0" : "opacity-100")} />
-                {placeholder}
-              </CommandItem>
+              {allowClear && (
+                <CommandItem
+                  value="__todos__"
+                  onSelect={() => {
+                    onChange(null);
+                    setOpen(false);
+                  }}
+                >
+                  <Check className={cn("size-4", value ? "opacity-0" : "opacity-100")} />
+                  {placeholder}
+                </CommandItem>
+              )}
               {opcoes.map((o) => (
                 <CommandItem
                   key={o.value}

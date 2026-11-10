@@ -46,13 +46,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { useProjetoAtivoId } from "@/hooks/useAppData";
 import { getDB } from "@/db/db";
 import { estoqueEquipamentosRepo } from "@/services/equipamentos/estoque-repo";
@@ -2330,10 +2323,14 @@ function MovimentacoesEquipamentosPage() {
           <div className="space-y-5">
             <div className="space-y-2">
               <Label>Tipo de movimentação</Label>
-              <Select value={formulario.tipo} onValueChange={(value) => alterarTipo(value as MovimentacaoEquipamentoTipo)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>{tiposMovimentacaoVisiveis.map((value) => <SelectItem key={value} value={value}>{tipoLabels[value]}</SelectItem>)}</SelectContent>
-              </Select>
+              <Combobox
+                opcoes={tiposMovimentacaoVisiveis.map((value) => ({ value, label: tipoLabels[value] }))}
+                value={formulario.tipo}
+                onChange={(value) => value && alterarTipo(value as MovimentacaoEquipamentoTipo)}
+                placeholder="Selecione o tipo de movimentação"
+                vazio="Nenhum tipo disponível"
+                allowClear={false}
+              />
             </div>
 
             {formulario.tipo === "ENTRADA" ? (
@@ -2369,7 +2366,7 @@ function MovimentacoesEquipamentosPage() {
 
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2"><Label>Empresa proprietária</Label><Combobox opcoes={empresas.map((empresa) => ({ value: empresa.id, label: empresa.nome, hint: empresa.tipo || undefined })).sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))} value={formulario.empresaId} onChange={(value) => atualizar("empresaId", value ?? "")} placeholder="Selecione a empresa" vazio="Nenhuma empresa disponível" /></div>
-                  <div className="space-y-2"><Label>Vínculo</Label><Select value={formulario.vinculo} onValueChange={(value) => atualizar("vinculo", value as Formulario["vinculo"])}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="PROPRIO">Próprio</SelectItem><SelectItem value="ALUGADO">Alugado</SelectItem><SelectItem value="EMPRESTIMO">Empréstimo</SelectItem></SelectContent></Select></div>
+                  <div className="space-y-2"><Label>Vínculo</Label><Combobox opcoes={[{ value: "PROPRIO", label: "Próprio" }, { value: "ALUGADO", label: "Alugado" }, { value: "EMPRESTIMO", label: "Empréstimo" }]} value={formulario.vinculo} onChange={(value) => value && atualizar("vinculo", value as Formulario["vinculo"])} placeholder="Selecione o vínculo" vazio="Nenhum vínculo disponível" allowClear={false} /></div>
                 </div>
 
                 <div className="space-y-2"><Label>Equipe destinada (opcional)</Label><Combobox opcoes={[{ value: "__nenhuma__", label: "Todo o projeto" }, ...equipes.map((equipe) => ({ value: equipe.id, label: equipe.nome }))].sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))} value={formulario.equipeId || "__nenhuma__"} onChange={(value) => atualizar("equipeId", !value || value === "__nenhuma__" ? "" : value)} placeholder="Todo o projeto" vazio="Nenhuma equipe disponível" /></div>
