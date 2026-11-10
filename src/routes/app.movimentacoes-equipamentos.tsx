@@ -1244,9 +1244,14 @@ function MovimentacoesEquipamentosPage() {
       case "REENTRADA":
         return pendenciasReentrada.get(formulario.estoqueEquipamentoId)?.restante ?? 0;
       case "BAIXA":
-        return formulario.origemId === equipesOperacionais.manutencao?.id
-          ? Math.min(estadoSelecionado.manutencao, estadoSelecionado.saldo)
-          : Math.min(estadoSelecionado.almoxarifado, estadoSelecionado.saldo);
+        // A baixa nunca pode ultrapassar simultaneamente a quantidade na
+        // origem e o saldo físico ainda existente no registro.
+        return Math.min(
+          formulario.origemId === equipesOperacionais.manutencao?.id
+            ? estadoSelecionado.manutencao
+            : estadoSelecionado.almoxarifado,
+          estadoSelecionado.saldo,
+        );
       case "DEVOLUCAO_FORNECEDOR":
         return estadoSelecionado.manutencao > 0
           ? estadoSelecionado.manutencao
@@ -2507,7 +2512,12 @@ function MovimentacoesEquipamentosPage() {
                             return (
                               <SelectItem key={stock.id} value={stock.id}>
                                 <div className="flex min-w-0 flex-col gap-0.5">
-                                  <span>{equipamento?.nome ?? "Equipamento"} · disponível: {formulario.origemId === equipesOperacionais.manutencao?.id ? (estado?.manutencao ?? 0) : (estado?.almoxarifado ?? 0)}</span>
+                                  <span>{equipamento?.nome ?? "Equipamento"} · disponível: {Math.min(
+                                    formulario.origemId === equipesOperacionais.manutencao?.id
+                                      ? (estado?.manutencao ?? 0)
+                                      : (estado?.almoxarifado ?? 0),
+                                    estado?.saldo ?? 0,
+                                  )}</span>
                                   <span className="max-w-[42rem] truncate text-xs text-muted-foreground">{detalhesRegistroFisico(stock, equipamento, empresaPorId)}</span>
                                 </div>
                               </SelectItem>
@@ -2633,7 +2643,7 @@ function MovimentacoesEquipamentosPage() {
                 <div className="rounded-lg border bg-muted/20 p-3 text-sm"><span className="font-medium">Fluxo:</span> {fluxo.origemLabel} <ArrowRight className="mx-2 inline h-4 w-4" /> {fluxo.destinoLabel}</div>
 
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2"><Label>Quantidade</Label><Input type="number" min={1} step={1} disabled={equipamentoSelecionado?.tipo_controle === "INDIVIDUAL"} value={formulario.quantidade} onChange={(event) => atualizar("quantidade", event.target.value)} /><p className="text-xs text-muted-foreground">Máximo nesta operação: {Number.isFinite(maxQuantidade) ? maxQuantidade : "sem limite"}.</p></div>
+                  <div className="space-y-2"><Label>Quantidade</Label><Input type="number" min={1} max={Number.isFinite(maxQuantidade) ? maxQuantidade : undefined} step={1} disabled={equipamentoSelecionado?.tipo_controle === "INDIVIDUAL"} value={formulario.quantidade} onChange={(event) => atualizar("quantidade", event.target.value)} /><p className="text-xs text-muted-foreground">Máximo nesta operação: {Number.isFinite(maxQuantidade) ? maxQuantidade : "sem limite"}.</p></div>
                   <div className="space-y-2"><Label>Data</Label><Input type="date" value={formulario.data} onChange={(event) => atualizar("data", event.target.value)} /></div>
                 </div>
               </>
