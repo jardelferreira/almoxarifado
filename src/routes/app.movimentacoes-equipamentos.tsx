@@ -2340,18 +2340,21 @@ function MovimentacoesEquipamentosPage() {
               <>
                 <div className="space-y-2">
                   <Label>Equipamento do cadastro</Label>
-                  <Select value={formulario.equipamentoId} onValueChange={selecionarEquipamentoEntrada}>
-                    <SelectTrigger><SelectValue placeholder="Selecione o equipamento que será recebido" /></SelectTrigger>
-                    <SelectContent>
-                      {equipamentosAtivos.length === 0 ? (
-                        <SelectItem value="__vazio__" disabled>Nenhum equipamento ativo cadastrado</SelectItem>
-                      ) : equipamentosAtivos.map((equipamento) => {
-                        const registros = estoquePorEquipamento.get(equipamento.id) ?? [];
-                        const total = registros.reduce((soma, item) => soma + item.quantidade, 0);
-                        return <SelectItem key={equipamento.id} value={equipamento.id}>{equipamento.nome}{total > 0 ? ` · já no estoque: ${total}` : ""}</SelectItem>;
-                      })}
-                    </SelectContent>
-                  </Select>
+                  <Combobox
+                    opcoes={equipamentosAtivos.map((equipamento) => {
+                      const registros = estoquePorEquipamento.get(equipamento.id) ?? [];
+                      const total = registros.reduce((soma, item) => soma + item.quantidade, 0);
+                      return {
+                        value: equipamento.id,
+                        label: `${equipamento.nome}${total > 0 ? ` · já no estoque: ${total}` : ""}`,
+                        hint: equipamento.modelo || (equipamento.tipo_controle === "INDIVIDUAL" ? "Individual" : "Quantitativo"),
+                      };
+                    }).sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))}
+                    value={formulario.equipamentoId}
+                    onChange={(value) => value && selecionarEquipamentoEntrada(value)}
+                    placeholder="Selecione o equipamento que será recebido"
+                    vazio="Nenhum equipamento ativo cadastrado"
+                  />
                   <p className="text-xs text-muted-foreground">A entrada cria um novo registro físico no estoque. Os registros que já estão no estoque não são reutilizados.</p>
                 </div>
 
@@ -2365,11 +2368,11 @@ function MovimentacoesEquipamentosPage() {
                 )}
 
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2"><Label>Empresa proprietária</Label><Select value={formulario.empresaId} onValueChange={(value) => atualizar("empresaId", value)}><SelectTrigger><SelectValue placeholder="Selecione a empresa" /></SelectTrigger><SelectContent>{empresas.map((empresa) => <SelectItem key={empresa.id} value={empresa.id}>{empresa.nome}</SelectItem>)}</SelectContent></Select></div>
+                  <div className="space-y-2"><Label>Empresa proprietária</Label><Combobox opcoes={empresas.map((empresa) => ({ value: empresa.id, label: empresa.nome, hint: empresa.tipo || undefined })).sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))} value={formulario.empresaId} onChange={(value) => atualizar("empresaId", value ?? "")} placeholder="Selecione a empresa" vazio="Nenhuma empresa disponível" /></div>
                   <div className="space-y-2"><Label>Vínculo</Label><Select value={formulario.vinculo} onValueChange={(value) => atualizar("vinculo", value as Formulario["vinculo"])}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="PROPRIO">Próprio</SelectItem><SelectItem value="ALUGADO">Alugado</SelectItem><SelectItem value="EMPRESTIMO">Empréstimo</SelectItem></SelectContent></Select></div>
                 </div>
 
-                <div className="space-y-2"><Label>Equipe destinada (opcional)</Label><Select value={formulario.equipeId || "__nenhuma__"} onValueChange={(value) => atualizar("equipeId", value === "__nenhuma__" ? "" : value)}><SelectTrigger><SelectValue placeholder="Todo o projeto" /></SelectTrigger><SelectContent><SelectItem value="__nenhuma__">Todo o projeto</SelectItem>{equipes.map((equipe) => <SelectItem key={equipe.id} value={equipe.id}>{equipe.nome}</SelectItem>)}</SelectContent></Select></div>
+                <div className="space-y-2"><Label>Equipe destinada (opcional)</Label><Combobox opcoes={[{ value: "__nenhuma__", label: "Todo o projeto" }, ...equipes.map((equipe) => ({ value: equipe.id, label: equipe.nome }))].sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))} value={formulario.equipeId || "__nenhuma__"} onChange={(value) => atualizar("equipeId", !value || value === "__nenhuma__" ? "" : value)} placeholder="Todo o projeto" vazio="Nenhuma equipe disponível" /></div>
 
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2"><Label>Quantidade</Label><Input type="number" min={1} step={equipamentoSelecionado?.tipo_controle === "INDIVIDUAL" ? 1 : 1} disabled={equipamentoSelecionado?.tipo_controle === "INDIVIDUAL"} value={formulario.quantidade} onChange={(event) => atualizar("quantidade", event.target.value)} /></div>
@@ -2387,47 +2390,37 @@ function MovimentacoesEquipamentosPage() {
                 {formulario.tipo === "TRANSFERENCIA" && (
                   <div className="space-y-2">
                     <Label>Funcionário origem</Label>
-                    <Select
+                    <Combobox
+                      opcoes={funcionariosComApropriacoes.map((f) => ({ value: f.id, label: nomePessoa(f) })).sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))}
                       value={formulario.origemId}
-                      onValueChange={(value) => {
+                      onChange={(value) => {
+                        if (!value) return;
                         atualizar("origemId", value);
                         atualizar("estoqueEquipamentoId", "");
                         atualizar("destinoId", "");
                         atualizar("quantidade", "1");
                       }}
-                    >
-                      <SelectTrigger><SelectValue placeholder="Selecione primeiro o funcionário" /></SelectTrigger>
-                      <SelectContent>
-                        {funcionariosComApropriacoes.length === 0 ? (
-                          <SelectItem value="__vazio__" disabled>Nenhum funcionário possui equipamentos apropriados</SelectItem>
-                        ) : funcionariosComApropriacoes.map((f) => (
-                          <SelectItem key={f.id} value={f.id}>{nomePessoa(f)}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      placeholder="Selecione primeiro o funcionário"
+                      vazio="Nenhum funcionário possui equipamentos apropriados"
+                    />
                   </div>
                 )}
 
                 {formulario.tipo === "DEVOLUCAO" && (
                   <div className="space-y-2">
                     <Label>Funcionário origem</Label>
-                    <Select
+                    <Combobox
+                      opcoes={funcionariosComApropriacoes.map((f) => ({ value: f.id, label: nomePessoa(f) })).sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))}
                       value={formulario.origemId}
-                      onValueChange={(value) => {
+                      onChange={(value) => {
+                        if (!value) return;
                         atualizar("origemId", value);
                         atualizar("estoqueEquipamentoId", "");
                         atualizar("quantidade", "1");
                       }}
-                    >
-                      <SelectTrigger><SelectValue placeholder="Selecione primeiro o funcionário" /></SelectTrigger>
-                      <SelectContent>
-                        {funcionariosComApropriacoes.length === 0 ? (
-                          <SelectItem value="__vazio__" disabled>Nenhum funcionário possui equipamentos apropriados</SelectItem>
-                        ) : funcionariosComApropriacoes.map((f) => (
-                          <SelectItem key={f.id} value={f.id}>{nomePessoa(f)}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      placeholder="Selecione primeiro o funcionário"
+                      vazio="Nenhum funcionário possui equipamentos apropriados"
+                    />
                   </div>
                 )}
 
@@ -2735,21 +2728,21 @@ function MovimentacoesEquipamentosPage() {
 
                 {formulario.tipo === "SAIDA" && (
                   <>
-                    <div className="space-y-2"><Label>Funcionário destino</Label><Select value={formulario.destinoId} onValueChange={(value) => atualizar("destinoId", value)}><SelectTrigger><SelectValue placeholder="Selecione o funcionário" /></SelectTrigger><SelectContent>{funcionarios.map((f) => <SelectItem key={f.id} value={f.id}>{nomePessoa(f)}</SelectItem>)}</SelectContent></Select></div>
+                    <div className="space-y-2"><Label>Funcionário destino</Label><Combobox opcoes={funcionarios.map((f) => ({ value: f.id, label: nomePessoa(f) })).sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))} value={formulario.destinoId} onChange={(value) => atualizar("destinoId", value ?? "")} placeholder="Selecione o funcionário" vazio="Nenhum funcionário disponível" /></div>
                   </>
                 )}
 
                 {formulario.tipo === "TRANSFERENCIA" && (
                   <div className="space-y-2">
                     <Label>Funcionário destino</Label>
-                    <Select value={formulario.destinoId} onValueChange={(value) => atualizar("destinoId", value)} disabled={!formulario.estoqueEquipamentoId}>
-                      <SelectTrigger><SelectValue placeholder={formulario.estoqueEquipamentoId ? "Selecione o funcionário destino" : "Selecione primeiro o equipamento"} /></SelectTrigger>
-                      <SelectContent>
-                        {funcionarios.filter((f) => f.id !== formulario.origemId).map((f) => (
-                          <SelectItem key={f.id} value={f.id}>{nomePessoa(f)}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <Combobox
+                      opcoes={funcionarios.filter((f) => f.id !== formulario.origemId).map((f) => ({ value: f.id, label: nomePessoa(f) })).sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))}
+                      value={formulario.destinoId}
+                      onChange={(value) => atualizar("destinoId", value ?? "")}
+                      placeholder={formulario.estoqueEquipamentoId ? "Selecione o funcionário destino" : "Selecione primeiro o equipamento"}
+                      vazio="Nenhum funcionário disponível"
+                      disabled={!formulario.estoqueEquipamentoId}
+                    />
                   </div>
                 )}
 
