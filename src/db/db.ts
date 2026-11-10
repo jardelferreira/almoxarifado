@@ -175,6 +175,13 @@ export class AlmoxarifadoDB extends Dexie {
       substituicoes_equipamentos:
         "id, projeto_id, estoque_origem_id, equipamento_origem_id, estoque_substituto_id, equipamento_substituto_id, movimentacao_devolucao_id, movimentacao_entrada_id, data",
     });
+
+    // CPF e credencial local dos funcionários. O PIN nunca é armazenado em
+    // texto puro; o índice composto permite localizar o CPF dentro do projeto.
+    this.version(22).stores({
+      funcionarios:
+        "id, projeto_id, nome, matricula, cpf, empresa_id, encarregado_id, equipe_raiz_id, status, [projeto_id+cpf]",
+    });
   }
 }
 

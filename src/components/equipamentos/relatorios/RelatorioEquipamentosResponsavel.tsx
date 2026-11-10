@@ -19,6 +19,7 @@ import {
   type RelatorioEquipamentosPorResponsavel,
   type RelatorioResponsavelLinha,
 } from "@/services/equipamentos/relatorios";
+import { formatarCpf } from "@/utils/seguranca";
 
 export function RelatorioEquipamentosResponsavel({
   dados,
@@ -200,6 +201,7 @@ export function RelatorioEquipamentosResponsavel({
                   <th className="px-4 py-3 text-left font-medium">
                     Responsável
                   </th>
+                  <th className="px-4 py-3 text-left font-medium">CPF</th>
                   <th className="px-4 py-3 text-left font-medium">
                     Equipe
                   </th>
@@ -229,7 +231,7 @@ export function RelatorioEquipamentosResponsavel({
                 {!linhasFiltradas.length && (
                   <tr>
                     <td
-                      colSpan={5}
+                      colSpan={6}
                       className="px-4 py-10 text-center text-sm text-muted-foreground"
                     >
                       {dados.linhas.length
@@ -292,6 +294,10 @@ function ResponsavelRow({
           )}
         </td>
 
+        <td className="px-4 py-3 text-muted-foreground">
+          {formatarCpf(linha.funcionario.cpf) || "—"}
+        </td>
+
         <td className="px-4 py-3">
           {linha.equipe ? (
             <Badge variant="secondary">{linha.equipe.nome}</Badge>
@@ -314,7 +320,7 @@ function ResponsavelRow({
             className="border-b bg-muted/20"
           >
             <td />
-            <td colSpan={2} className="px-4 py-3">
+            <td colSpan={3} className="px-4 py-3">
               <div className="pl-4">
                 <div className="font-medium">
                   {equipamento.equipamento.nome}

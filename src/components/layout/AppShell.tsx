@@ -116,6 +116,7 @@ const navGroups: NavGroup[] = [
     items: [
       { to: "/app/equipamentos", label: "Equipamentos", icon: LayoutList, subgrupo: "Gestão" },
       { to: "/app/apropriacoes", label: "Apropriações", icon: UserCheck, subgrupo: "Gestão" },
+      { to: "/app/fichas-equipamentos", label: "Fichas de equipamentos", icon: ClipboardList, subgrupo: "Gestão" },
       { to: "/app/movimentacoes-equipamentos", label: "Movimentações", icon: ArrowLeftRight, subgrupo: "Gestão" },
       { to: "/app/relatorios-equipamentos", label: "Relatórios", icon: FileChartLine, subgrupo: "Gestão" },
       { to: "/app/estatisticas-equipamentos", label: "Estatísticas", icon: ChartColumn, subgrupo: "Análise" },

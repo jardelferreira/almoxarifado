@@ -12,6 +12,7 @@ import type {
   Empresa,
   Funcionario,
 } from "@/types";
+import { formatarCpf } from "@/utils/seguranca";
 
 export type SituacaoEquipamento =
   | "DISPONIVEL"
@@ -1008,9 +1009,10 @@ export function exportarRelatorioEquipamentosPorResponsavel(
   criarPlanilhaRelatorio({
     nomeAba: "Por responsável",
     arquivo: `relatorio_equipamentos_por_responsavel_${new Date().toISOString().slice(0, 10)}`,
-    colunas: ["RESPONSAVEL", "EQUIPE", "EQUIPAMENTO", "CATEGORIA", "IDENTIFICACAO", "QUANTIDADE", "OBSERVACOES"],
+    colunas: ["RESPONSAVEL", "CPF", "EQUIPE", "EQUIPAMENTO", "CATEGORIA", "IDENTIFICACAO", "QUANTIDADE", "OBSERVACOES"],
     linhas: relatorio.linhas.flatMap((responsavel) => responsavel.equipamentos.map((linha) => ({
       RESPONSAVEL: linha.funcionario.nome,
+      CPF: formatarCpf(linha.funcionario.cpf) || "—",
       EQUIPE: linha.equipe?.nome ?? "Sem equipe",
       EQUIPAMENTO: linha.equipamento.nome,
       CATEGORIA: linha.categoria?.nome ?? "—",
@@ -1018,7 +1020,7 @@ export function exportarRelatorioEquipamentosPorResponsavel(
       QUANTIDADE: linha.quantidade,
       OBSERVACOES: linha.estoque.observacoes ?? "",
     }))),
-    larguras: { RESPONSAVEL: 32, EQUIPE: 28, EQUIPAMENTO: 32, CATEGORIA: 22, IDENTIFICACAO: 20, QUANTIDADE: 12, OBSERVACOES: 42 },
+    larguras: { RESPONSAVEL: 32, CPF: 18, EQUIPE: 28, EQUIPAMENTO: 32, CATEGORIA: 22, IDENTIFICACAO: 20, QUANTIDADE: 12, OBSERVACOES: 42 },
     formatosNumero: ["QUANTIDADE"],
   }, formato);
 }
@@ -1577,8 +1579,8 @@ export function imprimirRelatorioEquipamentosPorResponsavel(
   imprimirTabelaRelatorioEquipamentos(
     "Equipamentos por responsável",
     projetoNome,
-    ["Responsável", "Equipe", "Equipamento", "Categoria", "Identificação", "Quantidade", "Observações"],
-    relatorio.linhas.flatMap((responsavel) => responsavel.equipamentos.map((linha) => [responsavel.funcionario.nome, responsavel.equipe?.nome ?? "Sem equipe", linha.equipamento.nome, linha.categoria?.nome ?? "—", linha.identificacao, linha.quantidade, linha.estoque.observacoes ?? ""])),
+    ["Responsável", "CPF", "Equipe", "Equipamento", "Categoria", "Identificação", "Quantidade", "Observações"],
+    relatorio.linhas.flatMap((responsavel) => responsavel.equipamentos.map((linha) => [responsavel.funcionario.nome, formatarCpf(responsavel.funcionario.cpf) || "—", responsavel.equipe?.nome ?? "Sem equipe", linha.equipamento.nome, linha.categoria?.nome ?? "—", linha.identificacao, linha.quantidade, linha.estoque.observacoes ?? ""])),
     [
       { label: "Responsáveis", valor: relatorio.totalResponsaveis }, { label: "Registros", valor: relatorio.totalRegistros },
       { label: "Quantidade", valor: relatorio.quantidade },

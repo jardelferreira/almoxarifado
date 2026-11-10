@@ -22,6 +22,7 @@ import { Route as AppEquipamentosRouteImport } from './routes/app.equipamentos'
 import { Route as AppEstatisticasRouteImport } from './routes/app.estatisticas'
 import { Route as AppEstatisticasEquipamentosRouteImport } from './routes/app.estatisticas-equipamentos'
 import { Route as AppEstoqueRouteImport } from './routes/app.estoque'
+import { Route as AppFichasEquipamentosRouteImport } from './routes/app.fichas-equipamentos'
 import { Route as AppInventarioRouteImport } from './routes/app.inventario'
 import { Route as AppLancarRouteImport } from './routes/app.lancar'
 import { Route as AppMesclarParametrosEquipamentosRouteImport } from './routes/app.mesclar-parametros-equipamentos'
@@ -102,6 +103,11 @@ const AppEstatisticasEquipamentosRoute =
 const AppEstoqueRoute = AppEstoqueRouteImport.update({
   id: '/estoque',
   path: '/estoque',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppFichasEquipamentosRoute = AppFichasEquipamentosRouteImport.update({
+  id: '/fichas-equipamentos',
+  path: '/fichas-equipamentos',
   getParentRoute: () => AppRoute,
 } as any)
 const AppInventarioRoute = AppInventarioRouteImport.update({
@@ -200,6 +206,7 @@ export interface FileRoutesByFullPath {
   '/app/estatisticas': typeof AppEstatisticasRouteWithChildren
   '/app/estatisticas-equipamentos': typeof AppEstatisticasEquipamentosRoute
   '/app/estoque': typeof AppEstoqueRoute
+  '/app/fichas-equipamentos': typeof AppFichasEquipamentosRoute
   '/app/inventario': typeof AppInventarioRoute
   '/app/lancar': typeof AppLancarRoute
   '/app/mesclar-parametros-equipamentos': typeof AppMesclarParametrosEquipamentosRoute
@@ -229,6 +236,7 @@ export interface FileRoutesByTo {
   '/app/estatisticas': typeof AppEstatisticasRouteWithChildren
   '/app/estatisticas-equipamentos': typeof AppEstatisticasEquipamentosRoute
   '/app/estoque': typeof AppEstoqueRoute
+  '/app/fichas-equipamentos': typeof AppFichasEquipamentosRoute
   '/app/inventario': typeof AppInventarioRoute
   '/app/lancar': typeof AppLancarRoute
   '/app/mesclar-parametros-equipamentos': typeof AppMesclarParametrosEquipamentosRoute
@@ -260,6 +268,7 @@ export interface FileRoutesById {
   '/app/estatisticas': typeof AppEstatisticasRouteWithChildren
   '/app/estatisticas-equipamentos': typeof AppEstatisticasEquipamentosRoute
   '/app/estoque': typeof AppEstoqueRoute
+  '/app/fichas-equipamentos': typeof AppFichasEquipamentosRoute
   '/app/inventario': typeof AppInventarioRoute
   '/app/lancar': typeof AppLancarRoute
   '/app/mesclar-parametros-equipamentos': typeof AppMesclarParametrosEquipamentosRoute
@@ -292,6 +301,7 @@ export interface FileRouteTypes {
     | '/app/estatisticas'
     | '/app/estatisticas-equipamentos'
     | '/app/estoque'
+    | '/app/fichas-equipamentos'
     | '/app/inventario'
     | '/app/lancar'
     | '/app/mesclar-parametros-equipamentos'
@@ -321,6 +331,7 @@ export interface FileRouteTypes {
     | '/app/estatisticas'
     | '/app/estatisticas-equipamentos'
     | '/app/estoque'
+    | '/app/fichas-equipamentos'
     | '/app/inventario'
     | '/app/lancar'
     | '/app/mesclar-parametros-equipamentos'
@@ -351,6 +362,7 @@ export interface FileRouteTypes {
     | '/app/estatisticas'
     | '/app/estatisticas-equipamentos'
     | '/app/estoque'
+    | '/app/fichas-equipamentos'
     | '/app/inventario'
     | '/app/lancar'
     | '/app/mesclar-parametros-equipamentos'
@@ -465,6 +477,13 @@ declare module '@tanstack/react-router' {
       path: '/estoque'
       fullPath: '/app/estoque'
       preLoaderRoute: typeof AppEstoqueRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/fichas-equipamentos': {
+      id: '/app/fichas-equipamentos'
+      path: '/fichas-equipamentos'
+      fullPath: '/app/fichas-equipamentos'
+      preLoaderRoute: typeof AppFichasEquipamentosRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/inventario': {
@@ -598,6 +617,7 @@ interface AppRouteChildren {
   AppEstatisticasRoute: typeof AppEstatisticasRouteWithChildren
   AppEstatisticasEquipamentosRoute: typeof AppEstatisticasEquipamentosRoute
   AppEstoqueRoute: typeof AppEstoqueRoute
+  AppFichasEquipamentosRoute: typeof AppFichasEquipamentosRoute
   AppInventarioRoute: typeof AppInventarioRoute
   AppLancarRoute: typeof AppLancarRoute
   AppMesclarParametrosEquipamentosRoute: typeof AppMesclarParametrosEquipamentosRoute
@@ -626,6 +646,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppEstatisticasRoute: AppEstatisticasRouteWithChildren,
   AppEstatisticasEquipamentosRoute: AppEstatisticasEquipamentosRoute,
   AppEstoqueRoute: AppEstoqueRoute,
+  AppFichasEquipamentosRoute: AppFichasEquipamentosRoute,
   AppInventarioRoute: AppInventarioRoute,
   AppLancarRoute: AppLancarRoute,
   AppMesclarParametrosEquipamentosRoute: AppMesclarParametrosEquipamentosRoute,
