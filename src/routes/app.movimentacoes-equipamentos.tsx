@@ -67,6 +67,7 @@ import type {
   MovimentacaoEquipamento,
   MovimentacaoEquipamentoParte,
   MovimentacaoEquipamentoTipo,
+  SubstituicaoEquipamento,
 } from "@/types";
 
 export const Route = createFileRoute("/app/movimentacoes-equipamentos")({
@@ -439,6 +440,7 @@ function MultiSelectFiltro({
 function MovimentacoesEquipamentosPage() {
   const [projetoId] = useProjetoAtivoId();
   const [movimentacoes, setMovimentacoes] = useState<MovimentacaoEquipamento[]>([]);
+  const [substituicoes, setSubstituicoes] = useState<SubstituicaoEquipamento[]>([]);
   const [equipamentos, setEquipamentos] = useState<Equipamento[]>([]);
   const [estoques, setEstoques] = useState<EstoqueEquipamentoUI[]>([]);
   const [empresas, setEmpresas] = useState<Empresa[]>([]);
@@ -451,6 +453,7 @@ function MovimentacoesEquipamentosPage() {
   const [dialogAberto, setDialogAberto] = useState(false);
   const [substituicaoAberta, setSubstituicaoAberta] = useState(false);
   const [detalhe, setDetalhe] = useState<MovimentacaoEquipamento | null>(null);
+  const [detalheSubstituicao, setDetalheSubstituicao] = useState<SubstituicaoEquipamento | null>(null);
   const [formulario, setFormulario] = useState<Formulario>(formularioInicial);
   const [salvando, setSalvando] = useState(false);
   const [salvandoSubstituicao, setSalvandoSubstituicao] = useState(false);
@@ -471,8 +474,9 @@ function MovimentacoesEquipamentosPage() {
   async function carregar() {
     if (!projetoId) return;
     const db = getDB();
-    const [movs, eqs, stocks, emps, teams, funcs] = await Promise.all([
+    const [movs, subs, eqs, stocks, emps, teams, funcs] = await Promise.all([
       movimentacoesEquipamentosRepo.listar(projetoId),
+      substituicoesEquipamentosRepo.listar(projetoId),
       db.equipamentos.where("projeto_id").equals(projetoId).toArray(),
       db.estoque_equipamentos.where("projeto_id").equals(projetoId).toArray(),
       db.empresas.where("projeto_id").equals(projetoId).and((x) => x.ativo).toArray(),
@@ -481,6 +485,7 @@ function MovimentacoesEquipamentosPage() {
     ]);
 
     setMovimentacoes([...movs].sort((a, b) => `${b.criado_em}|${b.id}`.localeCompare(`${a.criado_em}|${a.id}`)));
+    setSubstituicoes(subs);
     setEquipamentos(eqs);
     setEstoques(stocks.map((stock) => stock.ativo === undefined ? { ...stock, ativo: true } : stock));
     setEmpresas(emps);
@@ -2252,6 +2257,59 @@ function MovimentacoesEquipamentosPage() {
             </div>
           </CardContent>
         </Card>
+
+        <Card className="overflow-hidden">
+          <CardHeader className="border-b bg-muted/20">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="font-semibold">Histórico de substituições</h2>
+                <p className="text-sm text-muted-foreground">Relação entre o equipamento devolvido, o substituto e as regras herdadas.</p>
+              </div>
+              <Badge variant="outline" className="w-fit">{substituicoes.length} registro(s)</Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[720px] text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/10 text-left">
+                    <th className="px-3 py-3">Data</th>
+                    <th className="px-3 py-3">Devolvido</th>
+                    <th className="px-3 py-3">Substituto</th>
+                    <th className="px-3 py-3">Qtd.</th>
+                    <th className="px-3 py-3">Regras herdadas</th>
+                    <th className="px-3 py-3 text-right">Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {substituicoes.map((substituicao) => {
+                    const estoqueOrigem = estoquePorId.get(substituicao.estoque_origem_id);
+                    const estoqueSubstituto = estoquePorId.get(substituicao.estoque_substituto_id);
+                    const equipamentoOrigem = equipamentoPorId.get(substituicao.equipamento_origem_id);
+                    const equipamentoSubstituto = equipamentoPorId.get(substituicao.equipamento_substituto_id);
+                    return (
+                      <tr key={substituicao.id} className="border-b last:border-0 hover:bg-muted/30">
+                        <td className="whitespace-nowrap px-3 py-3">{new Intl.DateTimeFormat("pt-BR", { dateStyle: "short" }).format(new Date(`${substituicao.data}T00:00:00`))}</td>
+                        <td className="px-3 py-3">
+                          <div className="font-medium">{equipamentoOrigem?.nome ?? "Equipamento removido"}</div>
+                          <div className="max-w-[16rem] truncate text-xs text-muted-foreground">{estoqueOrigem ? detalhesRegistroFisico(estoqueOrigem, equipamentoOrigem, empresaPorId) : "Registro físico não encontrado"}</div>
+                        </td>
+                        <td className="px-3 py-3">
+                          <div className="flex items-center gap-2 font-medium"><ArrowRight className="size-3.5 shrink-0 text-muted-foreground" />{equipamentoSubstituto?.nome ?? "Equipamento removido"}</div>
+                          <div className="max-w-[16rem] truncate text-xs text-muted-foreground">{estoqueSubstituto ? detalhesRegistroFisico(estoqueSubstituto, equipamentoSubstituto, empresaPorId) : "Registro físico não encontrado"}</div>
+                        </td>
+                        <td className="px-3 py-3"><Badge variant="outline">{substituicao.quantidade}</Badge></td>
+                        <td className="px-3 py-3"><Badge variant="secondary">{substituicao.regras_substituto_ids.length}</Badge></td>
+                        <td className="px-3 py-3 text-right"><Button variant="ghost" size="icon" className="rounded-lg" onClick={() => setDetalheSubstituicao(substituicao)} aria-label="Ver detalhes da substituição"><Eye className="size-4" /></Button></td>
+                      </tr>
+                    );
+                  })}
+                  {substituicoes.length === 0 && <tr><td colSpan={6} className="py-10 text-center text-sm text-muted-foreground">Nenhuma substituição registrada.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <Dialog open={dialogAberto} onOpenChange={(open) => !salvando && setDialogAberto(open)}>
@@ -2808,6 +2866,46 @@ function MovimentacoesEquipamentosPage() {
             <Button variant="outline" onClick={() => setSubstituicaoAberta(false)} disabled={salvandoSubstituicao}>Cancelar</Button>
             <Button onClick={() => void salvarSubstituicao()} disabled={salvandoSubstituicao}>{salvandoSubstituicao ? "Concluindo..." : "Concluir substituição"}</Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!detalheSubstituicao} onOpenChange={(open) => !open && setDetalheSubstituicao(null)}>
+        <DialogContent className="w-[calc(100vw-1rem)] max-w-xl max-h-[calc(100dvh-1rem)] overflow-y-auto overscroll-contain p-4 sm:w-[calc(100vw-2rem)] sm:max-h-[calc(100dvh-2rem)] sm:p-6">
+          <DialogHeader><DialogTitle>Detalhes da substituição</DialogTitle></DialogHeader>
+          {detalheSubstituicao && (() => {
+            const origem = estoquePorId.get(detalheSubstituicao.estoque_origem_id);
+            const substituto = estoquePorId.get(detalheSubstituicao.estoque_substituto_id);
+            const equipamentoOrigem = equipamentoPorId.get(detalheSubstituicao.equipamento_origem_id);
+            const equipamentoSubstituto = equipamentoPorId.get(detalheSubstituicao.equipamento_substituto_id);
+            const movimentoDevolucao = movimentacoes.find((movimentacao) => movimentacao.id === detalheSubstituicao.movimentacao_devolucao_id);
+            const movimentoEntrada = movimentacoes.find((movimentacao) => movimentacao.id === detalheSubstituicao.movimentacao_entrada_id);
+            return (
+              <div className="space-y-4 text-sm">
+                <div className="rounded-xl border bg-muted/20 p-4">
+                  <div className="flex items-center gap-2 font-semibold"><ArrowRightLeft className="size-4 text-primary" />Substituição concluída</div>
+                  <div className="mt-1 text-muted-foreground">{new Intl.DateTimeFormat("pt-BR", { dateStyle: "full" }).format(new Date(`${detalheSubstituicao.data}T00:00:00`))}</div>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-xl border p-3"><div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Equipamento devolvido</div><div className="mt-1 font-semibold">{equipamentoOrigem?.nome ?? "Equipamento removido"}</div><div className="mt-1 text-xs text-muted-foreground">{origem ? detalhesRegistroFisico(origem, equipamentoOrigem, empresaPorId) : "Registro físico não encontrado"}</div></div>
+                  <div className="rounded-xl border p-3"><div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Equipamento substituto</div><div className="mt-1 font-semibold">{equipamentoSubstituto?.nome ?? "Equipamento removido"}</div><div className="mt-1 text-xs text-muted-foreground">{substituto ? detalhesRegistroFisico(substituto, equipamentoSubstituto, empresaPorId) : "Registro físico não encontrado"}</div></div>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-xl border p-3"><div className="text-xs text-muted-foreground">Quantidade</div><div className="mt-1 text-lg font-bold">{detalheSubstituicao.quantidade}</div></div>
+                  <div className="rounded-xl border p-3"><div className="text-xs text-muted-foreground">Regras herdadas</div><div className="mt-1 text-lg font-bold">{detalheSubstituicao.regras_substituto_ids.length}</div></div>
+                  <div className="rounded-xl border p-3"><div className="text-xs text-muted-foreground">Relação auditável</div><div className="mt-1 font-medium">Registrada</div></div>
+                </div>
+                {(detalheSubstituicao.motivo || detalheSubstituicao.referencia_documento || detalheSubstituicao.observacoes) && <div className="space-y-2 rounded-xl border bg-muted/20 p-3">
+                  {detalheSubstituicao.motivo && <div><span className="font-medium">Motivo:</span> {detalheSubstituicao.motivo}</div>}
+                  {detalheSubstituicao.referencia_documento && <div><span className="font-medium">Documento:</span> {detalheSubstituicao.referencia_documento}</div>}
+                  {detalheSubstituicao.observacoes && <div><span className="font-medium">Observações:</span> <span className="whitespace-pre-wrap">{detalheSubstituicao.observacoes}</span></div>}
+                </div>}
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <Button variant="outline" onClick={() => { setDetalheSubstituicao(null); if (movimentoDevolucao) setDetalhe(movimentoDevolucao); }} disabled={!movimentoDevolucao}>Ver devolução ao fornecedor</Button>
+                  <Button variant="outline" onClick={() => { setDetalheSubstituicao(null); if (movimentoEntrada) setDetalhe(movimentoEntrada); }} disabled={!movimentoEntrada}>Ver entrada do substituto</Button>
+                </div>
+              </div>
+            );
+          })()}
         </DialogContent>
       </Dialog>
 
