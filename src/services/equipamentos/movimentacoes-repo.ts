@@ -1201,7 +1201,6 @@ export const movimentacoesEquipamentosRepo = {
         db.movimentacoes_equipamentos,
         db.apropriacoes,
         db.estoque_equipamentos,
-        db.manutencoes_equipamentos,
       ],
       async () => {
         /*
@@ -1315,22 +1314,24 @@ export const movimentacoesEquipamentosRepo = {
           movimentacao,
         );
 
-        // O histórico físico continua sendo a fonte operacional. A ocorrência
-        // acompanha esse ciclo automaticamente, sem exigir um segundo lançamento
-        // do operador e sem depender da ativação do detalhamento de manutenção.
-        if (
-          movimentacao.tipo === "SINALIZAR_MANUTENCAO" ||
-          movimentacao.tipo === "MANUTENCAO" ||
-          movimentacao.tipo === "ENVIO" ||
-          movimentacao.tipo === "RETIRADA_MANUTENCAO" ||
-          movimentacao.tipo === "RETORNO_MANUTENCAO"
-        ) {
-          await manutencoesEquipamentosRepo.sincronizarComMovimentacao(
-            movimentacao,
-          );
-        }
       },
     );
+
+    // A ocorrência de manutenção é um complemento do histórico principal.
+    // Instalações antigas podem ainda não possuir essa object store; nesse
+    // caso, a movimentação continua válida e permanece registrada normalmente.
+    if (
+      (movimentacao.tipo === "SINALIZAR_MANUTENCAO" ||
+        movimentacao.tipo === "MANUTENCAO" ||
+        movimentacao.tipo === "ENVIO" ||
+        movimentacao.tipo === "RETIRADA_MANUTENCAO" ||
+        movimentacao.tipo === "RETORNO_MANUTENCAO") &&
+      db.backendDB()?.objectStoreNames.contains("manutencoes_equipamentos")
+    ) {
+      await manutencoesEquipamentosRepo.sincronizarComMovimentacao(
+        movimentacao,
+      );
+    }
 
     return movimentacao;
   },
