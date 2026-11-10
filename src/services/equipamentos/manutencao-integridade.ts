@@ -43,18 +43,18 @@ export function validarIntegridadeManutencoes(
 ): void {
   const movimentosPorId = new Map<string, Linha>();
   for (const movimento of movimentacoesEquipamentos) {
-    const id = texto(movimento.id);
+    const id = texto(movimento["id"]);
     if (id) movimentosPorId.set(id, movimento);
   }
 
   const vinculosPorMovimento = new Map<string, string[]>();
 
   for (const manutencao of manutencoes) {
-    const manutencaoId = texto(manutencao.id) || "(sem id)";
-    const status = texto(manutencao.status_operacional).toUpperCase();
-    const estoqueId = texto(manutencao.estoque_equipamento_id);
-    const projetoId = texto(manutencao.projeto_id);
-    const quantidade = numero(manutencao.quantidade);
+    const manutencaoId = texto(manutencao["id"]) || "(sem id)";
+    const status = texto(manutencao["status_operacional"]).toUpperCase();
+    const estoqueId = texto(manutencao["estoque_equipamento_id"]);
+    const projetoId = texto(manutencao["projeto_id"]);
+    const quantidade = numero(manutencao["quantidade"]);
 
     const referenciais = [
       "movimento_sinalizacao_id",
@@ -74,27 +74,27 @@ export function validarIntegridadeManutencoes(
         continue;
       }
 
-      const projetosIguais = texto(movimento.projeto_id) === projetoId;
+      const projetosIguais = texto(movimento["projeto_id"]) === projetoId;
       if (!projetosIguais) {
         adicionarErro(
           `Manutenção ${manutencaoId} referencia movimentação ${movimentoId} de outro projeto.`,
         );
       }
 
-      if (texto(movimento.estoque_equipamento_id) !== estoqueId) {
+      if (texto(movimento["estoque_equipamento_id"]) !== estoqueId) {
         adicionarErro(
           `Manutenção ${manutencaoId} referencia movimentação ${movimentoId} de outro estoque físico.`,
         );
       }
 
-      const tipoMovimento = texto(movimento.tipo).toUpperCase();
+      const tipoMovimento = texto(movimento["tipo"]).toUpperCase();
       if (!TIPOS_POR_VINCULO[campo].has(tipoMovimento)) {
         adicionarErro(
           `Manutenção ${manutencaoId} referencia movimentação ${movimentoId} com tipo ${tipoMovimento || "ausente"} incompatível com ${campo}.`,
         );
       }
 
-      const quantidadeMovimento = numero(movimento.quantidade);
+      const quantidadeMovimento = numero(movimento["quantidade"]);
       if (quantidade !== null && quantidadeMovimento !== null && quantidade !== quantidadeMovimento) {
         adicionarErro(
           `Manutenção ${manutencaoId} possui quantidade ${quantidade}, mas a movimentação ${movimentoId} possui quantidade ${quantidadeMovimento}.`,
@@ -106,11 +106,11 @@ export function validarIntegridadeManutencoes(
       vinculosPorMovimento.set(movimentoId, vinculos);
     }
 
-    const retornoId = texto(manutencao.movimento_retorno_id);
-    const envioId = texto(manutencao.movimento_envio_id);
-    const sinalizacaoId = texto(manutencao.movimento_sinalizacao_id);
-    const dataEnvio = texto(manutencao.data_envio);
-    const dataRetorno = texto(manutencao.data_retorno);
+    const retornoId = texto(manutencao["movimento_retorno_id"]);
+    const envioId = texto(manutencao["movimento_envio_id"]);
+    const sinalizacaoId = texto(manutencao["movimento_sinalizacao_id"]);
+    const dataEnvio = texto(manutencao["data_envio"]);
+    const dataRetorno = texto(manutencao["data_retorno"]);
 
     if (status === "AGUARDANDO_ENVIO") {
       if (envioId || retornoId || dataEnvio || dataRetorno) {

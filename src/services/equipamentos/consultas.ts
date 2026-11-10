@@ -2,6 +2,7 @@ import { getDB } from "@/db/db";
 import type {
     Apropriacao,
     Equipamento,
+    EstoqueEquipamento,
     MovimentacaoEquipamento,
 } from "@/types";
 
@@ -21,34 +22,37 @@ export interface ApropriacaoEquipamento extends Apropriacao {
 
 async function carregarMovimentacoes(
     projetoId: string,
-    equipamentoId: string,
+    estoqueIds: string[],
 ): Promise<MovimentacaoEquipamento[]> {
-    return getDB()
-        .movimentacoes_equipamentos
-        .where("equipamento_id")
-        .equals(equipamentoId)
+    if (!estoqueIds.length) return [];
+
+    return getDB().movimentacoes_equipamentos
+        .where("estoque_equipamento_id")
+        .anyOf(estoqueIds)
         .filter((movimentacao) => movimentacao.projeto_id === projetoId)
         .toArray();
 }
 
 async function carregarApropriacoes(
-    equipamentoId: string,
+    estoqueIds: string[],
 ): Promise<Apropriacao[]> {
-    return getDB()
-        .apropriacoes
-        .where("equipamento_id")
-        .equals(equipamentoId)
+    if (!estoqueIds.length) return [];
+
+    return getDB().apropriacoes
+        .where("estoque_equipamento_id")
+        .anyOf(estoqueIds)
         .toArray();
 }
 
 function calcularEstado(
     equipamento: Equipamento,
+    estoques: EstoqueEquipamento[],
     movimentacoes: MovimentacaoEquipamento[],
     apropriacoes: Apropriacao[],
 ): EstadoEquipamento {
     const saldo = Math.max(
         0,
-        equipamento.quantidade - equipamento.devolvido,
+        estoques.reduce((total, estoque) => total + estoque.quantidade - estoque.devolvido - (estoque.baixado ?? 0), 0),
     );
 
     let almoxarifado = 0;
@@ -130,7 +134,7 @@ function calcularEstado(
     return {
         equipamento,
         saldo,
-        devolvido: equipamento.devolvido,
+        devolvido: estoques.reduce((total, estoque) => total + estoque.devolvido, 0),
         almoxarifado: Math.max(0, almoxarifado),
         manutencao: Math.max(0, manutencao),
         apropriado,
@@ -156,17 +160,22 @@ export const equipamentosConsultas = {
             return undefined;
         }
 
+        const estoques = await db.estoque_equipamentos
+            .where("equipamento_id")
+            .equals(equipamentoId)
+            .filter((estoque) => estoque.projeto_id === projetoId)
+            .toArray();
+        const estoqueIds = estoques.map((estoque) => estoque.id);
+
         const [movimentacoes, apropriacoes] =
             await Promise.all([
-                carregarMovimentacoes(
-                    projetoId,
-                    equipamentoId,
-                ),
-                carregarApropriacoes(equipamentoId),
+                carregarMovimentacoes(projetoId, estoqueIds),
+                carregarApropriacoes(estoqueIds),
             ]);
 
         return calcularEstado(
             equipamento,
+            estoques,
             movimentacoes,
             apropriacoes,
         );
@@ -182,21 +191,26 @@ export const equipamentosConsultas = {
             .equals(projetoId)
             .toArray();
 
+        const estoquesPorEquipamento = await db.estoque_equipamentos
+            .where("projeto_id")
+            .equals(projetoId)
+            .toArray();
+
         const resultados = await Promise.all(
             equipamentos.map(async (equipamento) => {
+                const estoques = estoquesPorEquipamento.filter(
+                    (estoque) => estoque.equipamento_id === equipamento.id,
+                );
+                const estoqueIds = estoques.map((estoque) => estoque.id);
                 const [movimentacoes, apropriacoes] =
                     await Promise.all([
-                        carregarMovimentacoes(
-                            projetoId,
-                            equipamento.id,
-                        ),
-                        carregarApropriacoes(
-                            equipamento.id,
-                        ),
+                        carregarMovimentacoes(projetoId, estoqueIds),
+                        carregarApropriacoes(estoqueIds),
                     ]);
 
                 return calcularEstado(
                     equipamento,
+                    estoques,
                     movimentacoes,
                     apropriacoes,
                 );
@@ -225,8 +239,16 @@ export const equipamentosConsultas = {
 
         const apropriacoes =
             await db.apropriacoes
-                .where("equipamento_id")
-                .equals(equipamentoId)
+                .where("estoque_equipamento_id")
+                .anyOf(
+                    (
+                        await db.estoque_equipamentos
+                            .where("equipamento_id")
+                            .equals(equipamentoId)
+                            .filter((estoque) => estoque.projeto_id === projetoId)
+                            .toArray()
+                    ).map((estoque) => estoque.id),
+                )
                 .toArray();
 
         const funcionarios = await Promise.all(
