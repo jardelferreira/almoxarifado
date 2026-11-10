@@ -70,6 +70,19 @@ type NavGroup = {
 
 const navGroups: NavGroup[] = [
   {
+    label: "Painéis",
+    icon: LayoutDashboard,
+    descricao: "Atendimento operacional e consultas rápidas",
+    items: [
+      {
+        to: "/app/painel-apropriacoes",
+        label: "Painel de apropriações",
+        icon: UserCheck,
+        subgrupo: "Atendimento",
+      },
+    ],
+  },
+  {
     label: "Cadastros",
     icon: Settings2,
     descricao: "Base cadastral compartilhada pelos módulos",

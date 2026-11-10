@@ -28,6 +28,7 @@ import { Route as AppLancarRouteImport } from './routes/app.lancar'
 import { Route as AppMesclarParametrosEquipamentosRouteImport } from './routes/app.mesclar-parametros-equipamentos'
 import { Route as AppMovimentacoesRouteImport } from './routes/app.movimentacoes'
 import { Route as AppMovimentacoesEquipamentosRouteImport } from './routes/app.movimentacoes-equipamentos'
+import { Route as AppPainelApropriacoesRouteImport } from './routes/app.painel-apropriacoes'
 import { Route as AppPerfisParametrosEquipamentosRouteImport } from './routes/app.perfis-parametros-equipamentos'
 import { Route as AppPrevistoRealEquipamentosRouteImport } from './routes/app.previsto-real-equipamentos'
 import { Route as AppProdutoRouteImport } from './routes/app.produto'
@@ -137,6 +138,11 @@ const AppMovimentacoesEquipamentosRoute =
     path: '/movimentacoes-equipamentos',
     getParentRoute: () => AppRoute,
   } as any)
+const AppPainelApropriacoesRoute = AppPainelApropriacoesRouteImport.update({
+  id: '/painel-apropriacoes',
+  path: '/painel-apropriacoes',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppPerfisParametrosEquipamentosRoute =
   AppPerfisParametrosEquipamentosRouteImport.update({
     id: '/perfis-parametros-equipamentos',
@@ -212,6 +218,7 @@ export interface FileRoutesByFullPath {
   '/app/mesclar-parametros-equipamentos': typeof AppMesclarParametrosEquipamentosRoute
   '/app/movimentacoes': typeof AppMovimentacoesRoute
   '/app/movimentacoes-equipamentos': typeof AppMovimentacoesEquipamentosRoute
+  '/app/painel-apropriacoes': typeof AppPainelApropriacoesRoute
   '/app/perfis-parametros-equipamentos': typeof AppPerfisParametrosEquipamentosRoute
   '/app/previsto-real-equipamentos': typeof AppPrevistoRealEquipamentosRoute
   '/app/produto': typeof AppProdutoRoute
@@ -242,6 +249,7 @@ export interface FileRoutesByTo {
   '/app/mesclar-parametros-equipamentos': typeof AppMesclarParametrosEquipamentosRoute
   '/app/movimentacoes': typeof AppMovimentacoesRoute
   '/app/movimentacoes-equipamentos': typeof AppMovimentacoesEquipamentosRoute
+  '/app/painel-apropriacoes': typeof AppPainelApropriacoesRoute
   '/app/perfis-parametros-equipamentos': typeof AppPerfisParametrosEquipamentosRoute
   '/app/previsto-real-equipamentos': typeof AppPrevistoRealEquipamentosRoute
   '/app/produto': typeof AppProdutoRoute
@@ -274,6 +282,7 @@ export interface FileRoutesById {
   '/app/mesclar-parametros-equipamentos': typeof AppMesclarParametrosEquipamentosRoute
   '/app/movimentacoes': typeof AppMovimentacoesRoute
   '/app/movimentacoes-equipamentos': typeof AppMovimentacoesEquipamentosRoute
+  '/app/painel-apropriacoes': typeof AppPainelApropriacoesRoute
   '/app/perfis-parametros-equipamentos': typeof AppPerfisParametrosEquipamentosRoute
   '/app/previsto-real-equipamentos': typeof AppPrevistoRealEquipamentosRoute
   '/app/produto': typeof AppProdutoRoute
@@ -307,6 +316,7 @@ export interface FileRouteTypes {
     | '/app/mesclar-parametros-equipamentos'
     | '/app/movimentacoes'
     | '/app/movimentacoes-equipamentos'
+    | '/app/painel-apropriacoes'
     | '/app/perfis-parametros-equipamentos'
     | '/app/previsto-real-equipamentos'
     | '/app/produto'
@@ -337,6 +347,7 @@ export interface FileRouteTypes {
     | '/app/mesclar-parametros-equipamentos'
     | '/app/movimentacoes'
     | '/app/movimentacoes-equipamentos'
+    | '/app/painel-apropriacoes'
     | '/app/perfis-parametros-equipamentos'
     | '/app/previsto-real-equipamentos'
     | '/app/produto'
@@ -368,6 +379,7 @@ export interface FileRouteTypes {
     | '/app/mesclar-parametros-equipamentos'
     | '/app/movimentacoes'
     | '/app/movimentacoes-equipamentos'
+    | '/app/painel-apropriacoes'
     | '/app/perfis-parametros-equipamentos'
     | '/app/previsto-real-equipamentos'
     | '/app/produto'
@@ -521,6 +533,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppMovimentacoesEquipamentosRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/painel-apropriacoes': {
+      id: '/app/painel-apropriacoes'
+      path: '/painel-apropriacoes'
+      fullPath: '/app/painel-apropriacoes'
+      preLoaderRoute: typeof AppPainelApropriacoesRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/perfis-parametros-equipamentos': {
       id: '/app/perfis-parametros-equipamentos'
       path: '/perfis-parametros-equipamentos'
@@ -623,6 +642,7 @@ interface AppRouteChildren {
   AppMesclarParametrosEquipamentosRoute: typeof AppMesclarParametrosEquipamentosRoute
   AppMovimentacoesRoute: typeof AppMovimentacoesRoute
   AppMovimentacoesEquipamentosRoute: typeof AppMovimentacoesEquipamentosRoute
+  AppPainelApropriacoesRoute: typeof AppPainelApropriacoesRoute
   AppPerfisParametrosEquipamentosRoute: typeof AppPerfisParametrosEquipamentosRoute
   AppPrevistoRealEquipamentosRoute: typeof AppPrevistoRealEquipamentosRoute
   AppProdutoRoute: typeof AppProdutoRoute
@@ -652,6 +672,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppMesclarParametrosEquipamentosRoute: AppMesclarParametrosEquipamentosRoute,
   AppMovimentacoesRoute: AppMovimentacoesRoute,
   AppMovimentacoesEquipamentosRoute: AppMovimentacoesEquipamentosRoute,
+  AppPainelApropriacoesRoute: AppPainelApropriacoesRoute,
   AppPerfisParametrosEquipamentosRoute: AppPerfisParametrosEquipamentosRoute,
   AppPrevistoRealEquipamentosRoute: AppPrevistoRealEquipamentosRoute,
   AppProdutoRoute: AppProdutoRoute,
