@@ -2430,30 +2430,19 @@ function MovimentacoesEquipamentosPage() {
                   <>
                     <div className="space-y-2">
                       <Label>Origem do equipamento</Label>
-                      <Select
+                      <Combobox
+                        opcoes={origensDisponiveisParaEnvio.map((origem) => ({ value: origem.id, label: origem.label }))}
                         value={formulario.origemId}
-                        onValueChange={(value) => {
+                        onChange={(value) => {
+                          if (!value) return;
                           atualizar("origemParte", "EQUIPE");
                           atualizar("origemId", value);
                           atualizar("estoqueEquipamentoId", "");
                           atualizar("quantidade", "1");
                         }}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione a origem" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {origensDisponiveisParaEnvio.length === 0 ? (
-                            <SelectItem value="__vazio__" disabled>
-                              Nenhum equipamento disponível para envio à manutenção
-                            </SelectItem>
-                          ) : origensDisponiveisParaEnvio.map((origem) => (
-                            <SelectItem key={origem.id} value={origem.id}>
-                              {origem.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                        placeholder="Selecione a origem"
+                        vazio="Nenhum equipamento disponível para envio à manutenção"
+                      />
                       <p className="text-xs text-muted-foreground">
                         Selecione onde o equipamento está: Almoxarifado ou Manutenção.
                       </p>
@@ -2461,66 +2450,34 @@ function MovimentacoesEquipamentosPage() {
 
                     <div className="space-y-2">
                       <Label>Equipamento em estoque</Label>
-                      <Select
-                        value={formulario.estoqueEquipamentoId}
-                        onValueChange={selecionarEstoque}
-                        disabled={!formulario.origemId}
-                      >
-                        <SelectTrigger>
-                          <SelectValue
-                            placeholder={
-                              !formulario.origemId
-                                ? "Selecione primeiro a origem"
-                                : "Selecione o equipamento"
-                            }
-                          />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {estoquesDaOrigemEnvio.length === 0 ? (
-                            <SelectItem value="__vazio__" disabled>
-                              {formulario.origemId
-                                ? "Nenhum equipamento disponível nesta origem"
-                                : "Selecione primeiro a origem"}
-                            </SelectItem>
-                          ) : estoquesDaOrigemEnvio.map((stock) => {
+                      <Combobox
+                        opcoes={estoquesDaOrigemEnvio.map((stock) => {
                             const equipamento = equipamentoPorId.get(stock.equipamento_id);
                             const estado = estados.get(stock.id);
                             const quantidadeDisponivel = formulario.origemId === equipesOperacionais.manutencao?.id
                               ? Math.max(0, (estado?.manutencao ?? 0) - (estado?.empresa ?? 0))
                               : estado?.almoxarifado ?? 0;
-
-                            return (
-                              <SelectItem key={stock.id} value={stock.id}>
-                                <div className="flex min-w-0 flex-col gap-0.5">
-                    <span>{equipamento?.nome ?? "Equipamento"} · disponível: {quantidadeDisponivel}</span>
-                    <span className="max-w-[42rem] truncate text-xs text-muted-foreground">{detalhesRegistroFisico(stock, equipamento, empresaPorId)}</span>
-                  </div>
-                              </SelectItem>
-                            );
-                          })}
-                        </SelectContent>
-                      </Select>
+                            return { value: stock.id, label: `${equipamento?.nome ?? "Equipamento"} · disponível: ${quantidadeDisponivel}`, hint: detalhesRegistroFisico(stock, equipamento, empresaPorId) };
+                          }).sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))}
+                        value={formulario.estoqueEquipamentoId}
+                        onChange={(value) => value && selecionarEstoque(value)}
+                        placeholder={!formulario.origemId ? "Selecione primeiro a origem" : "Selecione o equipamento"}
+                        vazio={formulario.origemId ? "Nenhum equipamento disponível nesta origem" : "Selecione primeiro a origem"}
+                        disabled={!formulario.origemId}
+                      />
                     </div>
 
                     {estoqueSelecionado?.vinculo === "PROPRIO" ? (
                       <div className="space-y-2">
                         <Label>Empresa de manutenção</Label>
-                        <Select
+                        <Combobox
+                          opcoes={empresas.map((empresa) => ({ value: empresa.id, label: empresa.nome, hint: empresa.tipo || undefined })).sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))}
                           value={formulario.destinoId}
-                          onValueChange={(value) => atualizar("destinoId", value)}
+                          onChange={(value) => atualizar("destinoId", value ?? "")}
+                          placeholder="Selecione a empresa que fará a manutenção"
+                          vazio="Nenhuma empresa disponível"
                           disabled={!formulario.estoqueEquipamentoId}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Selecione a empresa que fará a manutenção" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {empresas.length === 0 ? (
-                              <SelectItem value="__vazio__" disabled>Nenhuma empresa disponível</SelectItem>
-                            ) : empresas.map((empresa) => (
-                              <SelectItem key={empresa.id} value={empresa.id}>{empresa.nome}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        />
                       </div>
                     ) : (
                       <div className="rounded-lg border bg-muted/20 p-3 text-sm">
@@ -2546,34 +2503,21 @@ function MovimentacoesEquipamentosPage() {
                     </div>
                     <div className="space-y-2">
                       <Label>Equipamento em manutenção</Label>
-                      <Select
-                        value={formulario.estoqueEquipamentoId}
-                        onValueChange={selecionarEstoque}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione o equipamento" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {estoquesParaRetornoManutencao.length === 0 ? (
-                            <SelectItem value="__vazio__" disabled>Nenhum equipamento disponível para retorno</SelectItem>
-                          ) : estoquesParaRetornoManutencao.map((stock) => {
+                      <Combobox
+                        opcoes={estoquesParaRetornoManutencao.map((stock) => {
                             const equipamento = equipamentoPorId.get(stock.equipamento_id);
                             const estado = estados.get(stock.id);
                             const externo = (estado?.empresa ?? 0) > 0;
                             const quantidadeDisponivel = externo
                               ? estado?.empresa ?? 0
                               : estado?.manutencao ?? 0;
-                            return (
-                              <SelectItem key={stock.id} value={stock.id}>
-                                <div className="flex min-w-0 flex-col gap-0.5">
-                                  <span>{equipamento?.nome ?? "Equipamento"} · {externo ? "Empresa de manutenção" : "Manutenção"} · disponível: {quantidadeDisponivel}</span>
-                                  <span className="max-w-[42rem] truncate text-xs text-muted-foreground">{detalhesRegistroFisico(stock, equipamento, empresaPorId)}</span>
-                                </div>
-                              </SelectItem>
-                            );
-                          })}
-                        </SelectContent>
-                      </Select>
+                            return { value: stock.id, label: `${equipamento?.nome ?? "Equipamento"} · ${externo ? "Empresa de manutenção" : "Manutenção"} · disponível: ${quantidadeDisponivel}`, hint: detalhesRegistroFisico(stock, equipamento, empresaPorId) };
+                          }).sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))}
+                        value={formulario.estoqueEquipamentoId}
+                        onChange={(value) => value && selecionarEstoque(value)}
+                        placeholder="Selecione o equipamento"
+                        vazio="Nenhum equipamento disponível para retorno"
+                      />
                     </div>
                   </div>
                 )}
@@ -2585,26 +2529,18 @@ function MovimentacoesEquipamentosPage() {
                     </div>
                     <div className="space-y-2">
                       <Label>Equipamento para reentrada</Label>
-                      <Select value={formulario.estoqueEquipamentoId} onValueChange={selecionarEstoque}>
-                        <SelectTrigger><SelectValue placeholder="Selecione o equipamento que retornou ao projeto" /></SelectTrigger>
-                        <SelectContent>
-                          {estoquesParaReentrada.length === 0 ? (
-                            <SelectItem value="__vazio__" disabled>Nenhum equipamento disponível para reentrada</SelectItem>
-                          ) : estoquesParaReentrada.map((stock) => {
+                      <Combobox
+                        opcoes={estoquesParaReentrada.map((stock) => {
                             const equipamento = equipamentoPorId.get(stock.equipamento_id);
                             const pendencia = pendenciasReentrada.get(stock.id);
                             const origem = pendencia?.tipo === "BAIXA" ? "Baixa" : "Devolução ao fornecedor";
-                            return (
-                              <SelectItem key={stock.id} value={stock.id}>
-                                <div className="flex min-w-0 flex-col gap-0.5">
-                                  <span>{equipamento?.nome ?? "Equipamento"} · {origem} · disponível: {pendencia?.restante ?? 0}</span>
-                                  <span className="max-w-[42rem] truncate text-xs text-muted-foreground">{detalhesRegistroFisico(stock, equipamento, empresaPorId)}</span>
-                                </div>
-                              </SelectItem>
-                            );
-                          })}
-                        </SelectContent>
-                      </Select>
+                            return { value: stock.id, label: `${equipamento?.nome ?? "Equipamento"} · ${origem} · disponível: ${pendencia?.restante ?? 0}`, hint: detalhesRegistroFisico(stock, equipamento, empresaPorId) };
+                          }).sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))}
+                        value={formulario.estoqueEquipamentoId}
+                        onChange={(value) => value && selecionarEstoque(value)}
+                        placeholder="Selecione o equipamento que retornou ao projeto"
+                        vazio="Nenhum equipamento disponível para reentrada"
+                      />
                     </div>
                     <div className="rounded-lg border bg-background p-3 text-sm">
                       <span className="font-medium">Destino padrão:</span> Almoxarifado
@@ -2621,50 +2557,37 @@ function MovimentacoesEquipamentosPage() {
                     </div>
                     <div className="space-y-2">
                       <Label>Origem da baixa</Label>
-                      <Select
+                      <Combobox
+                        opcoes={origensDisponiveisParaBaixa.map((origem) => ({ value: origem.id, label: origem.label }))}
                         value={formulario.origemId}
-                        onValueChange={(value) => {
+                        onChange={(value) => {
+                          if (!value) return;
                           atualizar("origemId", value);
                           atualizar("estoqueEquipamentoId", "");
                           atualizar("quantidade", "1");
                         }}
-                      >
-                        <SelectTrigger><SelectValue placeholder="Selecione a origem" /></SelectTrigger>
-                        <SelectContent>
-                          {origensDisponiveisParaBaixa.length === 0 ? (
-                            <SelectItem value="__vazio__" disabled>Nenhum equipamento disponível para baixa</SelectItem>
-                          ) : origensDisponiveisParaBaixa.map((origem) => (
-                            <SelectItem key={origem.id} value={origem.id}>{origem.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                        placeholder="Selecione a origem"
+                        vazio="Nenhum equipamento disponível para baixa"
+                      />
                     </div>
                     <div className="space-y-2">
                       <Label>Equipamento em estoque</Label>
-                      <Select value={formulario.estoqueEquipamentoId} onValueChange={selecionarEstoque}>
-                        <SelectTrigger><SelectValue placeholder="Selecione o equipamento para baixa" /></SelectTrigger>
-                        <SelectContent>
-                          {estoquesParaBaixa.length === 0 ? (
-                            <SelectItem value="__vazio__" disabled>Nenhum equipamento disponível para baixa</SelectItem>
-                          ) : estoquesParaBaixa.map((stock) => {
+                      <Combobox
+                        opcoes={estoquesParaBaixa.map((stock) => {
                             const equipamento = equipamentoPorId.get(stock.equipamento_id);
                             const estado = estados.get(stock.id);
-                            return (
-                              <SelectItem key={stock.id} value={stock.id}>
-                                <div className="flex min-w-0 flex-col gap-0.5">
-                                  <span>{equipamento?.nome ?? "Equipamento"} · disponível: {Math.min(
+                            return { value: stock.id, label: `${equipamento?.nome ?? "Equipamento"} · disponível: ${Math.min(
                                     formulario.origemId === equipesOperacionais.manutencao?.id
                                       ? (estado?.manutencao ?? 0)
                                       : (estado?.almoxarifado ?? 0),
                                     estado?.saldo ?? 0,
-                                  )}</span>
-                                  <span className="max-w-[42rem] truncate text-xs text-muted-foreground">{detalhesRegistroFisico(stock, equipamento, empresaPorId)}</span>
-                                </div>
-                              </SelectItem>
-                            );
-                          })}
-                        </SelectContent>
-                      </Select>
+                                  )}`, hint: detalhesRegistroFisico(stock, equipamento, empresaPorId) };
+                          }).sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))}
+                        value={formulario.estoqueEquipamentoId}
+                        onChange={(value) => value && selecionarEstoque(value)}
+                        placeholder="Selecione o equipamento para baixa"
+                        vazio="Nenhum equipamento disponível para baixa"
+                      />
                     </div>
                     <div className="space-y-2">
                       <Label>Motivo da baixa *</Label>
@@ -2687,41 +2610,19 @@ function MovimentacoesEquipamentosPage() {
 
                     <div className="space-y-2">
                       <Label>Equipamento em estoque</Label>
-                      <Select
-                        value={formulario.estoqueEquipamentoId}
-                        onValueChange={selecionarEstoque}
-                        disabled={!equipesOperacionais.almoxarifado || !formulario.origemId}
-                      >
-                        <SelectTrigger>
-                          <SelectValue
-                            placeholder={
-                              !formulario.origemId
-                                ? "Selecione primeiro a origem"
-                                : "Selecione o equipamento que será sinalizado para manutenção"
-                            }
-                          />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {estoquesDaOrigemManutencao.length === 0 ? (
-                            <SelectItem value="__vazio__" disabled>
-                              {formulario.origemId ? "Nenhum equipamento disponível nesta origem" : "Selecione primeiro a origem"}
-                            </SelectItem>
-                          ) : estoquesDaOrigemManutencao.map((stock) => {
+                      <Combobox
+                        opcoes={estoquesDaOrigemManutencao.map((stock) => {
                             const equipamento = equipamentoPorId.get(stock.equipamento_id);
                             const estado = estados.get(stock.id);
                             const quantidadeDisponivel = estado?.almoxarifado ?? 0;
-
-                            return (
-                              <SelectItem key={stock.id} value={stock.id}>
-                                <div className="flex min-w-0 flex-col gap-0.5">
-                    <span>{equipamento?.nome ?? "Equipamento"} · disponível: {quantidadeDisponivel}</span>
-                    <span className="max-w-[42rem] truncate text-xs text-muted-foreground">{detalhesRegistroFisico(stock, equipamento, empresaPorId)}</span>
-                  </div>
-                              </SelectItem>
-                            );
-                          })}
-                        </SelectContent>
-                      </Select>
+                            return { value: stock.id, label: `${equipamento?.nome ?? "Equipamento"} · disponível: ${quantidadeDisponivel}`, hint: detalhesRegistroFisico(stock, equipamento, empresaPorId) };
+                          }).sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))}
+                        value={formulario.estoqueEquipamentoId}
+                        onChange={(value) => value && selecionarEstoque(value)}
+                        placeholder={!formulario.origemId ? "Selecione primeiro a origem" : "Selecione o equipamento que será sinalizado para manutenção"}
+                        vazio={formulario.origemId ? "Nenhum equipamento disponível nesta origem" : "Selecione primeiro a origem"}
+                        disabled={!equipesOperacionais.almoxarifado || !formulario.origemId}
+                      />
                     </div>
                   </>
                 )}
