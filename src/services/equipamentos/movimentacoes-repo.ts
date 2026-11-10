@@ -1201,6 +1201,7 @@ export const movimentacoesEquipamentosRepo = {
         db.movimentacoes_equipamentos,
         db.apropriacoes,
         db.estoque_equipamentos,
+        db.equipamentos,
         db.manutencoes_equipamentos,
       ],
       async () => {
