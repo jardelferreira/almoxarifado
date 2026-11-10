@@ -78,6 +78,7 @@ export function Combobox({
                 <CommandItem
                   key={o.value}
                   value={`${o.label} ${o.hint ?? ""}`}
+                  className="items-start py-2"
                   onSelect={() => {
                     onChange(o.value);
                     setOpen(false);
@@ -89,10 +90,14 @@ export function Combobox({
                       value === o.value ? "opacity-100" : "opacity-0",
                     )}
                   />
-                  <span className="truncate">{o.label}</span>
-                  {o.hint && (
-                    <span className="ml-auto text-xs text-muted-foreground">{o.hint}</span>
-                  )}
+                  <span className="min-w-0 flex-1">
+                    <span className="block whitespace-normal break-words font-medium leading-5" title={o.label}>{o.label}</span>
+                    {o.hint && (
+                      <span className="mt-0.5 block whitespace-normal break-words text-xs leading-4 text-muted-foreground" title={o.hint}>
+                        {o.hint}
+                      </span>
+                    )}
+                  </span>
                 </CommandItem>
               ))}
             </CommandGroup>
