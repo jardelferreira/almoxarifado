@@ -40,6 +40,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Combobox } from "@/components/common/Combobox";
 import {
   Popover,
   PopoverContent,
@@ -1949,54 +1950,47 @@ function MovimentacoesEquipamentosPage() {
       ? estoquesParaDevolucaoFornecedor
       : listaBase;
 
+    const opcoes = [...lista]
+      .map((stock) => {
+        const equipamento = equipamentoPorId.get(stock.equipamento_id);
+        const estado = estados.get(stock.id);
+        const quantidadeDisponivel = formulario.tipo === "DEVOLUCAO_FORNECEDOR"
+          ? (estado?.manutencao ?? 0) > 0
+            ? estado?.manutencao ?? 0
+            : estado?.almoxarifado ?? 0
+          : porFuncionario
+            ? estado?.funcionarios.get(formulario.origemId) ?? 0
+            : estado?.almoxarifado ?? 0;
+
+        return {
+          value: stock.id,
+          label: `${equipamento?.nome ?? "Equipamento"} · disponível: ${quantidadeDisponivel}`,
+          hint: detalhesRegistroFisico(stock, equipamento, empresaPorId),
+        };
+      })
+      .sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }));
+
     return (
       <div className="space-y-2">
         <Label>Equipamento em estoque</Label>
-        <Select
+        <Combobox
+          opcoes={opcoes}
           value={formulario.estoqueEquipamentoId}
-          onValueChange={selecionarEstoque}
+          onChange={(value) => value && selecionarEstoque(value)}
+          placeholder={
+            porFuncionario && !formulario.origemId
+              ? "Selecione primeiro o funcionário de origem"
+              : "Selecione o equipamento em estoque"
+          }
+          vazio={
+            porFuncionario && !formulario.origemId
+              ? "Selecione primeiro o funcionário de origem"
+              : porFuncionario
+                ? "Nenhum equipamento apropriado para este funcionário"
+                : "Nenhum equipamento disponível"
+          }
           disabled={porFuncionario && !formulario.origemId}
-        >
-          <SelectTrigger>
-            <SelectValue
-              placeholder={
-                porFuncionario && !formulario.origemId
-                  ? "Selecione primeiro o funcionário de origem"
-                  : "Selecione o equipamento em estoque"
-              }
-            />
-          </SelectTrigger>
-          <SelectContent>
-            {lista.length === 0 ? (
-              <SelectItem value="__vazio__" disabled>
-                {porFuncionario && !formulario.origemId
-                  ? "Selecione primeiro o funcionário de origem"
-                  : porFuncionario
-                    ? "Nenhum equipamento apropriado para este funcionário"
-                    : "Nenhum equipamento disponível"}
-              </SelectItem>
-            ) : lista.map((stock) => {
-              const equipamento = equipamentoPorId.get(stock.equipamento_id);
-              const estado = estados.get(stock.id);
-              const quantidadeDisponivel = formulario.tipo === "DEVOLUCAO_FORNECEDOR"
-                ? (estado?.manutencao ?? 0) > 0
-                  ? estado?.manutencao ?? 0
-                  : estado?.almoxarifado ?? 0
-                : porFuncionario
-                  ? estado?.funcionarios.get(formulario.origemId) ?? 0
-                  : estado?.almoxarifado ?? 0;
-
-              return (
-                <SelectItem key={stock.id} value={stock.id}>
-                  <div className="flex min-w-0 flex-col gap-0.5">
-                    <span>{equipamento?.nome ?? "Equipamento"} · disponível: {quantidadeDisponivel}</span>
-                    <span className="max-w-[42rem] truncate text-xs text-muted-foreground">{detalhesRegistroFisico(stock, equipamento, empresaPorId)}</span>
-                  </div>
-                </SelectItem>
-              );
-            })}
-          </SelectContent>
-        </Select>
+        />
       </div>
     );
   };
