@@ -30,6 +30,21 @@ const icones = {
     RETIRADA_MANUTENCAO: Wrench,
 } as const;
 
+const rotulosTipo: Record<HistoricoEquipamentoEvento["tipo"], string> = {
+    ENTRADA: "Entrada",
+    SAIDA: "Apropriação",
+    DEVOLUCAO: "Devolução",
+    TRANSFERENCIA: "Transferência",
+    SINALIZAR_MANUTENCAO: "Sinalização",
+    ENVIO: "Envio",
+    RETORNO_MANUTENCAO: "Retorno",
+    DEVOLUCAO_FORNECEDOR: "Devolução ao fornecedor",
+    BAIXA: "Baixa",
+    REENTRADA: "Reentrada",
+    MANUTENCAO: "Manutenção",
+    RETIRADA_MANUTENCAO: "Retirada da manutenção",
+};
+
 function Evento({ evento }: { evento: HistoricoEquipamentoEvento }) {
     const Icon = icones[evento.tipo] ?? ClipboardList;
 
@@ -42,13 +57,14 @@ function Evento({ evento }: { evento: HistoricoEquipamentoEvento }) {
                 <div className="flex flex-wrap items-start justify-between gap-2">
                     <div>
                         <p className="font-medium">{evento.titulo}</p>
-                        <p className="mt-0.5 text-xs text-muted-foreground">{formatarData(evento.data)}</p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">{formatarData(evento.data)} · Registrado às {new Date(evento.criadoEm).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</p>
                     </div>
-                    <Badge variant="outline">{evento.tipo}</Badge>
+                    <Badge variant="outline">{rotulosTipo[evento.tipo]}</Badge>
                 </div>
+                <p className="mt-3 rounded-lg bg-muted/40 px-3 py-2 text-xs text-muted-foreground">Fluxo: <strong className="font-medium text-foreground">{evento.descricao}</strong></p>
                 <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
-                    <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Origem</p><p className="font-medium">{evento.origem}</p></div>
-                    <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Destino</p><p className="font-medium">{evento.destino}</p></div>
+                    <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Origem</p><p className="break-words font-medium">{evento.origem}</p></div>
+                    <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Destino</p><p className="break-words font-medium">{evento.destino}</p></div>
                 </div>
                 <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                     <span>Quantidade: <strong className="text-foreground">{evento.quantidade}</strong></span>
