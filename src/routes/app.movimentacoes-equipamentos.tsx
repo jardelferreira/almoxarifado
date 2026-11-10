@@ -470,6 +470,7 @@ function MovimentacoesEquipamentosPage() {
     observacoes: "",
   });
   const observacoesRef = useRef<HTMLTextAreaElement>(null);
+  const historicoSubstituicoesRef = useRef<HTMLDivElement>(null);
 
   async function carregar() {
     if (!projetoId) return;
@@ -1584,6 +1585,11 @@ function MovimentacoesEquipamentosPage() {
     setSubstituicaoAberta(true);
   }
 
+  function acessarHistoricoSubstituicoes() {
+    historicoSubstituicoesRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    historicoSubstituicoesRef.current?.focus({ preventScroll: true });
+  }
+
   async function salvarSubstituicao() {
     if (!projetoId) return;
     const origem = estoquePorId.get(formularioSubstituicao.estoqueOrigemId);
@@ -2097,6 +2103,9 @@ function MovimentacoesEquipamentosPage() {
             </div>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row">
+            <Button onClick={acessarHistoricoSubstituicoes} variant="secondary" className="shadow-sm" title="Ir para o histórico de substituições">
+              <ArrowRightLeft className="mr-2 h-4 w-4" />Histórico de substituições <Badge variant="outline" className="ml-1">{substituicoes.length}</Badge>
+            </Button>
             <Button onClick={abrirSubstituicao} variant="outline" className="shadow-sm"><ArrowRightLeft className="mr-2 h-4 w-4" />Substituir equipamento</Button>
             <Button onClick={abrirNovo} className="shadow-sm"><Plus className="mr-2 h-4 w-4" />Nova movimentação</Button>
           </div>
@@ -2258,7 +2267,7 @@ function MovimentacoesEquipamentosPage() {
           </CardContent>
         </Card>
 
-        <Card className="overflow-hidden">
+        <Card ref={historicoSubstituicoesRef} id="historico-substituicoes" tabIndex={-1} className="scroll-mt-4 overflow-hidden outline-none focus-visible:ring-2 focus-visible:ring-primary">
           <CardHeader className="border-b bg-muted/20">
             <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
               <div>
