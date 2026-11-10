@@ -508,17 +508,7 @@ async function validarEstadoDaOrigem(
         );
         return;
       }
-
-      if (tipo_origem === "FUNCIONARIO") {
-        exigirDisponibilidade(
-          estado.funcionarios.get(origem_id) ?? 0,
-          quantidade,
-          "O funcionário não possui quantidade suficiente para sinalização.",
-        );
-        return;
-      }
-
-      throw new Error("A sinalização deve partir do Almoxarifado ou de um funcionário.");
+      throw new Error("A sinalização deve partir do Almoxarifado.");
 
     case "MANUTENCAO":
       // Histórico antigo: MANUTENCAO representava o envio efetivo.
@@ -765,7 +755,7 @@ function validarRegraDoTipo(
 
     case "SINALIZAR_MANUTENCAO":
       if (
-        (tipo_origem !== "EQUIPE" && tipo_origem !== "FUNCIONARIO") ||
+        tipo_origem !== "EQUIPE" ||
         tipo_destino !== "EQUIPE" ||
         destino_id !== equipes.manutencao.id
       ) {

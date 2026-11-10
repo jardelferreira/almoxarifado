@@ -780,9 +780,10 @@ function MovimentacoesEquipamentosPage() {
     return resultado;
   }, [movimentacoes]);
 
-  // Registros físicos disponíveis para sinalização.
+  // A sinalização começa no Almoxarifado. O funcionário só participa depois,
+  // quando recebe o equipamento novamente por uma saída regular.
   const estoquesDaOrigemManutencao = useMemo(() => {
-    if (formulario.tipo !== "SINALIZAR_MANUTENCAO" || !formulario.origemParte || !formulario.origemId) {
+    if (formulario.tipo !== "SINALIZAR_MANUTENCAO" || formulario.origemParte !== "EQUIPE" || !formulario.origemId) {
       return [];
     }
 
@@ -797,17 +798,10 @@ function MovimentacoesEquipamentosPage() {
         return false;
       }
 
-      if (formulario.origemParte === "EQUIPE") {
-        // A manutenção só pode sair da equipe Almoxarifado.
-        return (
-          formulario.origemId === equipesOperacionais.almoxarifado?.id &&
-          estado.almoxarifado > 0
-        );
-      }
-
-      // Quando a origem é funcionário, somente equipamentos atualmente
-      // apropriados a ele podem ser selecionados.
-      return (estado.funcionarios.get(formulario.origemId) ?? 0) > 0;
+      return (
+        formulario.origemId === equipesOperacionais.almoxarifado?.id &&
+        estado.almoxarifado > 0
+      );
     });
   }, [
     estoques,
@@ -1017,8 +1011,7 @@ function MovimentacoesEquipamentosPage() {
         case "TRANSFERENCIA":
           return emUso > 0;
         case "SINALIZAR_MANUTENCAO":
-          // Pode sair do Almoxarifado ou diretamente de um funcionário.
-          return estado.almoxarifado > 0 || emUso > 0;
+          return estado.almoxarifado > 0;
         case "ENVIO":
           return estado.almoxarifado > 0 || estado.manutencao > 0;
         case "RETORNO_MANUTENCAO":
@@ -1147,15 +1140,11 @@ function MovimentacoesEquipamentosPage() {
     }
     if (tipo === "SINALIZAR_MANUTENCAO") {
       return {
-        origemParte: formulario.origemParte as "EQUIPE" | "FUNCIONARIO",
+        origemParte: "EQUIPE" as const,
         origemId: formulario.origemId,
         destinoParte: "EQUIPE" as const,
         destinoId: manut?.id ?? "",
-        origemLabel: formulario.origemParte === "FUNCIONARIO"
-          ? "Funcionário"
-          : formulario.origemId
-            ? "Almoxarifado"
-            : "Origem",
+        origemLabel: formulario.origemId ? "Almoxarifado" : "Origem",
         destinoLabel: "Sinalização de manutenção",
       };
     }
@@ -1228,9 +1217,7 @@ function MovimentacoesEquipamentosPage() {
     switch (formulario.tipo) {
       case "SAIDA":
       case "SINALIZAR_MANUTENCAO":
-        return formulario.tipo === "SINALIZAR_MANUTENCAO" && formulario.origemParte === "FUNCIONARIO"
-          ? estadoSelecionado.funcionarios.get(formulario.origemId) ?? 0
-          : estadoSelecionado.almoxarifado;
+        return estadoSelecionado.almoxarifado;
       case "DEVOLUCAO":
       case "TRANSFERENCIA":
         return estadoSelecionado.funcionarios.get(formulario.origemId) ?? 0;
@@ -1788,7 +1775,7 @@ function MovimentacoesEquipamentosPage() {
         return;
       }
 
-      if (tipo === "DEVOLUCAO" || (tipo === "SINALIZAR_MANUTENCAO" && formulario.origemParte === "FUNCIONARIO")) {
+      if (tipo === "DEVOLUCAO") {
         const apropriadoAoFuncionario = estado.funcionarios.get(formulario.origemId) ?? 0;
         if (!formulario.origemId) {
           toast.error("Selecione o funcionário de origem.");
@@ -1805,11 +1792,7 @@ function MovimentacoesEquipamentosPage() {
       }
 
       if (tipo === "SINALIZAR_MANUTENCAO") {
-        if (formulario.origemParte !== "FUNCIONARIO" && formulario.origemParte !== "EQUIPE") {
-          toast.error("Selecione a origem do equipamento.");
-          return;
-        }
-        if (formulario.origemParte === "EQUIPE" && formulario.origemId !== equipesOperacionais.almoxarifado?.id) {
+        if (formulario.origemParte !== "EQUIPE" || formulario.origemId !== equipesOperacionais.almoxarifado?.id) {
           toast.error("A origem por equipe deve ser o Almoxarifado.");
           return;
         }
@@ -1868,8 +1851,8 @@ function MovimentacoesEquipamentosPage() {
         }
       }
 
-      if (tipo === "SINALIZAR_MANUTENCAO" && formulario.origemParte !== "FUNCIONARIO" && formulario.origemParte !== "EQUIPE") {
-        toast.error("Selecione a origem do equipamento.");
+      if (tipo === "SINALIZAR_MANUTENCAO" && (formulario.origemParte !== "EQUIPE" || formulario.origemId !== equipesOperacionais.almoxarifado?.id)) {
+        toast.error("A sinalização deve partir do Almoxarifado.");
         return;
       }
       if (tipo === "ENVIO" && formulario.origemParte !== "EQUIPE") {
@@ -2532,15 +2515,10 @@ function MovimentacoesEquipamentosPage() {
                     <div className="space-y-2">
                       <Label>Origem da manutenção</Label>
                       <Select
-                        value={formulario.origemParte === "FUNCIONARIO" ? `FUNCIONARIO:${formulario.origemId}` : formulario.origemParte === "EQUIPE" ? formulario.origemId : ""}
+                        value={formulario.origemId}
                         onValueChange={(value) => {
-                          if (value.startsWith("FUNCIONARIO:")) {
-                            atualizar("origemParte", "FUNCIONARIO");
-                            atualizar("origemId", value.slice("FUNCIONARIO:".length));
-                          } else {
-                            atualizar("origemParte", "EQUIPE");
-                            atualizar("origemId", value);
-                          }
+                          atualizar("origemParte", "EQUIPE");
+                          atualizar("origemId", value);
                           atualizar("estoqueEquipamentoId", "");
                           atualizar("quantidade", "1");
                         }}
@@ -2553,11 +2531,6 @@ function MovimentacoesEquipamentosPage() {
                               {almoxarifadoTemEquipamentos ? " · possui equipamentos disponíveis" : " · sem equipamentos disponíveis"}
                             </SelectItem>
                           )}
-                          {funcionariosComApropriacoes.map((f) => (
-                            <SelectItem key={f.id} value={`FUNCIONARIO:${f.id}`}>
-                              {nomePessoa(f)}
-                            </SelectItem>
-                          ))}
                         </SelectContent>
                       </Select>
                     </div>
@@ -2567,7 +2540,7 @@ function MovimentacoesEquipamentosPage() {
                       <Select
                         value={formulario.estoqueEquipamentoId}
                         onValueChange={selecionarEstoque}
-                        disabled={!formulario.origemId}
+                        disabled={!formulario.origemId || formulario.origemId !== equipesOperacionais.almoxarifado?.id}
                       >
                         <SelectTrigger>
                           <SelectValue
@@ -2586,9 +2559,7 @@ function MovimentacoesEquipamentosPage() {
                           ) : estoquesDaOrigemManutencao.map((stock) => {
                             const equipamento = equipamentoPorId.get(stock.equipamento_id);
                             const estado = estados.get(stock.id);
-                            const quantidadeDisponivel = formulario.origemParte === "FUNCIONARIO"
-                              ? estado?.funcionarios.get(formulario.origemId) ?? 0
-                              : estado?.almoxarifado ?? 0;
+                            const quantidadeDisponivel = estado?.almoxarifado ?? 0;
 
                             return (
                               <SelectItem key={stock.id} value={stock.id}>
