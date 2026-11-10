@@ -159,6 +159,14 @@ export class AlmoxarifadoDB extends Dexie {
       manutencoes_equipamentos:
         "id, projeto_id, estoque_equipamento_id, equipamento_id, status_operacional, status_detalhamento, data_abertura, empresa_id, movimento_sinalizacao_id, movimento_envio_id, movimento_retorno_id, [projeto_id+estoque_equipamento_id], [projeto_id+status_operacional]",
     });
+
+    // Bancos criados pela sequência histórica do projeto podem estar na
+    // versão 19. A versão 20 mantém a cadeia de upgrade acima da versão
+    // máxima já distribuída e garante a mesma store para esses bancos.
+    this.version(20).stores({
+      manutencoes_equipamentos:
+        "id, projeto_id, estoque_equipamento_id, equipamento_id, status_operacional, status_detalhamento, data_abertura, empresa_id, movimento_sinalizacao_id, movimento_envio_id, movimento_retorno_id, [projeto_id+estoque_equipamento_id], [projeto_id+status_operacional]",
+    });
   }
 }
 

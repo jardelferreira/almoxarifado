@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDownToLine,
   ArrowRight,
@@ -438,6 +438,7 @@ function MovimentacoesEquipamentosPage() {
   const [detalhe, setDetalhe] = useState<MovimentacaoEquipamento | null>(null);
   const [formulario, setFormulario] = useState<Formulario>(formularioInicial);
   const [salvando, setSalvando] = useState(false);
+  const observacoesRef = useRef<HTMLTextAreaElement>(null);
 
   async function carregar() {
     if (!projetoId) return;
@@ -813,17 +814,6 @@ function MovimentacoesEquipamentosPage() {
     equipesOperacionais.almoxarifado?.id,
     sinalizacoesPendentes,
   ]);
-
-  const almoxarifadoTemEquipamentos = useMemo(() => {
-    const almoxarifadoId = equipesOperacionais.almoxarifado?.id;
-    if (!almoxarifadoId) return false;
-
-    return estoques.some((stock) => {
-      if (stock.ativo === false) return false;
-      if (equipamentoPorId.get(stock.equipamento_id)?.ativo === false) return false;
-      return (estados.get(stock.id)?.almoxarifado ?? 0) > 0;
-    });
-  }, [estoques, estados, equipamentoPorId, equipesOperacionais.almoxarifado?.id]);
 
   const origensDisponiveisParaEnvio = useMemo(() => {
     if (formulario.tipo !== "ENVIO") return [];
@@ -1535,8 +1525,13 @@ function MovimentacoesEquipamentosPage() {
     setFormulario((atual) => ({ ...atual, [campo]: valor }));
   }
 
+  function observacoesDigitadas(): string {
+    return observacoesRef.current?.value ?? formulario.observacoes;
+  }
+
   function abrirNovo() {
     setFormulario({ ...formularioInicial, data: hoje() });
+    if (observacoesRef.current) observacoesRef.current.value = "";
     setDialogAberto(true);
   }
 
@@ -1546,9 +1541,11 @@ function MovimentacoesEquipamentosPage() {
       tipo,
       equipamentoId: "",
       estoqueEquipamentoId: "",
-      origemId: "",
+      origemId: tipo === "SINALIZAR_MANUTENCAO"
+        ? equipesOperacionais.almoxarifado?.id ?? ""
+        : "",
       destinoId: "",
-      origemParte: "",
+      origemParte: tipo === "SINALIZAR_MANUTENCAO" ? "EQUIPE" : "",
       quantidade: "1",
       empresaId: "",
       equipeId: "",
@@ -1668,7 +1665,7 @@ function MovimentacoesEquipamentosPage() {
           // status: "ATIVO",
           data_entrada: formulario.data,
           referencia_documento: formulario.referenciaDocumento.trim() || null,
-          observacoes: formulario.observacoes.trim() || null,
+          observacoes: observacoesDigitadas().trim() || null,
         });
 
         try {
@@ -1683,7 +1680,7 @@ function MovimentacoesEquipamentosPage() {
             destino_id: equipesOperacionais.almoxarifado.id,
             data: formulario.data,
             referencia_documento: formulario.referenciaDocumento.trim() || null,
-            observacoes: formulario.observacoes.trim() || null,
+            observacoes: observacoesDigitadas().trim() || null,
           });
         } catch (error) {
           // Não deixa um registro físico órfão se a movimentação de entrada falhar.
@@ -1694,6 +1691,7 @@ function MovimentacoesEquipamentosPage() {
         await carregar();
         setDialogAberto(false);
         setFormulario({ ...formularioInicial, data: hoje() });
+        if (observacoesRef.current) observacoesRef.current.value = "";
         toast.success("Equipamento adicionado ao estoque por movimentação de entrada.");
         return;
       }
@@ -1887,7 +1885,7 @@ function MovimentacoesEquipamentosPage() {
         destino_id: destinoId,
         data: formulario.data,
         referencia_documento: formulario.referenciaDocumento.trim() || null,
-        observacoes: tipo === "BAIXA" ? formulario.motivoBaixa.trim() : formulario.observacoes.trim() || null,
+        observacoes: tipo === "BAIXA" ? formulario.motivoBaixa.trim() : observacoesDigitadas().trim() || null,
       };
 
       try {
@@ -1913,6 +1911,7 @@ function MovimentacoesEquipamentosPage() {
       await carregar();
       setDialogAberto(false);
       setFormulario({ ...formularioInicial, data: hoje() });
+      if (observacoesRef.current) observacoesRef.current.value = "";
       toast.success("Movimentação registrada.");
       return;
     } catch (error) {
@@ -2514,25 +2513,12 @@ function MovimentacoesEquipamentosPage() {
                   <>
                     <div className="space-y-2">
                       <Label>Origem da manutenção</Label>
-                      <Select
-                        value={formulario.origemId}
-                        onValueChange={(value) => {
-                          atualizar("origemParte", "EQUIPE");
-                          atualizar("origemId", value);
-                          atualizar("estoqueEquipamentoId", "");
-                          atualizar("quantidade", "1");
-                        }}
-                      >
-                        <SelectTrigger><SelectValue placeholder="Selecione primeiro a origem" /></SelectTrigger>
-                        <SelectContent>
-                          {equipesOperacionais.almoxarifado && (
-                            <SelectItem value={equipesOperacionais.almoxarifado.id}>
-                              Almoxarifado
-                              {almoxarifadoTemEquipamentos ? " · possui equipamentos disponíveis" : " · sem equipamentos disponíveis"}
-                            </SelectItem>
-                          )}
-                        </SelectContent>
-                      </Select>
+                      <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
+                        Almoxarifado
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        A sinalização para manutenção parte sempre do Almoxarifado.
+                      </p>
                     </div>
 
                     <div className="space-y-2">
@@ -2540,7 +2526,7 @@ function MovimentacoesEquipamentosPage() {
                       <Select
                         value={formulario.estoqueEquipamentoId}
                         onValueChange={selecionarEstoque}
-                        disabled={!formulario.origemId || formulario.origemId !== equipesOperacionais.almoxarifado?.id}
+                        disabled={!equipesOperacionais.almoxarifado || !formulario.origemId}
                       >
                         <SelectTrigger>
                           <SelectValue
@@ -2615,7 +2601,7 @@ function MovimentacoesEquipamentosPage() {
             )}
 
             <div className="space-y-2"><Label>Documento de referência</Label><Input value={formulario.referenciaDocumento} onChange={(event) => atualizar("referenciaDocumento", event.target.value)} placeholder="NF, OS, termo, romaneio..." /></div>
-            {formulario.tipo !== "BAIXA" && <div className="space-y-2"><Label>Observações</Label><textarea className="min-h-24 w-full rounded-md border bg-background px-3 py-2 text-sm" value={formulario.observacoes} onChange={(event) => atualizar("observacoes", event.target.value)} placeholder="Defeito, sintoma, serviço, advertências ou outras informações..." /></div>}
+            {formulario.tipo !== "BAIXA" && <div className="space-y-2"><Label>Observações</Label><textarea ref={observacoesRef} defaultValue={formulario.observacoes} className="min-h-24 w-full rounded-md border bg-background px-3 py-2 text-sm" placeholder="Defeito, sintoma, serviço, advertências ou outras informações..." /></div>}
           </div>
 
           <DialogFooter>
