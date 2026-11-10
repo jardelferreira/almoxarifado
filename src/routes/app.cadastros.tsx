@@ -39,6 +39,8 @@ import {
 import { Combobox } from "@/components/common/Combobox";
 import { useDados, useProjetoAtivoId } from "@/hooks/useAppData";
 import { repo } from "@/services/repo";
+import { salvarFuncionario } from "@/services/funcionarios-repo";
+import { criarHashPin, formatarCpf, normalizarCpf } from "@/utils/seguranca";
 import { num } from "@/utils/format";
 import type { Categoria, Empresa, Equipe, Funcionario, Local, Produto, Unidade } from "@/types";
 
@@ -93,6 +95,8 @@ function CadastrosPage() {
       empresas: { nome: "", tipo: "TERCEIRA", ativo: true },
       funcionarios: {
         nome: "",
+        cpf: "",
+        pin_novo: "",
         matricula: "",
         funcao: "",
         empresa_id: null,
@@ -164,10 +168,14 @@ function CadastrosPage() {
         item as unknown as Empresa,
       );
     } else if (aba === "funcionarios") {
-      await repo.funcionarios.save(
-        projetoId,
-        item as unknown as Funcionario,
-      );
+      const pinNovo = String(item["pin_novo"] ?? "").trim();
+      const { pin_novo: _pinNovo, ...itemFuncionario } = item;
+      const dadosFuncionario = {
+        ...itemFuncionario,
+        cpf: normalizarCpf(String(itemFuncionario["cpf"] ?? "")),
+      } as unknown as Funcionario;
+      if (pinNovo) Object.assign(dadosFuncionario, await criarHashPin(pinNovo));
+      await salvarFuncionario(projetoId, dadosFuncionario);
     } else if (aba === "locais") {
       await repo.locais.save(
         projetoId,
@@ -358,6 +366,7 @@ function CadastrosPage() {
                       {aba === "empresas" && <TableHead>Tipo</TableHead>}
                       {aba === "funcionarios" && (
                         <>
+                          <TableHead>CPF</TableHead>
                           <TableHead>Função</TableHead>
                           <TableHead>Empresa</TableHead>
                           <TableHead>Encarregado</TableHead>
@@ -451,11 +460,12 @@ function CadastrosPage() {
 
                     {aba === "funcionarios" &&
                       dados.funcionarios
-                        .filter((f) => busca(f.nome) || busca(f.matricula))
+                        .filter((f) => busca(f.nome) || busca(f.matricula) || busca(f.cpf) || busca(formatarCpf(f.cpf)))
                         .slice(0, 300)
                         .map((f: Funcionario) => (
                           <TableRow key={f.id}>
                             <TableCell className="font-medium">{f.nome}</TableCell>
+                            <TableCell>{formatarCpf(f.cpf) || "—"}</TableCell>
                             <TableCell>{f.funcao ?? "—"}</TableCell>
                             <TableCell>{nomeDe(dados.empresas, f.empresa_id)}</TableCell>
                             <TableCell>{nomeDe(dados.funcionarios, f.encarregado_id)}</TableCell>
@@ -677,6 +687,13 @@ function CadastrosPage() {
               {editando.aba === "funcionarios" && (
                 <>
                   <Campo
+                    label="CPF"
+                    value={formatarCpf(String(editando.item["cpf"] ?? ""))}
+                    onChange={(v) =>
+                      setEditando({ ...editando, item: { ...editando.item, cpf: v.replace(/\D/g, "").slice(0, 11) } })
+                    }
+                  />
+                  <Campo
                     label="Matrícula"
                     value={String(editando.item["matricula"] ?? "")}
                     onChange={(v) =>
@@ -741,6 +758,20 @@ function CadastrosPage() {
                         .filter((e) => e.ativo)
                         .map((e) => ({ value: e.id, label: e.nome }))}
                     />
+                  </div>
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <Label htmlFor="pin-funcionario">PIN de segurança</Label>
+                    <Input
+                      id="pin-funcionario"
+                      type="password"
+                      inputMode="numeric"
+                      autoComplete="new-password"
+                      maxLength={8}
+                      value={String(editando.item["pin_novo"] ?? "")}
+                      onChange={(event) => setEditando({ ...editando, item: { ...editando.item, pin_novo: event.target.value.replace(/\D/g, "").slice(0, 8) } })}
+                      placeholder={editando.item["pin_hash"] ? "Preencha para substituir o PIN atual" : "Opcional · 4 a 8 números"}
+                    />
+                    <p className="text-xs text-muted-foreground">O PIN é armazenado somente como hash e poderá confirmar operações futuras.</p>
                   </div>
                 </>
               )}

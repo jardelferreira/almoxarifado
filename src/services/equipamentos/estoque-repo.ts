@@ -27,9 +27,9 @@ export type EstoqueEquipamentoInput = {
 };
 
 function normalizarTexto(
-  valor?: string | null,
+  valor?: unknown,
 ): string | null {
-  const texto = valor?.trim();
+  const texto = valor == null ? "" : String(valor).trim();
 
   return texto ? texto : null;
 }
@@ -164,8 +164,8 @@ async function validarIdentificadoresUnicos(
     .equals(projetoId)
     .toArray();
 
-  const normalizar = (valor: string | null | undefined) =>
-    valor?.trim().toLowerCase() ?? "";
+  const normalizar = (valor: unknown) =>
+    valor == null ? "" : String(valor).trim().toLowerCase();
 
   const patrimonioNormalizado = normalizar(patrimonio);
   if (patrimonioNormalizado) {
@@ -220,8 +220,10 @@ async function validarIdentificacao(
     (registro) =>
       registro.id !== estoqueId &&
       registro.empresa_id === empresaId &&
-      registro.identificacao?.trim().toLowerCase() ===
-        identificacao.toLowerCase(),
+        (registro.identificacao == null
+          ? ""
+          : String(registro.identificacao).trim().toLowerCase()) ===
+        String(identificacao).trim().toLowerCase(),
   );
 
   if (duplicado) {

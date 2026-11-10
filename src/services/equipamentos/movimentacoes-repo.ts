@@ -508,17 +508,7 @@ async function validarEstadoDaOrigem(
         );
         return;
       }
-
-      if (tipo_origem === "FUNCIONARIO") {
-        exigirDisponibilidade(
-          estado.funcionarios.get(origem_id) ?? 0,
-          quantidade,
-          "O funcionário não possui quantidade suficiente para sinalização.",
-        );
-        return;
-      }
-
-      throw new Error("A sinalização deve partir do Almoxarifado ou de um funcionário.");
+      throw new Error("A sinalização deve partir do Almoxarifado.");
 
     case "MANUTENCAO":
       // Histórico antigo: MANUTENCAO representava o envio efetivo.
@@ -765,7 +755,7 @@ function validarRegraDoTipo(
 
     case "SINALIZAR_MANUTENCAO":
       if (
-        (tipo_origem !== "EQUIPE" && tipo_origem !== "FUNCIONARIO") ||
+        tipo_origem !== "EQUIPE" ||
         tipo_destino !== "EQUIPE" ||
         destino_id !== equipes.manutencao.id
       ) {
@@ -1211,6 +1201,7 @@ export const movimentacoesEquipamentosRepo = {
         db.movimentacoes_equipamentos,
         db.apropriacoes,
         db.estoque_equipamentos,
+        db.equipamentos,
         db.manutencoes_equipamentos,
       ],
       async () => {
@@ -1326,8 +1317,8 @@ export const movimentacoesEquipamentosRepo = {
         );
 
         // O histórico físico continua sendo a fonte operacional. A ocorrência
-        // acompanha esse ciclo automaticamente, sem exigir um segundo lançamento
-        // do operador e sem depender da ativação do detalhamento de manutenção.
+        // acompanha esse ciclo na mesma transação para não deixar o detalhamento
+        // de manutenção divergente da movimentação registrada.
         if (
           movimentacao.tipo === "SINALIZAR_MANUTENCAO" ||
           movimentacao.tipo === "MANUTENCAO" ||
@@ -1339,6 +1330,7 @@ export const movimentacoesEquipamentosRepo = {
             movimentacao,
           );
         }
+
       },
     );
 

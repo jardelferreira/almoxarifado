@@ -58,23 +58,32 @@ export const Route = createFileRoute("/app/apropriacoes")({
 
 type RegistroStatus = "DISPONIVEL" | "EM_USO" | "MANUTENCAO";
 
+type ApropriacaoVisual = {
+    funcionario: Funcionario;
+    quantidade: number;
+};
+
 type Registro = {
     estoque: EstoqueEquipamento;
     equipamento: Equipamento;
     estado: EstadoEstoqueEquipamento;
     responsavel: Funcionario | undefined;
+    apropriacoes: ApropriacaoVisual[];
     status: RegistroStatus;
 };
 
 export function ApropriacoesPage() {
     const [projetoId] = useProjetoAtivoId();
     const [busca, setBusca] = useState("");
-    const [filtroStatus, setFiltroStatus] = useState<"TODOS" | "LIVRES" | "EM_USO">("TODOS");
+    const [filtroStatus, setFiltroStatus] = useState<"TODOS" | "LIVRES" | "EM_USO" | "MANUTENCAO">("TODOS");
     const [selecionado, setSelecionado] = useState<Registro | null>(null);
     const [dialogApropriar, setDialogApropriar] = useState(false);
     const [dialogDevolver, setDialogDevolver] = useState(false);
     const [alvoDevolucao, setAlvoDevolucao] = useState<Registro | null>(null);
     const [funcionarioId, setFuncionarioId] = useState<string | null>(null);
+    const [funcionarioDevolucaoId, setFuncionarioDevolucaoId] = useState<string | null>(null);
+    const [quantidadeOperacao, setQuantidadeOperacao] = useState("1");
+    const [quantidadeDevolucao, setQuantidadeDevolucao] = useState("1");
     const [salvando, setSalvando] = useState(false);
 
     const dados = useLiveQuery(async () => {
@@ -97,17 +106,25 @@ export function ApropriacoesPage() {
         const registros = await Promise.all(
             estoques
                 .filter((estoque) => estoque.ativo !== false)
-                .filter((estoque) => equipamentosPorId.get(estoque.equipamento_id)?.tipo_controle === "INDIVIDUAL")
                 .map(async (estoque) => {
                     const equipamento = equipamentosPorId.get(estoque.equipamento_id);
                     if (!equipamento) return null;
 
                     const estado = await estadoEquipamentosRepo.calcular(projetoId, estoque.id);
-                    const atual = [...estado.funcionarios.entries()].find(([, quantidade]) => quantidade > 0);
-                    const responsavel = atual ? funcionariosMap.get(atual[0]) : undefined;
-                    const status: RegistroStatus = responsavel
+                    const apropriacoes = [...estado.funcionarios.entries()]
+                        .filter(([, quantidade]) => quantidade > 0)
+                        .map(([funcionarioId, quantidade]) => {
+                            const funcionario = funcionariosMap.get(funcionarioId);
+                            return funcionario ? { funcionario, quantidade } : null;
+                        })
+                        .filter((item): item is ApropriacaoVisual => item !== null)
+                        .sort((a, b) => a.funcionario.nome.localeCompare(b.funcionario.nome));
+                    const responsavel = apropriacoes[0]?.funcionario;
+                    const status: RegistroStatus = estado.apropriado > 0
                         ? "EM_USO"
-                        : estado.manutencao > 0
+                        : estado.disponivel > 0
+                            ? "DISPONIVEL"
+                            : estado.manutencao > 0
                             ? "MANUTENCAO"
                             : "DISPONIVEL";
 
@@ -116,6 +133,7 @@ export function ApropriacoesPage() {
                         equipamento,
                         estado,
                         responsavel,
+                        apropriacoes,
                         status,
                     } satisfies Registro;
                 }),
@@ -138,6 +156,7 @@ export function ApropriacoesPage() {
         return dados.registros.filter((item) => {
             if (filtroStatus === "LIVRES" && item.status !== "DISPONIVEL") return false;
             if (filtroStatus === "EM_USO" && item.status !== "EM_USO") return false;
+            if (filtroStatus === "MANUTENCAO" && item.status !== "MANUTENCAO") return false;
 
             if (!termo) return true;
             return [
@@ -147,7 +166,7 @@ export function ApropriacoesPage() {
                 item.estoque.patrimonio,
                 item.estoque.identificacao,
                 item.estoque.serial,
-                item.responsavel?.nome,
+                item.apropriacoes.map((apropriacao) => apropriacao.funcionario.nome).join(" "),
             ]
                 .join(" ")
                 .toLowerCase()
@@ -194,7 +213,9 @@ export function ApropriacoesPage() {
     const abrirApropriacao = (item?: Registro) => {
         const alvo = item ?? selecionado;
         if (!alvo) return;
+        setSelecionado(alvo);
         setFuncionarioId(null);
+        setQuantidadeOperacao("1");
         setDialogApropriar(true);
     };
 
@@ -207,18 +228,51 @@ export function ApropriacoesPage() {
         const funcionario = dados?.funcionarios.find((item) => item.id === funcionarioId);
         if (!funcionario) return;
 
+        const equipamentoQuantitativo = selecionado.equipamento.tipo_controle === "QUANTITATIVO";
+        const quantidade = equipamentoQuantitativo ? Number(quantidadeOperacao) : 1;
+        if (!Number.isInteger(quantidade) || quantidade <= 0) {
+            toast.error("Informe uma quantidade inteira maior que zero.");
+            return;
+        }
+
         setSalvando(true);
         try {
-            if (selecionado.responsavel && selecionado.responsavel.id !== funcionarioId) {
+            const estadoAtual = await estadoEquipamentosRepo.calcular(
+                projetoId,
+                selecionado.estoque.id,
+            );
+            const responsaveisAtuais = [...estadoAtual.funcionarios.entries()].filter(([, quantidade]) => quantidade > 0);
+            const responsavelAtualId = responsaveisAtuais[0]?.[0];
+
+            if (!equipamentoQuantitativo && responsaveisAtuais.length > 1) {
+                throw new Error("Este equipamento individual possui mais de um responsável no histórico. Corrija as movimentações antes de alterar a apropriação.");
+            }
+
+            if (!equipamentoQuantitativo && responsavelAtualId === funcionarioId) {
+                toast.info("Este equipamento já está apropriado para este funcionário.");
+                setDialogApropriar(false);
+                return;
+            }
+
+            if (!responsavelAtualId && estadoAtual.manutencao > 0) {
+                throw new Error("Este equipamento não está disponível no Almoxarifado para apropriação.");
+            }
+
+            if ((equipamentoQuantitativo || !responsavelAtualId) && estadoAtual.almoxarifado < quantidade) {
+                throw new Error(`Quantidade indisponível no Almoxarifado. Disponível: ${estadoAtual.almoxarifado}.`);
+            }
+
+            if (!equipamentoQuantitativo && responsavelAtualId && responsavelAtualId !== funcionarioId) {
+                const almoxarifadoId = await obterAlmoxarifadoId(projetoId);
                 await movimentacoesEquipamentosRepo.salvar({
                     projeto_id: projetoId,
                     estoque_equipamento_id: selecionado.estoque.id,
                     tipo: "DEVOLUCAO",
                     quantidade: 1,
                     tipo_origem: "FUNCIONARIO",
-                    origem_id: selecionado.responsavel.id,
+                    origem_id: responsavelAtualId,
                     tipo_destino: "EQUIPE",
-                    destino_id: (await obterAlmoxarifadoId(projetoId)),
+                    destino_id: almoxarifadoId,
                     data: new Date().toISOString().slice(0, 10),
                     referencia_documento: null,
                     observacoes: "Troca de responsável pela Central de Apropriações.",
@@ -230,7 +284,7 @@ export function ApropriacoesPage() {
                 projeto_id: projetoId,
                 estoque_equipamento_id: selecionado.estoque.id,
                 tipo: "SAIDA",
-                quantidade: 1,
+                quantidade,
                 tipo_origem: "EQUIPE",
                 origem_id: almoxarifadoId,
                 tipo_destino: "FUNCIONARIO",
@@ -250,32 +304,49 @@ export function ApropriacoesPage() {
         }
     };
 
-    const pedirDevolucao = (item?: Registro) => {
+    const pedirDevolucao = (item?: Registro, funcionarioId?: string) => {
         const alvo = item ?? selecionado;
 
-        if (!alvo?.responsavel || salvando) return;
+        if (!alvo || salvando || alvo.apropriacoes.length === 0) return;
 
         setAlvoDevolucao(alvo);
+        setFuncionarioDevolucaoId(funcionarioId ?? alvo.apropriacoes[0]?.funcionario.id ?? null);
+        setQuantidadeDevolucao("1");
         setDialogDevolver(true);
     };
 
     const removerApropriacao = async () => {
         const alvo = alvoDevolucao;
 
-        if (!projetoId || !alvo?.responsavel) return;
+        if (!projetoId || !alvo || !funcionarioDevolucaoId) return;
+
+        const quantidade = alvo.equipamento.tipo_controle === "INDIVIDUAL" ? 1 : Number(quantidadeDevolucao);
+        if (!Number.isInteger(quantidade) || quantidade <= 0) {
+            toast.error("Informe uma quantidade inteira maior que zero.");
+            return;
+        }
 
         setSalvando(true);
 
         try {
+            const estadoAtual = await estadoEquipamentosRepo.calcular(
+                projetoId,
+                alvo.estoque.id,
+            );
+            const apropriadoAoFuncionario = estadoAtual.funcionarios.get(funcionarioDevolucaoId) ?? 0;
+            if (apropriadoAoFuncionario < quantidade) {
+                throw new Error("A apropriação exibida está desatualizada. Atualize a tela e tente novamente.");
+            }
+
             const almoxarifadoId = await obterAlmoxarifadoId(projetoId);
 
             await movimentacoesEquipamentosRepo.salvar({
                 projeto_id: projetoId,
                 estoque_equipamento_id: alvo.estoque.id,
                 tipo: "DEVOLUCAO",
-                quantidade: 1,
+                quantidade,
                 tipo_origem: "FUNCIONARIO",
-                origem_id: alvo.responsavel.id,
+                origem_id: funcionarioDevolucaoId,
                 tipo_destino: "EQUIPE",
                 destino_id: almoxarifadoId,
                 data: new Date().toISOString().slice(0, 10),
@@ -289,6 +360,7 @@ export function ApropriacoesPage() {
 
             setDialogDevolver(false);
             setAlvoDevolucao(null);
+            setFuncionarioDevolucaoId(null);
             setSelecionado(null);
         } catch (error) {
             toast.error(
@@ -336,8 +408,10 @@ export function ApropriacoesPage() {
         return <p className="text-sm text-muted-foreground">Carregando apropriações…</p>;
     }
 
-    const emUso = dados.registros.filter((item) => item.responsavel).length;
-    const livres = dados.registros.filter((item) => item.status === "DISPONIVEL").length;
+    const emUso = dados.registros.reduce((total, item) => total + item.estado.apropriado, 0);
+    const livres = dados.registros.reduce((total, item) => total + item.estado.disponivel, 0);
+    const emManutencao = dados.registros.reduce((total, item) => total + item.estado.manutencao, 0);
+    const totalUnidades = dados.registros.reduce((total, item) => total + item.estado.quantidade, 0);
 
     return (
         <div className="space-y-5">
@@ -349,21 +423,23 @@ export function ApropriacoesPage() {
                     </div>
                     <h1 className="mt-1 font-display text-3xl font-bold tracking-tight">Apropriações</h1>
                     <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-                        Acesso rápido aos equipamentos individuais e aos seus responsáveis atuais.
+                        Distribua equipamentos individuais ou quantitativos aos funcionários e acompanhe as devoluções.
                     </p>
                 </div>
             </header>
 
-            <div className="grid gap-3 sm:grid-cols-3">
-                <Resumo icon={PackageCheck} label="Equipamentos" valor={dados.registros.length} />
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <Resumo icon={PackageCheck} label="Unidades" valor={totalUnidades} />
                 <Resumo icon={UserCheck} label="Em uso" valor={emUso} destaque />
                 <Resumo icon={Wrench} label="Disponíveis" valor={livres} />
+                <Resumo icon={Wrench} label="Em manutenção" valor={emManutencao} />
             </div>
 
             <Card>
                 <CardHeader className="border-b bg-muted/20 pb-4">
-                    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                        <div className="relative w-full lg:max-w-xl">
+                    <div className="flex flex-col gap-3">
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                            <div className="relative w-full lg:max-w-xl">
                             <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
                             <Input
                                 value={busca}
@@ -372,19 +448,35 @@ export function ApropriacoesPage() {
                                 className="pl-9"
                                 aria-label="Pesquisar apropriações"
                             />
+                            </div>
+                            <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-4 lg:flex lg:w-auto">
+                                {(["TODOS", "LIVRES", "EM_USO", "MANUTENCAO"] as const).map((status) => (
+                                    <Button
+                                        key={status}
+                                        type="button"
+                                        size="sm"
+                                        className="w-full lg:w-auto"
+                                        variant={filtroStatus === status ? "default" : "outline"}
+                                        onClick={() => setFiltroStatus(status)}
+                                    >
+                                        {status === "TODOS" ? "Todos" : status === "LIVRES" ? "Disponíveis" : status === "EM_USO" ? "Em uso" : "Manutenção"}
+                                    </Button>
+                                ))}
+                            </div>
                         </div>
-                        <div className="flex gap-2">
-                            {(["TODOS", "LIVRES", "EM_USO"] as const).map((status) => (
+                        <div className="flex flex-col gap-2 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+                            <span>{registros.length} equipamento{registros.length === 1 ? " encontrado" : "s encontrados"}</span>
+                            {(busca || filtroStatus !== "TODOS") && (
                                 <Button
-                                    key={status}
                                     type="button"
+                                    variant="ghost"
                                     size="sm"
-                                    variant={filtroStatus === status ? "default" : "outline"}
-                                    onClick={() => setFiltroStatus(status)}
+                                    className="w-fit px-0 text-xs text-muted-foreground hover:text-foreground"
+                                    onClick={() => { setBusca(""); setFiltroStatus("TODOS"); }}
                                 >
-                                    {status === "TODOS" ? "Todos" : status === "LIVRES" ? "Disponíveis" : "Em uso"}
+                                    Limpar filtros
                                 </Button>
-                            ))}
+                            )}
                         </div>
                     </div>
                 </CardHeader>
@@ -411,12 +503,16 @@ export function ApropriacoesPage() {
                                             </button>
                                         </td>
                                         <td className="px-4 py-3 text-muted-foreground">{item.estoque.patrimonio || item.estoque.identificacao || item.estoque.serial || "—"}</td>
-                                        <td className="px-4 py-3 font-medium">{item.responsavel?.nome ?? <span className="text-muted-foreground">Não apropriado</span>}</td>
-                                        <td className="px-4 py-3 text-muted-foreground">{item.responsavel ? equipeDoFuncionario.get(item.responsavel.id) ?? "Sem equipe" : "Almoxarifado"}</td>
+                                        <td className="px-4 py-3 font-medium">
+                                            {item.apropriacoes.length > 0 ? (
+                                                <div className="space-y-1">{item.apropriacoes.slice(0, 2).map((apropriacao) => <div key={apropriacao.funcionario.id}>{apropriacao.funcionario.nome} <span className="text-xs text-muted-foreground">({apropriacao.quantidade})</span></div>)}{item.apropriacoes.length > 2 && <div className="text-xs text-muted-foreground">+{item.apropriacoes.length - 2} responsáveis</div>}</div>
+                                            ) : <span className="text-muted-foreground">Não apropriado</span>}
+                                        </td>
+                                        <td className="px-4 py-3 text-muted-foreground">{item.apropriacoes.length > 0 ? "Ver apropriações" : "Almoxarifado"}</td>
                                         <td className="px-4 py-3"><StatusBadge status={item.status} /></td>
                                         <td className="px-4 py-3">
                                             <div className="flex items-center justify-end gap-2">
-                                                {item.responsavel ? (
+                                                {item.apropriacoes.length > 0 && (
                                                     <Button
                                                         type="button"
                                                         size="sm"
@@ -428,13 +524,14 @@ export function ApropriacoesPage() {
                                                         <UserRoundX className="mr-1.5 size-4" aria-hidden="true" />
                                                         Devolver
                                                     </Button>
-                                                ) : (
+                                                )}
+                                                {item.estado.disponivel > 0 && (
                                                     <Button
                                                         type="button"
                                                         size="sm"
                                                         className="shadow-sm"
                                                         onClick={() => { setSelecionado(item); abrirApropriacao(item); }}
-                                                        disabled={item.status !== "DISPONIVEL" || item.estado.almoxarifado < 1}
+                                                        disabled={item.estado.disponivel < 1}
                                                         aria-label={`Apropriar ${item.equipamento.nome}`}
                                                     >
                                                         <UserRoundPlus className="mr-1.5 size-4" aria-hidden="true" />
@@ -474,11 +571,12 @@ export function ApropriacoesPage() {
                                     </div>
                                     <div className="mt-3 flex items-center gap-2 text-sm">
                                         <UserRound className="size-4 text-muted-foreground" aria-hidden="true" />
-                                        <span>{item.responsavel?.nome ?? "Não apropriado"}</span>
+                                        <span>{item.apropriacoes.length > 0 ? `${item.apropriacoes.length} responsável(is) · ${item.estado.apropriado} em uso` : "Não apropriado"}</span>
                                     </div>
                                 </button>
                                 <div className="mt-4">
-                                    {item.responsavel ? (
+                                    <div className="grid gap-2">
+                                    {item.apropriacoes.length > 0 && (
                                         <Button
                                             type="button"
                                             className="w-full border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
@@ -486,19 +584,21 @@ export function ApropriacoesPage() {
                                             onClick={() => pedirDevolucao(item)}
                                         >
                                             <UserRoundX className="mr-2 size-4" aria-hidden="true" />
-                                            Devolver equipamento
+                                            Devolver apropriação
                                         </Button>
-                                    ) : (
+                                    )}
+                                    {item.estado.disponivel > 0 && (
                                         <Button
                                             type="button"
                                             className="w-full shadow-sm"
                                             onClick={() => { setSelecionado(item); abrirApropriacao(item); }}
-                                            disabled={item.status !== "DISPONIVEL" || item.estado.almoxarifado < 1}
+                                            disabled={item.estado.disponivel < 1}
                                         >
                                             <UserRoundPlus className="mr-2 size-4" aria-hidden="true" />
                                             Apropriar equipamento
                                         </Button>
                                     )}
+                                    </div>
                                 </div>
                             </div>
                         ))}
@@ -515,7 +615,7 @@ export function ApropriacoesPage() {
                     {selecionado && (
                         <>
                             <SheetHeader className="border-b pb-4 pr-8 text-left">
-                                <div className="flex items-center gap-2 text-sidebar-primary"><Wrench className="size-5" aria-hidden="true" /><span className="text-xs font-semibold uppercase tracking-[0.12em]">Equipamento individual</span></div>
+                                <div className="flex items-center gap-2 text-sidebar-primary"><Wrench className="size-5" aria-hidden="true" /><span className="text-xs font-semibold uppercase tracking-[0.12em]">{selecionado.equipamento.tipo_controle === "INDIVIDUAL" ? "Equipamento individual" : "Equipamento quantitativo"}</span></div>
                                 <SheetTitle className="text-xl">{selecionado.equipamento.nome}</SheetTitle>
                                 <SheetDescription>
                                     {selecionado.estoque.patrimonio || selecionado.estoque.identificacao || selecionado.estoque.serial || "Sem identificação"}
@@ -526,13 +626,26 @@ export function ApropriacoesPage() {
                                 <section aria-labelledby="responsavel-atual" className="rounded-xl border bg-muted/20 p-4">
                                     <div className="flex items-start justify-between gap-4">
                                         <div>
-                                            <p id="responsavel-atual" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Responsável atual</p>
-                                            <p className="mt-1 text-lg font-semibold">{selecionado.responsavel?.nome ?? "Nenhum"}</p>
-                                            <p className="text-sm text-muted-foreground">{selecionado.responsavel ? equipeDoFuncionario.get(selecionado.responsavel.id) ?? "Sem equipe" : "Disponível no Almoxarifado"}</p>
+                                            <p id="responsavel-atual" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Distribuição atual</p>
+                                            <p className="mt-1 text-lg font-semibold">{selecionado.estado.apropriado} em uso · {selecionado.estado.disponivel} disponível</p>
+                                            <p className="text-sm text-muted-foreground">{selecionado.apropriacoes.length > 0 ? `${selecionado.apropriacoes.length} responsável(is) com apropriação` : "Nenhuma apropriação ativa"}</p>
                                         </div>
                                         <StatusBadge status={selecionado.status} />
                                     </div>
                                 </section>
+
+                                {selecionado.apropriacoes.length > 0 && <section className="space-y-3 rounded-xl border p-4">
+                                    <div>
+                                        <h2 className="font-semibold">Apropriações ativas</h2>
+                                        <p className="mt-1 text-xs text-muted-foreground">As quantidades podem ser devolvidas parcialmente para equipamentos quantitativos.</p>
+                                    </div>
+                                    <div className="space-y-2">
+                                        {selecionado.apropriacoes.map((apropriacao) => <div key={apropriacao.funcionario.id} className="flex flex-col gap-3 rounded-lg border bg-muted/20 p-3 sm:flex-row sm:items-center sm:justify-between">
+                                            <div className="min-w-0"><p className="truncate font-medium">{apropriacao.funcionario.nome}</p><p className="text-xs text-muted-foreground">{equipeDoFuncionario.get(apropriacao.funcionario.id) ?? "Sem equipe"} · {apropriacao.quantidade} unidade(s)</p></div>
+                                            <Button type="button" size="sm" variant="outline" className="w-full shrink-0 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive sm:w-auto" onClick={() => pedirDevolucao(selecionado, apropriacao.funcionario.id)} disabled={salvando}><UserRoundX className="mr-1.5 size-4" aria-hidden="true" />Devolver</Button>
+                                        </div>)}
+                                    </div>
+                                </section>}
 
                                 <InfoSection title="Identificação">
                                     <Info label="Patrimônio" value={selecionado.estoque.patrimonio} />
@@ -551,32 +664,15 @@ export function ApropriacoesPage() {
 
                                 <SheetFooter className="border-t pt-4 sm:flex-col sm:space-x-0">
                                     <div className="grid w-full gap-2">
-                                        {selecionado.responsavel ? (
-                                            <>
-                                                <Button
-                                                    type="button"
-                                                    variant="outline"
-                                                    className="h-11 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                                    onClick={() => pedirDevolucao()}
-                                                    disabled={salvando}
-                                                >
-                                                    <UserRoundX className="mr-2 size-4" aria-hidden="true" />
-                                                    Devolver equipamento
-                                                </Button>
-                                                <Button type="button" variant="secondary" onClick={() => abrirApropriacao()} disabled={salvando}>
-                                                    <UserRoundPlus className="mr-2 size-4" aria-hidden="true" />
-                                                    Alterar responsável
-                                                </Button>
-                                            </>
-                                        ) : (
+                                        {selecionado.estado.disponivel > 0 && (
                                             <Button
                                                 type="button"
                                                 className="h-11 shadow-sm"
                                                 onClick={() => abrirApropriacao()}
-                                                disabled={salvando || selecionado.status !== "DISPONIVEL" || selecionado.estado.almoxarifado < 1}
+                                                disabled={salvando || selecionado.estado.disponivel < 1}
                                             >
                                                 <UserRoundPlus className="mr-2 size-4" aria-hidden="true" />
-                                                Apropriar equipamento
+                                                {selecionado.apropriacoes.length > 0 ? "Apropriar mais unidades" : "Apropriar equipamento"}
                                             </Button>
                                         )}
                                         <Button type="button" variant="outline" onClick={gerarRelatorio}>
@@ -595,7 +691,7 @@ export function ApropriacoesPage() {
             <Dialog open={dialogApropriar} onOpenChange={(open) => !salvando && setDialogApropriar(open)}>
                 <DialogContent className="sm:max-w-md">
                     <DialogHeader>
-                        <DialogTitle>{selecionado?.responsavel ? "Alterar responsável" : "Apropriar equipamento"}</DialogTitle>
+                        <DialogTitle>{selecionado?.equipamento.tipo_controle === "QUANTITATIVO" ? "Apropriar quantidade" : selecionado?.responsavel ? "Alterar responsável" : "Apropriar equipamento"}</DialogTitle>
                     </DialogHeader>
                     <div className="space-y-4 py-2">
                         <div className="rounded-lg border bg-muted/20 p-3">
@@ -612,13 +708,18 @@ export function ApropriacoesPage() {
                                 vazio="Nenhum funcionário ativo encontrado."
                             />
                         </div>
+                        {selecionado?.equipamento.tipo_controle === "QUANTITATIVO" && <div className="space-y-2">
+                            <Label htmlFor="quantidade-apropriacao">Quantidade</Label>
+                            <Input id="quantidade-apropriacao" type="number" min={1} step={1} max={selecionado.estado.disponivel} value={quantidadeOperacao} onChange={(event) => setQuantidadeOperacao(event.target.value)} />
+                            <p className="text-xs text-muted-foreground">Disponível no Almoxarifado: {selecionado.estado.disponivel} unidade(s).</p>
+                        </div>}
                         {funcionarioId && <p className="text-xs text-muted-foreground">Equipe: {equipeDoFuncionario.get(funcionarioId) ?? "Sem equipe definida"}</p>}
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setDialogApropriar(false)} disabled={salvando}>Cancelar</Button>
                         <Button onClick={() => void salvarApropriacao()} disabled={salvando || !funcionarioId}>
                             <UserRoundPlus className="mr-2 size-4" />
-                            {salvando ? "Salvando…" : "Apropriar"}
+                            {salvando ? "Salvando…" : selecionado?.equipamento.tipo_controle === "QUANTITATIVO" ? "Apropriar quantidade" : "Apropriar"}
                         </Button>
                     </DialogFooter>
                 </DialogContent>
@@ -647,9 +748,26 @@ export function ApropriacoesPage() {
                                 {alvoDevolucao?.estoque.patrimonio || alvoDevolucao?.estoque.identificacao || alvoDevolucao?.estoque.serial || "Sem identificação"}
                             </p>
                             <p className="mt-2 text-sm">
-                                Responsável: <span className="font-medium">{alvoDevolucao?.responsavel?.nome ?? "—"}</span>
+                                Responsável: <span className="font-medium">{alvoDevolucao?.apropriacoes.find((item) => item.funcionario.id === funcionarioDevolucaoId)?.funcionario.nome ?? "—"}</span>
                             </p>
                         </div>
+                        {alvoDevolucao?.equipamento.tipo_controle === "QUANTITATIVO" && <>
+                            <div className="space-y-2">
+                                <Label>Funcionário</Label>
+                                <Combobox
+                                    opcoes={alvoDevolucao.apropriacoes.map((apropriacao) => ({ value: apropriacao.funcionario.id, label: apropriacao.funcionario.nome, hint: `${apropriacao.quantidade} unidade(s) apropriada(s)` }))}
+                                    value={funcionarioDevolucaoId}
+                                    onChange={setFuncionarioDevolucaoId}
+                                    placeholder="Selecionar funcionário…"
+                                    vazio="Nenhuma apropriação ativa."
+                                    allowClear={false}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="quantidade-devolucao">Quantidade a devolver</Label>
+                                <Input id="quantidade-devolucao" type="number" min={1} step={1} max={alvoDevolucao.apropriacoes.find((item) => item.funcionario.id === funcionarioDevolucaoId)?.quantidade ?? 1} value={quantidadeDevolucao} onChange={(event) => setQuantidadeDevolucao(event.target.value)} />
+                            </div>
+                        </>}
                     </div>
                     <DialogFooter>
                         <Button

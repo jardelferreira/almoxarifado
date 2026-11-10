@@ -70,6 +70,19 @@ type NavGroup = {
 
 const navGroups: NavGroup[] = [
   {
+    label: "Painéis",
+    icon: LayoutDashboard,
+    descricao: "Atendimento operacional e consultas rápidas",
+    items: [
+      {
+        to: "/app/painel-apropriacoes",
+        label: "Painel de apropriações",
+        icon: UserCheck,
+        subgrupo: "Atendimento",
+      },
+    ],
+  },
+  {
     label: "Cadastros",
     icon: Settings2,
     descricao: "Base cadastral compartilhada pelos módulos",
@@ -116,6 +129,7 @@ const navGroups: NavGroup[] = [
     items: [
       { to: "/app/equipamentos", label: "Equipamentos", icon: LayoutList, subgrupo: "Gestão" },
       { to: "/app/apropriacoes", label: "Apropriações", icon: UserCheck, subgrupo: "Gestão" },
+      { to: "/app/fichas-equipamentos", label: "Fichas de equipamentos", icon: ClipboardList, subgrupo: "Gestão" },
       { to: "/app/movimentacoes-equipamentos", label: "Movimentações", icon: ArrowLeftRight, subgrupo: "Gestão" },
       { to: "/app/relatorios-equipamentos", label: "Relatórios", icon: FileChartLine, subgrupo: "Gestão" },
       { to: "/app/estatisticas-equipamentos", label: "Estatísticas", icon: ChartColumn, subgrupo: "Análise" },

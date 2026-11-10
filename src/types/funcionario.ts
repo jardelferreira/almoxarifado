@@ -7,6 +7,8 @@ export interface Funcionario {
   id: ID;
   projeto_id: ID;
   matricula?: string | null | undefined;
+  /** CPF normalizado, somente dígitos. Opcional para compatibilidade com cadastros antigos. */
+  cpf?: string | null | undefined;
   nome: string;
   funcao?: string | null | undefined;
   encarregado_id?: ID | null | undefined;
@@ -14,4 +16,8 @@ export interface Funcionario {
   status: FuncionarioStatus;
   /** Equipe que deve assumir por padrão os lançamentos deste funcionário. */
   equipe_raiz_id?: ID | null | undefined;
+  /** Hash PBKDF2 do PIN de autenticação, nunca o PIN em texto puro. */
+  pin_hash?: string | null | undefined;
+  pin_salt?: string | null | undefined;
+  pin_iteracoes?: number | null | undefined;
 }

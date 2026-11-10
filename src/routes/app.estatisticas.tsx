@@ -1869,7 +1869,7 @@ const AbaLocais = memo(function AbaLocais({
   const nomeProduto = useMemo(() => new Map(produtos.map((produto) => [produto.id, produto.nome])), [produtos]);
   const siglaUnidadePorProduto = useMemo(() => {
     const unidadesPorId = new Map(unidades.map((unidade) => [unidade.id, unidade.sigla]));
-    return new Map(produtos.map((produto) => [produto.id, unidadesPorId.get(produto.unidade_id) ?? "un."]));
+    return new Map(produtos.map((produto) => [produto.id, unidadesPorId.get(produto.unidade_id ?? "") ?? "un."]));
   }, [produtos, unidades]);
 
   const alternarRanking = (localId: string) => setRankingExpandidos((atuais) =>

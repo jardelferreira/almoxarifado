@@ -141,3 +141,23 @@ export interface MovimentacaoEquipamento {
   criado_em: string;
   atualizado_em: string;
 }
+
+/** Relação imutável entre o registro devolvido e o seu substituto. */
+export interface SubstituicaoEquipamento {
+  id: ID;
+  projeto_id: ID;
+  estoque_origem_id: ID;
+  equipamento_origem_id: ID;
+  estoque_substituto_id: ID;
+  equipamento_substituto_id: ID;
+  movimentacao_devolucao_id: ID;
+  movimentacao_entrada_id: ID;
+  quantidade: number;
+  data: string;
+  referencia_documento?: string | null | undefined;
+  motivo?: string | null | undefined;
+  observacoes?: string | null | undefined;
+  regras_origem_ids: ID[];
+  regras_substituto_ids: ID[];
+  criado_em: string;
+}

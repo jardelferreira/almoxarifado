@@ -168,7 +168,7 @@ function RelatorioEstatisticasMateriaisPage() {
             produtoId ? dados.movimentacoes.filter((mov) => mov.produto_id === produtoId) : dados.movimentacoes,
             dados.unidades,
             dados.categorias,
-            equipeId ? dados.movimentacoes.filter((mov) => mov.equipe_id === equipeId) : dados.movimentacoes,
+            equipeId ? dados.equipes.filter((equipe) => equipe.id === equipeId) : dados.equipes,
             periodo,
           )
         : [],

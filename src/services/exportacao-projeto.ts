@@ -149,6 +149,7 @@ const ROTULOS: Record<string, string> = {
   observacao: "Observação",
   observacoes: "Observações",
   matricula: "Matrícula",
+  cpf: "CPF",
   funcao: "Função",
   marca: "Marca",
   modelo: "Modelo",
@@ -227,9 +228,14 @@ function existeTabela(nome: string): boolean {
 
 async function lerTabela(nome: string): Promise<Row[]> {
   if (!existeTabela(nome)) return [];
-  return (await getDB().table(nome).toArray()).filter(
+  const rows = (await getDB().table(nome).toArray()).filter(
     (item): item is Row => Boolean(item && typeof item === "object"),
   );
+  if (nome !== "funcionarios") return rows;
+  return rows.map((row) => {
+    const { pin_hash: _hash, pin_salt: _salt, pin_iteracoes: _iteracoes, ...seguro } = row;
+    return seguro;
+  });
 }
 
 function labelCampo(campo: string): string {

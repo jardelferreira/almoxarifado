@@ -63,6 +63,28 @@ export function tituloMovimento(tipo: MovimentacaoEquipamento["tipo"]): string {
     return titulos[tipo];
 }
 
+function tituloHistorico(movimento: MovimentacaoEquipamento): string {
+    const observacoes = movimento.observacoes?.toLowerCase() ?? "";
+
+    if (movimento.tipo === "SAIDA" && observacoes.includes("troca de responsável")) {
+        return "Novo responsável atribuído";
+    }
+
+    if (movimento.tipo === "DEVOLUCAO" && observacoes.includes("troca de responsável")) {
+        return "Responsável anterior devolveu";
+    }
+
+    if (movimento.tipo === "SAIDA" && movimento.tipo_destino === "FUNCIONARIO") {
+        return "Equipamento apropriado";
+    }
+
+    if (movimento.tipo === "DEVOLUCAO" && movimento.tipo_origem === "FUNCIONARIO") {
+        return "Equipamento devolvido pelo responsável";
+    }
+
+    return tituloMovimento(movimento.tipo);
+}
+
 export function ordenarMovimentacoes(
     movimentacoes: MovimentacaoEquipamento[],
 ): MovimentacaoEquipamento[] {
@@ -85,7 +107,7 @@ export function construirHistoricoEquipamento(
         .map((movimento) => ({
             id: movimento.id,
             movimento,
-            titulo: tituloMovimento(movimento.tipo),
+            titulo: tituloHistorico(movimento),
             descricao: descricaoMovimento(movimento, maps),
             origem: nomeParticipante(movimento, maps, "origem"),
             destino: nomeParticipante(movimento, maps, "destino"),

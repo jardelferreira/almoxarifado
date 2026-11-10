@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDownToLine,
   ArrowRight,
@@ -40,22 +40,17 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Combobox } from "@/components/common/Combobox";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { useProjetoAtivoId } from "@/hooks/useAppData";
 import { getDB } from "@/db/db";
 import { estoqueEquipamentosRepo } from "@/services/equipamentos/estoque-repo";
 import { movimentacoesEquipamentosRepo } from "@/services/equipamentos/movimentacoes-repo";
+import { substituicoesEquipamentosRepo } from "@/services/equipamentos/substituicoes-repo";
 import type {
   Empresa,
   Equipe,
@@ -65,6 +60,7 @@ import type {
   MovimentacaoEquipamento,
   MovimentacaoEquipamentoParte,
   MovimentacaoEquipamentoTipo,
+  SubstituicaoEquipamento,
 } from "@/types";
 
 export const Route = createFileRoute("/app/movimentacoes-equipamentos")({
@@ -101,6 +97,19 @@ type Formulario = {
   motivoBaixa: string;
   data: string;
   referenciaDocumento: string;
+  observacoes: string;
+};
+
+type FormularioSubstituicao = {
+  estoqueOrigemId: string;
+  equipamentoSubstitutoId: string;
+  quantidade: string;
+  patrimonio: string;
+  identificacao: string;
+  serial: string;
+  data: string;
+  referenciaDocumento: string;
+  motivo: string;
   observacoes: string;
 };
 
@@ -424,6 +433,7 @@ function MultiSelectFiltro({
 function MovimentacoesEquipamentosPage() {
   const [projetoId] = useProjetoAtivoId();
   const [movimentacoes, setMovimentacoes] = useState<MovimentacaoEquipamento[]>([]);
+  const [substituicoes, setSubstituicoes] = useState<SubstituicaoEquipamento[]>([]);
   const [equipamentos, setEquipamentos] = useState<Equipamento[]>([]);
   const [estoques, setEstoques] = useState<EstoqueEquipamentoUI[]>([]);
   const [empresas, setEmpresas] = useState<Empresa[]>([]);
@@ -434,15 +444,33 @@ function MovimentacoesEquipamentosPage() {
   const [filtroOrigens, setFiltroOrigens] = useState<string[]>([]);
   const [filtroDestinos, setFiltroDestinos] = useState<string[]>([]);
   const [dialogAberto, setDialogAberto] = useState(false);
+  const [substituicaoAberta, setSubstituicaoAberta] = useState(false);
   const [detalhe, setDetalhe] = useState<MovimentacaoEquipamento | null>(null);
+  const [detalheSubstituicao, setDetalheSubstituicao] = useState<SubstituicaoEquipamento | null>(null);
   const [formulario, setFormulario] = useState<Formulario>(formularioInicial);
   const [salvando, setSalvando] = useState(false);
+  const [salvandoSubstituicao, setSalvandoSubstituicao] = useState(false);
+  const [formularioSubstituicao, setFormularioSubstituicao] = useState<FormularioSubstituicao>({
+    estoqueOrigemId: "",
+    equipamentoSubstitutoId: "",
+    quantidade: "1",
+    patrimonio: "",
+    identificacao: "",
+    serial: "",
+    data: hoje(),
+    referenciaDocumento: "",
+    motivo: "",
+    observacoes: "",
+  });
+  const observacoesRef = useRef<HTMLTextAreaElement>(null);
+  const historicoSubstituicoesRef = useRef<HTMLDivElement>(null);
 
   async function carregar() {
     if (!projetoId) return;
     const db = getDB();
-    const [movs, eqs, stocks, emps, teams, funcs] = await Promise.all([
+    const [movs, subs, eqs, stocks, emps, teams, funcs] = await Promise.all([
       movimentacoesEquipamentosRepo.listar(projetoId),
+      substituicoesEquipamentosRepo.listar(projetoId),
       db.equipamentos.where("projeto_id").equals(projetoId).toArray(),
       db.estoque_equipamentos.where("projeto_id").equals(projetoId).toArray(),
       db.empresas.where("projeto_id").equals(projetoId).and((x) => x.ativo).toArray(),
@@ -451,6 +479,7 @@ function MovimentacoesEquipamentosPage() {
     ]);
 
     setMovimentacoes([...movs].sort((a, b) => `${b.criado_em}|${b.id}`.localeCompare(`${a.criado_em}|${a.id}`)));
+    setSubstituicoes(subs);
     setEquipamentos(eqs);
     setEstoques(stocks.map((stock) => stock.ativo === undefined ? { ...stock, ativo: true } : stock));
     setEmpresas(emps);
@@ -779,9 +808,10 @@ function MovimentacoesEquipamentosPage() {
     return resultado;
   }, [movimentacoes]);
 
-  // Registros físicos disponíveis para sinalização.
+  // A sinalização começa no Almoxarifado. O funcionário só participa depois,
+  // quando recebe o equipamento novamente por uma saída regular.
   const estoquesDaOrigemManutencao = useMemo(() => {
-    if (formulario.tipo !== "SINALIZAR_MANUTENCAO" || !formulario.origemParte || !formulario.origemId) {
+    if (formulario.tipo !== "SINALIZAR_MANUTENCAO" || formulario.origemParte !== "EQUIPE" || !formulario.origemId) {
       return [];
     }
 
@@ -796,17 +826,10 @@ function MovimentacoesEquipamentosPage() {
         return false;
       }
 
-      if (formulario.origemParte === "EQUIPE") {
-        // A manutenção só pode sair da equipe Almoxarifado.
-        return (
-          formulario.origemId === equipesOperacionais.almoxarifado?.id &&
-          estado.almoxarifado > 0
-        );
-      }
-
-      // Quando a origem é funcionário, somente equipamentos atualmente
-      // apropriados a ele podem ser selecionados.
-      return (estado.funcionarios.get(formulario.origemId) ?? 0) > 0;
+      return (
+        formulario.origemId === equipesOperacionais.almoxarifado?.id &&
+        estado.almoxarifado > 0
+      );
     });
   }, [
     estoques,
@@ -818,17 +841,6 @@ function MovimentacoesEquipamentosPage() {
     equipesOperacionais.almoxarifado?.id,
     sinalizacoesPendentes,
   ]);
-
-  const almoxarifadoTemEquipamentos = useMemo(() => {
-    const almoxarifadoId = equipesOperacionais.almoxarifado?.id;
-    if (!almoxarifadoId) return false;
-
-    return estoques.some((stock) => {
-      if (stock.ativo === false) return false;
-      if (equipamentoPorId.get(stock.equipamento_id)?.ativo === false) return false;
-      return (estados.get(stock.id)?.almoxarifado ?? 0) > 0;
-    });
-  }, [estoques, estados, equipamentoPorId, equipesOperacionais.almoxarifado?.id]);
 
   const origensDisponiveisParaEnvio = useMemo(() => {
     if (formulario.tipo !== "ENVIO") return [];
@@ -1016,8 +1028,7 @@ function MovimentacoesEquipamentosPage() {
         case "TRANSFERENCIA":
           return emUso > 0;
         case "SINALIZAR_MANUTENCAO":
-          // Pode sair do Almoxarifado ou diretamente de um funcionário.
-          return estado.almoxarifado > 0 || emUso > 0;
+          return estado.almoxarifado > 0;
         case "ENVIO":
           return estado.almoxarifado > 0 || estado.manutencao > 0;
         case "RETORNO_MANUTENCAO":
@@ -1146,15 +1157,11 @@ function MovimentacoesEquipamentosPage() {
     }
     if (tipo === "SINALIZAR_MANUTENCAO") {
       return {
-        origemParte: formulario.origemParte as "EQUIPE" | "FUNCIONARIO",
+        origemParte: "EQUIPE" as const,
         origemId: formulario.origemId,
         destinoParte: "EQUIPE" as const,
         destinoId: manut?.id ?? "",
-        origemLabel: formulario.origemParte === "FUNCIONARIO"
-          ? "Funcionário"
-          : formulario.origemId
-            ? "Almoxarifado"
-            : "Origem",
+        origemLabel: formulario.origemId ? "Almoxarifado" : "Origem",
         destinoLabel: "Sinalização de manutenção",
       };
     }
@@ -1227,9 +1234,7 @@ function MovimentacoesEquipamentosPage() {
     switch (formulario.tipo) {
       case "SAIDA":
       case "SINALIZAR_MANUTENCAO":
-        return formulario.tipo === "SINALIZAR_MANUTENCAO" && formulario.origemParte === "FUNCIONARIO"
-          ? estadoSelecionado.funcionarios.get(formulario.origemId) ?? 0
-          : estadoSelecionado.almoxarifado;
+        return estadoSelecionado.almoxarifado;
       case "DEVOLUCAO":
       case "TRANSFERENCIA":
         return estadoSelecionado.funcionarios.get(formulario.origemId) ?? 0;
@@ -1244,9 +1249,14 @@ function MovimentacoesEquipamentosPage() {
       case "REENTRADA":
         return pendenciasReentrada.get(formulario.estoqueEquipamentoId)?.restante ?? 0;
       case "BAIXA":
-        return formulario.origemId === equipesOperacionais.manutencao?.id
-          ? Math.min(estadoSelecionado.manutencao, estadoSelecionado.saldo)
-          : Math.min(estadoSelecionado.almoxarifado, estadoSelecionado.saldo);
+        // A baixa nunca pode ultrapassar simultaneamente a quantidade na
+        // origem e o saldo físico ainda existente no registro.
+        return Math.min(
+          formulario.origemId === equipesOperacionais.manutencao?.id
+            ? estadoSelecionado.manutencao
+            : estadoSelecionado.almoxarifado,
+          estadoSelecionado.saldo,
+        );
       case "DEVOLUCAO_FORNECEDOR":
         return estadoSelecionado.manutencao > 0
           ? estadoSelecionado.manutencao
@@ -1542,9 +1552,81 @@ function MovimentacoesEquipamentosPage() {
     setFormulario((atual) => ({ ...atual, [campo]: valor }));
   }
 
+  function observacoesDigitadas(): string {
+    return observacoesRef.current?.value ?? formulario.observacoes;
+  }
+
   function abrirNovo() {
     setFormulario({ ...formularioInicial, data: hoje() });
+    if (observacoesRef.current) observacoesRef.current.value = "";
     setDialogAberto(true);
+  }
+
+  function abrirSubstituicao() {
+    setFormularioSubstituicao({
+      estoqueOrigemId: "",
+      equipamentoSubstitutoId: "",
+      quantidade: "1",
+      patrimonio: "",
+      identificacao: "",
+      serial: "",
+      data: hoje(),
+      referenciaDocumento: "",
+      motivo: "",
+      observacoes: "",
+    });
+    setSubstituicaoAberta(true);
+  }
+
+  function acessarHistoricoSubstituicoes() {
+    historicoSubstituicoesRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    historicoSubstituicoesRef.current?.focus({ preventScroll: true });
+  }
+
+  async function salvarSubstituicao() {
+    if (!projetoId) return;
+    const origem = estoquePorId.get(formularioSubstituicao.estoqueOrigemId);
+    const equipamentoOrigem = origem ? equipamentoPorId.get(origem.equipamento_id) : undefined;
+    const equipamentoSubstituto = equipamentoPorId.get(formularioSubstituicao.equipamentoSubstitutoId);
+    if (!origem || !equipamentoOrigem || !equipamentoSubstituto) {
+      toast.error("Selecione o equipamento devolvido e o cadastro do substituto.");
+      return;
+    }
+    const quantidade = equipamentoOrigem.tipo_controle === "INDIVIDUAL"
+      ? 1
+      : Number(formularioSubstituicao.quantidade);
+    if (!Number.isInteger(quantidade) || quantidade <= 0) {
+      toast.error("Informe uma quantidade inteira maior que zero.");
+      return;
+    }
+    if (!formularioSubstituicao.data) {
+      toast.error("Informe a data da substituição.");
+      return;
+    }
+
+    try {
+      setSalvandoSubstituicao(true);
+      await substituicoesEquipamentosRepo.criar({
+        projetoId,
+        estoqueOrigemId: origem.id,
+        equipamentoSubstitutoId: equipamentoSubstituto.id,
+        quantidade,
+        data: formularioSubstituicao.data,
+        patrimonio: formularioSubstituicao.patrimonio,
+        identificacao: formularioSubstituicao.identificacao,
+        serial: formularioSubstituicao.serial,
+        referenciaDocumento: formularioSubstituicao.referenciaDocumento,
+        motivo: formularioSubstituicao.motivo,
+        observacoes: formularioSubstituicao.observacoes,
+      });
+      await carregar();
+      setSubstituicaoAberta(false);
+      toast.success("Substituição concluída: devolução, entrada e herança de consumo registradas.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível registrar a substituição.");
+    } finally {
+      setSalvandoSubstituicao(false);
+    }
   }
 
   function alterarTipo(tipo: MovimentacaoEquipamentoTipo) {
@@ -1553,9 +1635,11 @@ function MovimentacoesEquipamentosPage() {
       tipo,
       equipamentoId: "",
       estoqueEquipamentoId: "",
-      origemId: "",
+      origemId: tipo === "SINALIZAR_MANUTENCAO"
+        ? equipesOperacionais.almoxarifado?.id ?? ""
+        : "",
       destinoId: "",
-      origemParte: "",
+      origemParte: tipo === "SINALIZAR_MANUTENCAO" ? "EQUIPE" : "",
       quantidade: "1",
       empresaId: "",
       equipeId: "",
@@ -1675,7 +1759,7 @@ function MovimentacoesEquipamentosPage() {
           // status: "ATIVO",
           data_entrada: formulario.data,
           referencia_documento: formulario.referenciaDocumento.trim() || null,
-          observacoes: formulario.observacoes.trim() || null,
+          observacoes: observacoesDigitadas().trim() || null,
         });
 
         try {
@@ -1690,7 +1774,7 @@ function MovimentacoesEquipamentosPage() {
             destino_id: equipesOperacionais.almoxarifado.id,
             data: formulario.data,
             referencia_documento: formulario.referenciaDocumento.trim() || null,
-            observacoes: formulario.observacoes.trim() || null,
+            observacoes: observacoesDigitadas().trim() || null,
           });
         } catch (error) {
           // Não deixa um registro físico órfão se a movimentação de entrada falhar.
@@ -1701,6 +1785,7 @@ function MovimentacoesEquipamentosPage() {
         await carregar();
         setDialogAberto(false);
         setFormulario({ ...formularioInicial, data: hoje() });
+        if (observacoesRef.current) observacoesRef.current.value = "";
         toast.success("Equipamento adicionado ao estoque por movimentação de entrada.");
         return;
       }
@@ -1782,7 +1867,7 @@ function MovimentacoesEquipamentosPage() {
         return;
       }
 
-      if (tipo === "DEVOLUCAO" || (tipo === "SINALIZAR_MANUTENCAO" && formulario.origemParte === "FUNCIONARIO")) {
+      if (tipo === "DEVOLUCAO") {
         const apropriadoAoFuncionario = estado.funcionarios.get(formulario.origemId) ?? 0;
         if (!formulario.origemId) {
           toast.error("Selecione o funcionário de origem.");
@@ -1799,11 +1884,7 @@ function MovimentacoesEquipamentosPage() {
       }
 
       if (tipo === "SINALIZAR_MANUTENCAO") {
-        if (formulario.origemParte !== "FUNCIONARIO" && formulario.origemParte !== "EQUIPE") {
-          toast.error("Selecione a origem do equipamento.");
-          return;
-        }
-        if (formulario.origemParte === "EQUIPE" && formulario.origemId !== equipesOperacionais.almoxarifado?.id) {
+        if (formulario.origemParte !== "EQUIPE" || formulario.origemId !== equipesOperacionais.almoxarifado?.id) {
           toast.error("A origem por equipe deve ser o Almoxarifado.");
           return;
         }
@@ -1862,8 +1943,8 @@ function MovimentacoesEquipamentosPage() {
         }
       }
 
-      if (tipo === "SINALIZAR_MANUTENCAO" && formulario.origemParte !== "FUNCIONARIO" && formulario.origemParte !== "EQUIPE") {
-        toast.error("Selecione a origem do equipamento.");
+      if (tipo === "SINALIZAR_MANUTENCAO" && (formulario.origemParte !== "EQUIPE" || formulario.origemId !== equipesOperacionais.almoxarifado?.id)) {
+        toast.error("A sinalização deve partir do Almoxarifado.");
         return;
       }
       if (tipo === "ENVIO" && formulario.origemParte !== "EQUIPE") {
@@ -1898,7 +1979,7 @@ function MovimentacoesEquipamentosPage() {
         destino_id: destinoId,
         data: formulario.data,
         referencia_documento: formulario.referenciaDocumento.trim() || null,
-        observacoes: tipo === "BAIXA" ? formulario.motivoBaixa.trim() : formulario.observacoes.trim() || null,
+        observacoes: tipo === "BAIXA" ? formulario.motivoBaixa.trim() : observacoesDigitadas().trim() || null,
       };
 
       try {
@@ -1924,6 +2005,7 @@ function MovimentacoesEquipamentosPage() {
       await carregar();
       setDialogAberto(false);
       setFormulario({ ...formularioInicial, data: hoje() });
+      if (observacoesRef.current) observacoesRef.current.value = "";
       toast.success("Movimentação registrada.");
       return;
     } catch (error) {
@@ -1944,57 +2026,61 @@ function MovimentacoesEquipamentosPage() {
       ? estoquesParaDevolucaoFornecedor
       : listaBase;
 
+    const opcoes = [...lista]
+      .map((stock) => {
+        const equipamento = equipamentoPorId.get(stock.equipamento_id);
+        const estado = estados.get(stock.id);
+        const quantidadeDisponivel = formulario.tipo === "DEVOLUCAO_FORNECEDOR"
+          ? (estado?.manutencao ?? 0) > 0
+            ? estado?.manutencao ?? 0
+            : estado?.almoxarifado ?? 0
+          : porFuncionario
+            ? estado?.funcionarios.get(formulario.origemId) ?? 0
+            : estado?.almoxarifado ?? 0;
+
+        return {
+          value: stock.id,
+          label: `${equipamento?.nome ?? "Equipamento"} · disponível: ${quantidadeDisponivel}`,
+          hint: detalhesRegistroFisico(stock, equipamento, empresaPorId),
+        };
+      })
+      .sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }));
+
     return (
       <div className="space-y-2">
         <Label>Equipamento em estoque</Label>
-        <Select
+        <Combobox
+          opcoes={opcoes}
           value={formulario.estoqueEquipamentoId}
-          onValueChange={selecionarEstoque}
+          onChange={(value) => value && selecionarEstoque(value)}
+          placeholder={
+            porFuncionario && !formulario.origemId
+              ? "Selecione primeiro o funcionário de origem"
+              : "Selecione o equipamento em estoque"
+          }
+          vazio={
+            porFuncionario && !formulario.origemId
+              ? "Selecione primeiro o funcionário de origem"
+              : porFuncionario
+                ? "Nenhum equipamento apropriado para este funcionário"
+                : "Nenhum equipamento disponível"
+          }
           disabled={porFuncionario && !formulario.origemId}
-        >
-          <SelectTrigger>
-            <SelectValue
-              placeholder={
-                porFuncionario && !formulario.origemId
-                  ? "Selecione primeiro o funcionário de origem"
-                  : "Selecione o equipamento em estoque"
-              }
-            />
-          </SelectTrigger>
-          <SelectContent>
-            {lista.length === 0 ? (
-              <SelectItem value="__vazio__" disabled>
-                {porFuncionario && !formulario.origemId
-                  ? "Selecione primeiro o funcionário de origem"
-                  : porFuncionario
-                    ? "Nenhum equipamento apropriado para este funcionário"
-                    : "Nenhum equipamento disponível"}
-              </SelectItem>
-            ) : lista.map((stock) => {
-              const equipamento = equipamentoPorId.get(stock.equipamento_id);
-              const estado = estados.get(stock.id);
-              const quantidadeDisponivel = formulario.tipo === "DEVOLUCAO_FORNECEDOR"
-                ? (estado?.manutencao ?? 0) > 0
-                  ? estado?.manutencao ?? 0
-                  : estado?.almoxarifado ?? 0
-                : porFuncionario
-                  ? estado?.funcionarios.get(formulario.origemId) ?? 0
-                  : estado?.almoxarifado ?? 0;
-
-              return (
-                <SelectItem key={stock.id} value={stock.id}>
-                  <div className="flex min-w-0 flex-col gap-0.5">
-                    <span>{equipamento?.nome ?? "Equipamento"} · disponível: {quantidadeDisponivel}</span>
-                    <span className="max-w-[42rem] truncate text-xs text-muted-foreground">{detalhesRegistroFisico(stock, equipamento, empresaPorId)}</span>
-                  </div>
-                </SelectItem>
-              );
-            })}
-          </SelectContent>
-        </Select>
+        />
       </div>
     );
   };
+
+  const estoquesParaSubstituicao = estoques.filter((stock) => {
+    const estado = estados.get(stock.id);
+    return stock.ativo !== false && (estado?.almoxarifado ?? 0) > 0;
+  });
+  const equipamentoOrigemSubstituicao = formularioSubstituicao.estoqueOrigemId
+    ? equipamentoPorId.get(estoquePorId.get(formularioSubstituicao.estoqueOrigemId)?.equipamento_id ?? "")
+    : undefined;
+  const equipamentosSubstitutos = equipamentosAtivos.filter((equipamento) =>
+    !equipamentoOrigemSubstituicao || equipamento.tipo_controle === equipamentoOrigemSubstituicao.tipo_controle,
+  );
 
   return (
     <>
@@ -2009,7 +2095,13 @@ function MovimentacoesEquipamentosPage() {
               <p className="text-sm text-muted-foreground">Controle a entrada, saída, devolução, transferência e manutenção.</p>
             </div>
           </div>
-          <Button onClick={abrirNovo} className="shadow-sm"><Plus className="mr-2 h-4 w-4" />Nova movimentação</Button>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button onClick={acessarHistoricoSubstituicoes} variant="secondary" className="shadow-sm" title="Ir para o histórico de substituições">
+              <ArrowRightLeft className="mr-2 h-4 w-4" />Histórico de substituições <Badge variant="outline" className="ml-1">{substituicoes.length}</Badge>
+            </Button>
+            <Button onClick={abrirSubstituicao} variant="outline" className="shadow-sm"><ArrowRightLeft className="mr-2 h-4 w-4" />Substituir equipamento</Button>
+            <Button onClick={abrirNovo} className="shadow-sm"><Plus className="mr-2 h-4 w-4" />Nova movimentação</Button>
+          </div>
         </div>
 
         <Card className="overflow-hidden">
@@ -2167,10 +2259,63 @@ function MovimentacoesEquipamentosPage() {
             </div>
           </CardContent>
         </Card>
+
+        <Card ref={historicoSubstituicoesRef} id="historico-substituicoes" tabIndex={-1} className="scroll-mt-4 overflow-hidden outline-none focus-visible:ring-2 focus-visible:ring-primary">
+          <CardHeader className="border-b bg-muted/20">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="font-semibold">Histórico de substituições</h2>
+                <p className="text-sm text-muted-foreground">Relação entre o equipamento devolvido, o substituto e as regras herdadas.</p>
+              </div>
+              <Badge variant="outline" className="w-fit">{substituicoes.length} registro(s)</Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[720px] text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/10 text-left">
+                    <th className="px-3 py-3">Data</th>
+                    <th className="px-3 py-3">Devolvido</th>
+                    <th className="px-3 py-3">Substituto</th>
+                    <th className="px-3 py-3">Qtd.</th>
+                    <th className="px-3 py-3">Regras herdadas</th>
+                    <th className="px-3 py-3 text-right">Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {substituicoes.map((substituicao) => {
+                    const estoqueOrigem = estoquePorId.get(substituicao.estoque_origem_id);
+                    const estoqueSubstituto = estoquePorId.get(substituicao.estoque_substituto_id);
+                    const equipamentoOrigem = equipamentoPorId.get(substituicao.equipamento_origem_id);
+                    const equipamentoSubstituto = equipamentoPorId.get(substituicao.equipamento_substituto_id);
+                    return (
+                      <tr key={substituicao.id} className="border-b last:border-0 hover:bg-muted/30">
+                        <td className="whitespace-nowrap px-3 py-3">{new Intl.DateTimeFormat("pt-BR", { dateStyle: "short" }).format(new Date(`${substituicao.data}T00:00:00`))}</td>
+                        <td className="px-3 py-3">
+                          <div className="font-medium">{equipamentoOrigem?.nome ?? "Equipamento removido"}</div>
+                          <div className="max-w-[16rem] truncate text-xs text-muted-foreground">{estoqueOrigem ? detalhesRegistroFisico(estoqueOrigem, equipamentoOrigem, empresaPorId) : "Registro físico não encontrado"}</div>
+                        </td>
+                        <td className="px-3 py-3">
+                          <div className="flex items-center gap-2 font-medium"><ArrowRight className="size-3.5 shrink-0 text-muted-foreground" />{equipamentoSubstituto?.nome ?? "Equipamento removido"}</div>
+                          <div className="max-w-[16rem] truncate text-xs text-muted-foreground">{estoqueSubstituto ? detalhesRegistroFisico(estoqueSubstituto, equipamentoSubstituto, empresaPorId) : "Registro físico não encontrado"}</div>
+                        </td>
+                        <td className="px-3 py-3"><Badge variant="outline">{substituicao.quantidade}</Badge></td>
+                        <td className="px-3 py-3"><Badge variant="secondary">{substituicao.regras_substituto_ids.length}</Badge></td>
+                        <td className="px-3 py-3 text-right"><Button variant="ghost" size="icon" className="rounded-lg" onClick={() => setDetalheSubstituicao(substituicao)} aria-label="Ver detalhes da substituição"><Eye className="size-4" /></Button></td>
+                      </tr>
+                    );
+                  })}
+                  {substituicoes.length === 0 && <tr><td colSpan={6} className="py-10 text-center text-sm text-muted-foreground">Nenhuma substituição registrada.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <Dialog open={dialogAberto} onOpenChange={(open) => !salvando && setDialogAberto(open)}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+        <DialogContent className="w-[calc(100vw-1rem)] max-w-2xl max-h-[calc(100dvh-1rem)] overflow-y-auto overscroll-contain p-4 sm:w-[calc(100vw-2rem)] sm:max-h-[calc(100dvh-2rem)] sm:p-6">
           <DialogHeader>
             <DialogTitle>Nova movimentação de equipamento</DialogTitle>
           </DialogHeader>
@@ -2178,28 +2323,35 @@ function MovimentacoesEquipamentosPage() {
           <div className="space-y-5">
             <div className="space-y-2">
               <Label>Tipo de movimentação</Label>
-              <Select value={formulario.tipo} onValueChange={(value) => alterarTipo(value as MovimentacaoEquipamentoTipo)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>{tiposMovimentacaoVisiveis.map((value) => <SelectItem key={value} value={value}>{tipoLabels[value]}</SelectItem>)}</SelectContent>
-              </Select>
+              <Combobox
+                opcoes={tiposMovimentacaoVisiveis.map((value) => ({ value, label: tipoLabels[value] }))}
+                value={formulario.tipo}
+                onChange={(value) => value && alterarTipo(value as MovimentacaoEquipamentoTipo)}
+                placeholder="Selecione o tipo de movimentação"
+                vazio="Nenhum tipo disponível"
+                allowClear={false}
+              />
             </div>
 
             {formulario.tipo === "ENTRADA" ? (
               <>
                 <div className="space-y-2">
                   <Label>Equipamento do cadastro</Label>
-                  <Select value={formulario.equipamentoId} onValueChange={selecionarEquipamentoEntrada}>
-                    <SelectTrigger><SelectValue placeholder="Selecione o equipamento que será recebido" /></SelectTrigger>
-                    <SelectContent>
-                      {equipamentosAtivos.length === 0 ? (
-                        <SelectItem value="__vazio__" disabled>Nenhum equipamento ativo cadastrado</SelectItem>
-                      ) : equipamentosAtivos.map((equipamento) => {
-                        const registros = estoquePorEquipamento.get(equipamento.id) ?? [];
-                        const total = registros.reduce((soma, item) => soma + item.quantidade, 0);
-                        return <SelectItem key={equipamento.id} value={equipamento.id}>{equipamento.nome}{total > 0 ? ` · já no estoque: ${total}` : ""}</SelectItem>;
-                      })}
-                    </SelectContent>
-                  </Select>
+                  <Combobox
+                    opcoes={equipamentosAtivos.map((equipamento) => {
+                      const registros = estoquePorEquipamento.get(equipamento.id) ?? [];
+                      const total = registros.reduce((soma, item) => soma + item.quantidade, 0);
+                      return {
+                        value: equipamento.id,
+                        label: `${equipamento.nome}${total > 0 ? ` · já no estoque: ${total}` : ""}`,
+                        hint: equipamento.modelo || (equipamento.tipo_controle === "INDIVIDUAL" ? "Individual" : "Quantitativo"),
+                      };
+                    }).sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))}
+                    value={formulario.equipamentoId}
+                    onChange={(value) => value && selecionarEquipamentoEntrada(value)}
+                    placeholder="Selecione o equipamento que será recebido"
+                    vazio="Nenhum equipamento ativo cadastrado"
+                  />
                   <p className="text-xs text-muted-foreground">A entrada cria um novo registro físico no estoque. Os registros que já estão no estoque não são reutilizados.</p>
                 </div>
 
@@ -2213,11 +2365,11 @@ function MovimentacoesEquipamentosPage() {
                 )}
 
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2"><Label>Empresa proprietária</Label><Select value={formulario.empresaId} onValueChange={(value) => atualizar("empresaId", value)}><SelectTrigger><SelectValue placeholder="Selecione a empresa" /></SelectTrigger><SelectContent>{empresas.map((empresa) => <SelectItem key={empresa.id} value={empresa.id}>{empresa.nome}</SelectItem>)}</SelectContent></Select></div>
-                  <div className="space-y-2"><Label>Vínculo</Label><Select value={formulario.vinculo} onValueChange={(value) => atualizar("vinculo", value as Formulario["vinculo"])}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="PROPRIO">Próprio</SelectItem><SelectItem value="ALUGADO">Alugado</SelectItem><SelectItem value="EMPRESTIMO">Empréstimo</SelectItem></SelectContent></Select></div>
+                  <div className="space-y-2"><Label>Empresa proprietária</Label><Combobox opcoes={empresas.map((empresa) => ({ value: empresa.id, label: empresa.nome, hint: empresa.tipo || undefined })).sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))} value={formulario.empresaId} onChange={(value) => atualizar("empresaId", value ?? "")} placeholder="Selecione a empresa" vazio="Nenhuma empresa disponível" /></div>
+                  <div className="space-y-2"><Label>Vínculo</Label><Combobox opcoes={[{ value: "PROPRIO", label: "Próprio" }, { value: "ALUGADO", label: "Alugado" }, { value: "EMPRESTIMO", label: "Empréstimo" }]} value={formulario.vinculo} onChange={(value) => value && atualizar("vinculo", value as Formulario["vinculo"])} placeholder="Selecione o vínculo" vazio="Nenhum vínculo disponível" allowClear={false} /></div>
                 </div>
 
-                <div className="space-y-2"><Label>Equipe destinada (opcional)</Label><Select value={formulario.equipeId || "__nenhuma__"} onValueChange={(value) => atualizar("equipeId", value === "__nenhuma__" ? "" : value)}><SelectTrigger><SelectValue placeholder="Todo o projeto" /></SelectTrigger><SelectContent><SelectItem value="__nenhuma__">Todo o projeto</SelectItem>{equipes.map((equipe) => <SelectItem key={equipe.id} value={equipe.id}>{equipe.nome}</SelectItem>)}</SelectContent></Select></div>
+                <div className="space-y-2"><Label>Equipe destinada (opcional)</Label><Combobox opcoes={[{ value: "__nenhuma__", label: "Todo o projeto" }, ...equipes.map((equipe) => ({ value: equipe.id, label: equipe.nome }))].sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))} value={formulario.equipeId || "__nenhuma__"} onChange={(value) => atualizar("equipeId", !value || value === "__nenhuma__" ? "" : value)} placeholder="Todo o projeto" vazio="Nenhuma equipe disponível" /></div>
 
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2"><Label>Quantidade</Label><Input type="number" min={1} step={equipamentoSelecionado?.tipo_controle === "INDIVIDUAL" ? 1 : 1} disabled={equipamentoSelecionado?.tipo_controle === "INDIVIDUAL"} value={formulario.quantidade} onChange={(event) => atualizar("quantidade", event.target.value)} /></div>
@@ -2235,47 +2387,37 @@ function MovimentacoesEquipamentosPage() {
                 {formulario.tipo === "TRANSFERENCIA" && (
                   <div className="space-y-2">
                     <Label>Funcionário origem</Label>
-                    <Select
+                    <Combobox
+                      opcoes={funcionariosComApropriacoes.map((f) => ({ value: f.id, label: nomePessoa(f) })).sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))}
                       value={formulario.origemId}
-                      onValueChange={(value) => {
+                      onChange={(value) => {
+                        if (!value) return;
                         atualizar("origemId", value);
                         atualizar("estoqueEquipamentoId", "");
                         atualizar("destinoId", "");
                         atualizar("quantidade", "1");
                       }}
-                    >
-                      <SelectTrigger><SelectValue placeholder="Selecione primeiro o funcionário" /></SelectTrigger>
-                      <SelectContent>
-                        {funcionariosComApropriacoes.length === 0 ? (
-                          <SelectItem value="__vazio__" disabled>Nenhum funcionário possui equipamentos apropriados</SelectItem>
-                        ) : funcionariosComApropriacoes.map((f) => (
-                          <SelectItem key={f.id} value={f.id}>{nomePessoa(f)}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      placeholder="Selecione primeiro o funcionário"
+                      vazio="Nenhum funcionário possui equipamentos apropriados"
+                    />
                   </div>
                 )}
 
                 {formulario.tipo === "DEVOLUCAO" && (
                   <div className="space-y-2">
                     <Label>Funcionário origem</Label>
-                    <Select
+                    <Combobox
+                      opcoes={funcionariosComApropriacoes.map((f) => ({ value: f.id, label: nomePessoa(f) })).sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))}
                       value={formulario.origemId}
-                      onValueChange={(value) => {
+                      onChange={(value) => {
+                        if (!value) return;
                         atualizar("origemId", value);
                         atualizar("estoqueEquipamentoId", "");
                         atualizar("quantidade", "1");
                       }}
-                    >
-                      <SelectTrigger><SelectValue placeholder="Selecione primeiro o funcionário" /></SelectTrigger>
-                      <SelectContent>
-                        {funcionariosComApropriacoes.length === 0 ? (
-                          <SelectItem value="__vazio__" disabled>Nenhum funcionário possui equipamentos apropriados</SelectItem>
-                        ) : funcionariosComApropriacoes.map((f) => (
-                          <SelectItem key={f.id} value={f.id}>{nomePessoa(f)}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      placeholder="Selecione primeiro o funcionário"
+                      vazio="Nenhum funcionário possui equipamentos apropriados"
+                    />
                   </div>
                 )}
 
@@ -2285,30 +2427,19 @@ function MovimentacoesEquipamentosPage() {
                   <>
                     <div className="space-y-2">
                       <Label>Origem do equipamento</Label>
-                      <Select
+                      <Combobox
+                        opcoes={origensDisponiveisParaEnvio.map((origem) => ({ value: origem.id, label: origem.label }))}
                         value={formulario.origemId}
-                        onValueChange={(value) => {
+                        onChange={(value) => {
+                          if (!value) return;
                           atualizar("origemParte", "EQUIPE");
                           atualizar("origemId", value);
                           atualizar("estoqueEquipamentoId", "");
                           atualizar("quantidade", "1");
                         }}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione a origem" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {origensDisponiveisParaEnvio.length === 0 ? (
-                            <SelectItem value="__vazio__" disabled>
-                              Nenhum equipamento disponível para envio à manutenção
-                            </SelectItem>
-                          ) : origensDisponiveisParaEnvio.map((origem) => (
-                            <SelectItem key={origem.id} value={origem.id}>
-                              {origem.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                        placeholder="Selecione a origem"
+                        vazio="Nenhum equipamento disponível para envio à manutenção"
+                      />
                       <p className="text-xs text-muted-foreground">
                         Selecione onde o equipamento está: Almoxarifado ou Manutenção.
                       </p>
@@ -2316,66 +2447,34 @@ function MovimentacoesEquipamentosPage() {
 
                     <div className="space-y-2">
                       <Label>Equipamento em estoque</Label>
-                      <Select
-                        value={formulario.estoqueEquipamentoId}
-                        onValueChange={selecionarEstoque}
-                        disabled={!formulario.origemId}
-                      >
-                        <SelectTrigger>
-                          <SelectValue
-                            placeholder={
-                              !formulario.origemId
-                                ? "Selecione primeiro a origem"
-                                : "Selecione o equipamento"
-                            }
-                          />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {estoquesDaOrigemEnvio.length === 0 ? (
-                            <SelectItem value="__vazio__" disabled>
-                              {formulario.origemId
-                                ? "Nenhum equipamento disponível nesta origem"
-                                : "Selecione primeiro a origem"}
-                            </SelectItem>
-                          ) : estoquesDaOrigemEnvio.map((stock) => {
+                      <Combobox
+                        opcoes={estoquesDaOrigemEnvio.map((stock) => {
                             const equipamento = equipamentoPorId.get(stock.equipamento_id);
                             const estado = estados.get(stock.id);
                             const quantidadeDisponivel = formulario.origemId === equipesOperacionais.manutencao?.id
                               ? Math.max(0, (estado?.manutencao ?? 0) - (estado?.empresa ?? 0))
                               : estado?.almoxarifado ?? 0;
-
-                            return (
-                              <SelectItem key={stock.id} value={stock.id}>
-                                <div className="flex min-w-0 flex-col gap-0.5">
-                    <span>{equipamento?.nome ?? "Equipamento"} · disponível: {quantidadeDisponivel}</span>
-                    <span className="max-w-[42rem] truncate text-xs text-muted-foreground">{detalhesRegistroFisico(stock, equipamento, empresaPorId)}</span>
-                  </div>
-                              </SelectItem>
-                            );
-                          })}
-                        </SelectContent>
-                      </Select>
+                            return { value: stock.id, label: `${equipamento?.nome ?? "Equipamento"} · disponível: ${quantidadeDisponivel}`, hint: detalhesRegistroFisico(stock, equipamento, empresaPorId) };
+                          }).sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))}
+                        value={formulario.estoqueEquipamentoId}
+                        onChange={(value) => value && selecionarEstoque(value)}
+                        placeholder={!formulario.origemId ? "Selecione primeiro a origem" : "Selecione o equipamento"}
+                        vazio={formulario.origemId ? "Nenhum equipamento disponível nesta origem" : "Selecione primeiro a origem"}
+                        disabled={!formulario.origemId}
+                      />
                     </div>
 
                     {estoqueSelecionado?.vinculo === "PROPRIO" ? (
                       <div className="space-y-2">
                         <Label>Empresa de manutenção</Label>
-                        <Select
+                        <Combobox
+                          opcoes={empresas.map((empresa) => ({ value: empresa.id, label: empresa.nome, hint: empresa.tipo || undefined })).sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))}
                           value={formulario.destinoId}
-                          onValueChange={(value) => atualizar("destinoId", value)}
+                          onChange={(value) => atualizar("destinoId", value ?? "")}
+                          placeholder="Selecione a empresa que fará a manutenção"
+                          vazio="Nenhuma empresa disponível"
                           disabled={!formulario.estoqueEquipamentoId}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Selecione a empresa que fará a manutenção" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {empresas.length === 0 ? (
-                              <SelectItem value="__vazio__" disabled>Nenhuma empresa disponível</SelectItem>
-                            ) : empresas.map((empresa) => (
-                              <SelectItem key={empresa.id} value={empresa.id}>{empresa.nome}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        />
                       </div>
                     ) : (
                       <div className="rounded-lg border bg-muted/20 p-3 text-sm">
@@ -2401,34 +2500,21 @@ function MovimentacoesEquipamentosPage() {
                     </div>
                     <div className="space-y-2">
                       <Label>Equipamento em manutenção</Label>
-                      <Select
-                        value={formulario.estoqueEquipamentoId}
-                        onValueChange={selecionarEstoque}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione o equipamento" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {estoquesParaRetornoManutencao.length === 0 ? (
-                            <SelectItem value="__vazio__" disabled>Nenhum equipamento disponível para retorno</SelectItem>
-                          ) : estoquesParaRetornoManutencao.map((stock) => {
+                      <Combobox
+                        opcoes={estoquesParaRetornoManutencao.map((stock) => {
                             const equipamento = equipamentoPorId.get(stock.equipamento_id);
                             const estado = estados.get(stock.id);
                             const externo = (estado?.empresa ?? 0) > 0;
                             const quantidadeDisponivel = externo
                               ? estado?.empresa ?? 0
                               : estado?.manutencao ?? 0;
-                            return (
-                              <SelectItem key={stock.id} value={stock.id}>
-                                <div className="flex min-w-0 flex-col gap-0.5">
-                                  <span>{equipamento?.nome ?? "Equipamento"} · {externo ? "Empresa de manutenção" : "Manutenção"} · disponível: {quantidadeDisponivel}</span>
-                                  <span className="max-w-[42rem] truncate text-xs text-muted-foreground">{detalhesRegistroFisico(stock, equipamento, empresaPorId)}</span>
-                                </div>
-                              </SelectItem>
-                            );
-                          })}
-                        </SelectContent>
-                      </Select>
+                            return { value: stock.id, label: `${equipamento?.nome ?? "Equipamento"} · ${externo ? "Empresa de manutenção" : "Manutenção"} · disponível: ${quantidadeDisponivel}`, hint: detalhesRegistroFisico(stock, equipamento, empresaPorId) };
+                          }).sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))}
+                        value={formulario.estoqueEquipamentoId}
+                        onChange={(value) => value && selecionarEstoque(value)}
+                        placeholder="Selecione o equipamento"
+                        vazio="Nenhum equipamento disponível para retorno"
+                      />
                     </div>
                   </div>
                 )}
@@ -2440,26 +2526,18 @@ function MovimentacoesEquipamentosPage() {
                     </div>
                     <div className="space-y-2">
                       <Label>Equipamento para reentrada</Label>
-                      <Select value={formulario.estoqueEquipamentoId} onValueChange={selecionarEstoque}>
-                        <SelectTrigger><SelectValue placeholder="Selecione o equipamento que retornou ao projeto" /></SelectTrigger>
-                        <SelectContent>
-                          {estoquesParaReentrada.length === 0 ? (
-                            <SelectItem value="__vazio__" disabled>Nenhum equipamento disponível para reentrada</SelectItem>
-                          ) : estoquesParaReentrada.map((stock) => {
+                      <Combobox
+                        opcoes={estoquesParaReentrada.map((stock) => {
                             const equipamento = equipamentoPorId.get(stock.equipamento_id);
                             const pendencia = pendenciasReentrada.get(stock.id);
                             const origem = pendencia?.tipo === "BAIXA" ? "Baixa" : "Devolução ao fornecedor";
-                            return (
-                              <SelectItem key={stock.id} value={stock.id}>
-                                <div className="flex min-w-0 flex-col gap-0.5">
-                                  <span>{equipamento?.nome ?? "Equipamento"} · {origem} · disponível: {pendencia?.restante ?? 0}</span>
-                                  <span className="max-w-[42rem] truncate text-xs text-muted-foreground">{detalhesRegistroFisico(stock, equipamento, empresaPorId)}</span>
-                                </div>
-                              </SelectItem>
-                            );
-                          })}
-                        </SelectContent>
-                      </Select>
+                            return { value: stock.id, label: `${equipamento?.nome ?? "Equipamento"} · ${origem} · disponível: ${pendencia?.restante ?? 0}`, hint: detalhesRegistroFisico(stock, equipamento, empresaPorId) };
+                          }).sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))}
+                        value={formulario.estoqueEquipamentoId}
+                        onChange={(value) => value && selecionarEstoque(value)}
+                        placeholder="Selecione o equipamento que retornou ao projeto"
+                        vazio="Nenhum equipamento disponível para reentrada"
+                      />
                     </div>
                     <div className="rounded-lg border bg-background p-3 text-sm">
                       <span className="font-medium">Destino padrão:</span> Almoxarifado
@@ -2476,45 +2554,37 @@ function MovimentacoesEquipamentosPage() {
                     </div>
                     <div className="space-y-2">
                       <Label>Origem da baixa</Label>
-                      <Select
+                      <Combobox
+                        opcoes={origensDisponiveisParaBaixa.map((origem) => ({ value: origem.id, label: origem.label }))}
                         value={formulario.origemId}
-                        onValueChange={(value) => {
+                        onChange={(value) => {
+                          if (!value) return;
                           atualizar("origemId", value);
                           atualizar("estoqueEquipamentoId", "");
                           atualizar("quantidade", "1");
                         }}
-                      >
-                        <SelectTrigger><SelectValue placeholder="Selecione a origem" /></SelectTrigger>
-                        <SelectContent>
-                          {origensDisponiveisParaBaixa.length === 0 ? (
-                            <SelectItem value="__vazio__" disabled>Nenhum equipamento disponível para baixa</SelectItem>
-                          ) : origensDisponiveisParaBaixa.map((origem) => (
-                            <SelectItem key={origem.id} value={origem.id}>{origem.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                        placeholder="Selecione a origem"
+                        vazio="Nenhum equipamento disponível para baixa"
+                      />
                     </div>
                     <div className="space-y-2">
                       <Label>Equipamento em estoque</Label>
-                      <Select value={formulario.estoqueEquipamentoId} onValueChange={selecionarEstoque}>
-                        <SelectTrigger><SelectValue placeholder="Selecione o equipamento para baixa" /></SelectTrigger>
-                        <SelectContent>
-                          {estoquesParaBaixa.length === 0 ? (
-                            <SelectItem value="__vazio__" disabled>Nenhum equipamento disponível para baixa</SelectItem>
-                          ) : estoquesParaBaixa.map((stock) => {
+                      <Combobox
+                        opcoes={estoquesParaBaixa.map((stock) => {
                             const equipamento = equipamentoPorId.get(stock.equipamento_id);
                             const estado = estados.get(stock.id);
-                            return (
-                              <SelectItem key={stock.id} value={stock.id}>
-                                <div className="flex min-w-0 flex-col gap-0.5">
-                                  <span>{equipamento?.nome ?? "Equipamento"} · disponível: {formulario.origemId === equipesOperacionais.manutencao?.id ? (estado?.manutencao ?? 0) : (estado?.almoxarifado ?? 0)}</span>
-                                  <span className="max-w-[42rem] truncate text-xs text-muted-foreground">{detalhesRegistroFisico(stock, equipamento, empresaPorId)}</span>
-                                </div>
-                              </SelectItem>
-                            );
-                          })}
-                        </SelectContent>
-                      </Select>
+                            return { value: stock.id, label: `${equipamento?.nome ?? "Equipamento"} · disponível: ${Math.min(
+                                    formulario.origemId === equipesOperacionais.manutencao?.id
+                                      ? (estado?.manutencao ?? 0)
+                                      : (estado?.almoxarifado ?? 0),
+                                    estado?.saldo ?? 0,
+                                  )}`, hint: detalhesRegistroFisico(stock, equipamento, empresaPorId) };
+                          }).sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))}
+                        value={formulario.estoqueEquipamentoId}
+                        onChange={(value) => value && selecionarEstoque(value)}
+                        placeholder="Selecione o equipamento para baixa"
+                        vazio="Nenhum equipamento disponível para baixa"
+                      />
                     </div>
                     <div className="space-y-2">
                       <Label>Motivo da baixa *</Label>
@@ -2527,97 +2597,50 @@ function MovimentacoesEquipamentosPage() {
                   <>
                     <div className="space-y-2">
                       <Label>Origem da manutenção</Label>
-                      <Select
-                        value={formulario.origemParte === "FUNCIONARIO" ? `FUNCIONARIO:${formulario.origemId}` : formulario.origemParte === "EQUIPE" ? formulario.origemId : ""}
-                        onValueChange={(value) => {
-                          if (value.startsWith("FUNCIONARIO:")) {
-                            atualizar("origemParte", "FUNCIONARIO");
-                            atualizar("origemId", value.slice("FUNCIONARIO:".length));
-                          } else {
-                            atualizar("origemParte", "EQUIPE");
-                            atualizar("origemId", value);
-                          }
-                          atualizar("estoqueEquipamentoId", "");
-                          atualizar("quantidade", "1");
-                        }}
-                      >
-                        <SelectTrigger><SelectValue placeholder="Selecione primeiro a origem" /></SelectTrigger>
-                        <SelectContent>
-                          {equipesOperacionais.almoxarifado && (
-                            <SelectItem value={equipesOperacionais.almoxarifado.id}>
-                              Almoxarifado
-                              {almoxarifadoTemEquipamentos ? " · possui equipamentos disponíveis" : " · sem equipamentos disponíveis"}
-                            </SelectItem>
-                          )}
-                          {funcionariosComApropriacoes.map((f) => (
-                            <SelectItem key={f.id} value={`FUNCIONARIO:${f.id}`}>
-                              {nomePessoa(f)}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
+                        Almoxarifado
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        A sinalização para manutenção parte sempre do Almoxarifado.
+                      </p>
                     </div>
 
                     <div className="space-y-2">
                       <Label>Equipamento em estoque</Label>
-                      <Select
-                        value={formulario.estoqueEquipamentoId}
-                        onValueChange={selecionarEstoque}
-                        disabled={!formulario.origemId}
-                      >
-                        <SelectTrigger>
-                          <SelectValue
-                            placeholder={
-                              !formulario.origemId
-                                ? "Selecione primeiro a origem"
-                                : "Selecione o equipamento que será sinalizado para manutenção"
-                            }
-                          />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {estoquesDaOrigemManutencao.length === 0 ? (
-                            <SelectItem value="__vazio__" disabled>
-                              {formulario.origemId ? "Nenhum equipamento disponível nesta origem" : "Selecione primeiro a origem"}
-                            </SelectItem>
-                          ) : estoquesDaOrigemManutencao.map((stock) => {
+                      <Combobox
+                        opcoes={estoquesDaOrigemManutencao.map((stock) => {
                             const equipamento = equipamentoPorId.get(stock.equipamento_id);
                             const estado = estados.get(stock.id);
-                            const quantidadeDisponivel = formulario.origemParte === "FUNCIONARIO"
-                              ? estado?.funcionarios.get(formulario.origemId) ?? 0
-                              : estado?.almoxarifado ?? 0;
-
-                            return (
-                              <SelectItem key={stock.id} value={stock.id}>
-                                <div className="flex min-w-0 flex-col gap-0.5">
-                    <span>{equipamento?.nome ?? "Equipamento"} · disponível: {quantidadeDisponivel}</span>
-                    <span className="max-w-[42rem] truncate text-xs text-muted-foreground">{detalhesRegistroFisico(stock, equipamento, empresaPorId)}</span>
-                  </div>
-                              </SelectItem>
-                            );
-                          })}
-                        </SelectContent>
-                      </Select>
+                            const quantidadeDisponivel = estado?.almoxarifado ?? 0;
+                            return { value: stock.id, label: `${equipamento?.nome ?? "Equipamento"} · disponível: ${quantidadeDisponivel}`, hint: detalhesRegistroFisico(stock, equipamento, empresaPorId) };
+                          }).sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))}
+                        value={formulario.estoqueEquipamentoId}
+                        onChange={(value) => value && selecionarEstoque(value)}
+                        placeholder={!formulario.origemId ? "Selecione primeiro a origem" : "Selecione o equipamento que será sinalizado para manutenção"}
+                        vazio={formulario.origemId ? "Nenhum equipamento disponível nesta origem" : "Selecione primeiro a origem"}
+                        disabled={!equipesOperacionais.almoxarifado || !formulario.origemId}
+                      />
                     </div>
                   </>
                 )}
 
                 {formulario.tipo === "SAIDA" && (
                   <>
-                    <div className="space-y-2"><Label>Funcionário destino</Label><Select value={formulario.destinoId} onValueChange={(value) => atualizar("destinoId", value)}><SelectTrigger><SelectValue placeholder="Selecione o funcionário" /></SelectTrigger><SelectContent>{funcionarios.map((f) => <SelectItem key={f.id} value={f.id}>{nomePessoa(f)}</SelectItem>)}</SelectContent></Select></div>
+                    <div className="space-y-2"><Label>Funcionário destino</Label><Combobox opcoes={funcionarios.map((f) => ({ value: f.id, label: nomePessoa(f) })).sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))} value={formulario.destinoId} onChange={(value) => atualizar("destinoId", value ?? "")} placeholder="Selecione o funcionário" vazio="Nenhum funcionário disponível" /></div>
                   </>
                 )}
 
                 {formulario.tipo === "TRANSFERENCIA" && (
                   <div className="space-y-2">
                     <Label>Funcionário destino</Label>
-                    <Select value={formulario.destinoId} onValueChange={(value) => atualizar("destinoId", value)} disabled={!formulario.estoqueEquipamentoId}>
-                      <SelectTrigger><SelectValue placeholder={formulario.estoqueEquipamentoId ? "Selecione o funcionário destino" : "Selecione primeiro o equipamento"} /></SelectTrigger>
-                      <SelectContent>
-                        {funcionarios.filter((f) => f.id !== formulario.origemId).map((f) => (
-                          <SelectItem key={f.id} value={f.id}>{nomePessoa(f)}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <Combobox
+                      opcoes={funcionarios.filter((f) => f.id !== formulario.origemId).map((f) => ({ value: f.id, label: nomePessoa(f) })).sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))}
+                      value={formulario.destinoId}
+                      onChange={(value) => atualizar("destinoId", value ?? "")}
+                      placeholder={formulario.estoqueEquipamentoId ? "Selecione o funcionário destino" : "Selecione primeiro o equipamento"}
+                      vazio="Nenhum funcionário disponível"
+                      disabled={!formulario.estoqueEquipamentoId}
+                    />
                   </div>
                 )}
 
@@ -2633,20 +2656,156 @@ function MovimentacoesEquipamentosPage() {
                 <div className="rounded-lg border bg-muted/20 p-3 text-sm"><span className="font-medium">Fluxo:</span> {fluxo.origemLabel} <ArrowRight className="mx-2 inline h-4 w-4" /> {fluxo.destinoLabel}</div>
 
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2"><Label>Quantidade</Label><Input type="number" min={1} step={1} disabled={equipamentoSelecionado?.tipo_controle === "INDIVIDUAL"} value={formulario.quantidade} onChange={(event) => atualizar("quantidade", event.target.value)} /><p className="text-xs text-muted-foreground">Máximo nesta operação: {Number.isFinite(maxQuantidade) ? maxQuantidade : "sem limite"}.</p></div>
+                  <div className="space-y-2"><Label>Quantidade</Label><Input type="number" min={1} max={Number.isFinite(maxQuantidade) ? maxQuantidade : undefined} step={1} disabled={equipamentoSelecionado?.tipo_controle === "INDIVIDUAL"} value={formulario.quantidade} onChange={(event) => atualizar("quantidade", event.target.value)} /><p className="text-xs text-muted-foreground">Máximo nesta operação: {Number.isFinite(maxQuantidade) ? maxQuantidade : "sem limite"}.</p></div>
                   <div className="space-y-2"><Label>Data</Label><Input type="date" value={formulario.data} onChange={(event) => atualizar("data", event.target.value)} /></div>
                 </div>
               </>
             )}
 
             <div className="space-y-2"><Label>Documento de referência</Label><Input value={formulario.referenciaDocumento} onChange={(event) => atualizar("referenciaDocumento", event.target.value)} placeholder="NF, OS, termo, romaneio..." /></div>
-            {formulario.tipo !== "BAIXA" && <div className="space-y-2"><Label>Observações</Label><textarea className="min-h-24 w-full rounded-md border bg-background px-3 py-2 text-sm" value={formulario.observacoes} onChange={(event) => atualizar("observacoes", event.target.value)} placeholder="Defeito, sintoma, serviço, advertências ou outras informações..." /></div>}
+            {formulario.tipo !== "BAIXA" && <div className="space-y-2"><Label>Observações</Label><textarea ref={observacoesRef} defaultValue={formulario.observacoes} className="min-h-24 w-full rounded-md border bg-background px-3 py-2 text-sm" placeholder="Defeito, sintoma, serviço, advertências ou outras informações..." /></div>}
           </div>
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogAberto(false)} disabled={salvando}>Cancelar</Button>
             <Button onClick={() => void salvar()} disabled={salvando}>{salvando ? "Registrando..." : "Registrar movimentação"}</Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={substituicaoAberta} onOpenChange={(open) => !salvandoSubstituicao && setSubstituicaoAberta(open)}>
+        <DialogContent className="w-[calc(100vw-1rem)] max-w-2xl max-h-[calc(100dvh-1rem)] overflow-y-auto overscroll-contain p-4 sm:w-[calc(100vw-2rem)] sm:max-h-[calc(100dvh-2rem)] sm:p-6">
+          <DialogHeader>
+            <DialogTitle>Substituir equipamento</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-5">
+            <div className="rounded-lg border bg-muted/20 p-3 text-sm text-muted-foreground">
+              A operação registra, na mesma transação, a devolução do equipamento antigo ao fornecedor, a entrada do novo registro físico e a herança das regras de consumo.
+            </div>
+
+            <div className="space-y-2">
+              <Label>Equipamento devolvido</Label>
+              <Combobox
+                opcoes={estoquesParaSubstituicao.map((stock) => {
+                  const equipamento = equipamentoPorId.get(stock.equipamento_id);
+                  const estado = estados.get(stock.id);
+                  return {
+                    value: stock.id,
+                    label: `${equipamento?.nome ?? "Equipamento"} · disponível: ${estado?.almoxarifado ?? 0}`,
+                    hint: detalhesRegistroFisico(stock, equipamento, empresaPorId),
+                  };
+                }).sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))}
+                value={formularioSubstituicao.estoqueOrigemId}
+                onChange={(value) => setFormularioSubstituicao((atual) => ({
+                  ...atual,
+                  estoqueOrigemId: value ?? "",
+                  equipamentoSubstitutoId: "",
+                  quantidade: "1",
+                }))}
+                placeholder="Selecione o equipamento disponível no Almoxarifado"
+                vazio="Nenhum equipamento disponível no Almoxarifado"
+              />
+            </div>
+
+            {equipamentoOrigemSubstituicao && (
+              <div className="rounded-lg border bg-muted/30 p-3 text-sm">
+                <div className="font-medium">Equipamento atual: {equipamentoOrigemSubstituicao.nome}</div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  Controle {equipamentoOrigemSubstituicao.tipo_controle === "INDIVIDUAL" ? "individual" : "quantitativo"}. O substituto deve manter o mesmo tipo de controle.
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label>Cadastro do equipamento substituto</Label>
+              <Combobox
+                opcoes={equipamentosSubstitutos.map((equipamento) => ({
+                  value: equipamento.id,
+                  label: `${equipamento.nome}${equipamento.marca ? ` · ${equipamento.marca}` : ""}`,
+                  hint: equipamento.modelo || (equipamento.tipo_controle === "INDIVIDUAL" ? "Individual" : "Quantitativo"),
+                })).sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))}
+                value={formularioSubstituicao.equipamentoSubstitutoId}
+                onChange={(value) => setFormularioSubstituicao((atual) => ({ ...atual, equipamentoSubstitutoId: value ?? "" }))}
+                placeholder="Selecione o cadastro que entrará no estoque"
+                vazio={equipamentoOrigemSubstituicao ? "Nenhum cadastro com o mesmo tipo de controle" : "Nenhum equipamento ativo cadastrado"}
+                disabled={!equipamentoOrigemSubstituicao}
+              />
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Quantidade</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  step={1}
+                  disabled={equipamentoOrigemSubstituicao?.tipo_controle === "INDIVIDUAL"}
+                  value={formularioSubstituicao.quantidade}
+                  onChange={(event) => setFormularioSubstituicao((atual) => ({ ...atual, quantidade: event.target.value }))}
+                />
+                <p className="text-xs text-muted-foreground">A quantidade não pode ultrapassar o saldo físico no Almoxarifado.</p>
+              </div>
+              <div className="space-y-2"><Label>Data</Label><Input type="date" value={formularioSubstituicao.data} onChange={(event) => setFormularioSubstituicao((atual) => ({ ...atual, data: event.target.value }))} /></div>
+            </div>
+
+            {equipamentoOrigemSubstituicao?.tipo_controle === "INDIVIDUAL" && (
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div className="space-y-2"><Label>Patrimônio</Label><Input value={formularioSubstituicao.patrimonio} onChange={(event) => setFormularioSubstituicao((atual) => ({ ...atual, patrimonio: event.target.value }))} /></div>
+                <div className="space-y-2"><Label>Identificação</Label><Input value={formularioSubstituicao.identificacao} onChange={(event) => setFormularioSubstituicao((atual) => ({ ...atual, identificacao: event.target.value }))} /></div>
+                <div className="space-y-2"><Label>Serial</Label><Input value={formularioSubstituicao.serial} onChange={(event) => setFormularioSubstituicao((atual) => ({ ...atual, serial: event.target.value }))} /></div>
+              </div>
+            )}
+
+            <div className="space-y-2"><Label>Documento de referência</Label><Input value={formularioSubstituicao.referenciaDocumento} onChange={(event) => setFormularioSubstituicao((atual) => ({ ...atual, referenciaDocumento: event.target.value }))} placeholder="NF, termo de troca, OS..." /></div>
+            <div className="space-y-2"><Label>Motivo da substituição</Label><Input value={formularioSubstituicao.motivo} onChange={(event) => setFormularioSubstituicao((atual) => ({ ...atual, motivo: event.target.value }))} placeholder="Defeito, garantia, troca contratual..." /></div>
+            <div className="space-y-2"><Label>Observações</Label><textarea value={formularioSubstituicao.observacoes} onChange={(event) => setFormularioSubstituicao((atual) => ({ ...atual, observacoes: event.target.value }))} className="min-h-24 w-full rounded-md border bg-background px-3 py-2 text-sm" /></div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSubstituicaoAberta(false)} disabled={salvandoSubstituicao}>Cancelar</Button>
+            <Button onClick={() => void salvarSubstituicao()} disabled={salvandoSubstituicao}>{salvandoSubstituicao ? "Concluindo..." : "Concluir substituição"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!detalheSubstituicao} onOpenChange={(open) => !open && setDetalheSubstituicao(null)}>
+        <DialogContent className="w-[calc(100vw-1rem)] max-w-xl max-h-[calc(100dvh-1rem)] overflow-y-auto overscroll-contain p-4 sm:w-[calc(100vw-2rem)] sm:max-h-[calc(100dvh-2rem)] sm:p-6">
+          <DialogHeader><DialogTitle>Detalhes da substituição</DialogTitle></DialogHeader>
+          {detalheSubstituicao && (() => {
+            const origem = estoquePorId.get(detalheSubstituicao.estoque_origem_id);
+            const substituto = estoquePorId.get(detalheSubstituicao.estoque_substituto_id);
+            const equipamentoOrigem = equipamentoPorId.get(detalheSubstituicao.equipamento_origem_id);
+            const equipamentoSubstituto = equipamentoPorId.get(detalheSubstituicao.equipamento_substituto_id);
+            const movimentoDevolucao = movimentacoes.find((movimentacao) => movimentacao.id === detalheSubstituicao.movimentacao_devolucao_id);
+            const movimentoEntrada = movimentacoes.find((movimentacao) => movimentacao.id === detalheSubstituicao.movimentacao_entrada_id);
+            return (
+              <div className="space-y-4 text-sm">
+                <div className="rounded-xl border bg-muted/20 p-4">
+                  <div className="flex items-center gap-2 font-semibold"><ArrowRightLeft className="size-4 text-primary" />Substituição concluída</div>
+                  <div className="mt-1 text-muted-foreground">{new Intl.DateTimeFormat("pt-BR", { dateStyle: "full" }).format(new Date(`${detalheSubstituicao.data}T00:00:00`))}</div>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-xl border p-3"><div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Equipamento devolvido</div><div className="mt-1 font-semibold">{equipamentoOrigem?.nome ?? "Equipamento removido"}</div><div className="mt-1 text-xs text-muted-foreground">{origem ? detalhesRegistroFisico(origem, equipamentoOrigem, empresaPorId) : "Registro físico não encontrado"}</div></div>
+                  <div className="rounded-xl border p-3"><div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Equipamento substituto</div><div className="mt-1 font-semibold">{equipamentoSubstituto?.nome ?? "Equipamento removido"}</div><div className="mt-1 text-xs text-muted-foreground">{substituto ? detalhesRegistroFisico(substituto, equipamentoSubstituto, empresaPorId) : "Registro físico não encontrado"}</div></div>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-xl border p-3"><div className="text-xs text-muted-foreground">Quantidade</div><div className="mt-1 text-lg font-bold">{detalheSubstituicao.quantidade}</div></div>
+                  <div className="rounded-xl border p-3"><div className="text-xs text-muted-foreground">Regras herdadas</div><div className="mt-1 text-lg font-bold">{detalheSubstituicao.regras_substituto_ids.length}</div></div>
+                  <div className="rounded-xl border p-3"><div className="text-xs text-muted-foreground">Relação auditável</div><div className="mt-1 font-medium">Registrada</div></div>
+                </div>
+                {(detalheSubstituicao.motivo || detalheSubstituicao.referencia_documento || detalheSubstituicao.observacoes) && <div className="space-y-2 rounded-xl border bg-muted/20 p-3">
+                  {detalheSubstituicao.motivo && <div><span className="font-medium">Motivo:</span> {detalheSubstituicao.motivo}</div>}
+                  {detalheSubstituicao.referencia_documento && <div><span className="font-medium">Documento:</span> {detalheSubstituicao.referencia_documento}</div>}
+                  {detalheSubstituicao.observacoes && <div><span className="font-medium">Observações:</span> <span className="whitespace-pre-wrap">{detalheSubstituicao.observacoes}</span></div>}
+                </div>}
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <Button variant="outline" onClick={() => { setDetalheSubstituicao(null); if (movimentoDevolucao) setDetalhe(movimentoDevolucao); }} disabled={!movimentoDevolucao}>Ver devolução ao fornecedor</Button>
+                  <Button variant="outline" onClick={() => { setDetalheSubstituicao(null); if (movimentoEntrada) setDetalhe(movimentoEntrada); }} disabled={!movimentoEntrada}>Ver entrada do substituto</Button>
+                </div>
+              </div>
+            );
+          })()}
         </DialogContent>
       </Dialog>
 
