@@ -54,7 +54,11 @@ export function Combobox({
         </Button>
       </PopoverTrigger>
       {!disabled && (
-        <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+        <PopoverContent
+          className="w-[var(--radix-popover-trigger-width)] max-w-[calc(100vw-2rem)] p-0"
+          align="start"
+          side="bottom"
+        >
           <Command>
           <CommandInput placeholder="Pesquisar…" />
           <CommandList>
