@@ -10,6 +10,8 @@ import {
   CalendarClock,
   ChartNoAxesCombined,
   Check,
+  ChevronDown,
+  ChevronRight,
   ClipboardCheck,
   Download,
   FileText,
@@ -17,7 +19,10 @@ import {
   GitCompareArrows,
   Inbox,
   LayoutDashboard,
+  Layers3,
   Loader2,
+  MapPin,
+  Package,
   PackageCheck,
   PackageOpen,
   RotateCcw,
@@ -122,6 +127,7 @@ type AbaEstatistica =
   | "movimentacoes"
   | "consumo"
   | "equipes"
+  | "locais"
   | "financeiro"
   | "inventario"
   | "qualidade"
@@ -154,6 +160,7 @@ const ABAS_BASE: ReadonlyArray<{ id: AbaEstatistica; label: string; short: strin
   { id: "movimentacoes", label: "Movimentações", short: "Movim.", icon: BarChart3 },
   { id: "consumo", label: "Consumo e cobertura", short: "Consumo", icon: CalendarClock },
   { id: "equipes", label: "Equipes", short: "Equipes", icon: PackageCheck },
+  { id: "locais", label: "Locais", short: "Locais", icon: MapPin },
   { id: "financeiro", label: "Financeiro", short: "Financeiro", icon: ChartNoAxesCombined },
   { id: "inventario", label: "Inventário", short: "Inventário", icon: ClipboardCheck },
   { id: "qualidade", label: "Qualidade e alertas", short: "Qualidade", icon: ShieldAlert },
@@ -262,6 +269,7 @@ function EstatisticasMateriaisPage() {
 
   const produtos = dados?.produtos;
   const equipes = dados?.equipes;
+  const locais = dados?.locais;
   const movimentacoes = dados?.movimentacoes;
   const funcionarios = dados?.funcionarios;
   const unidades = dados?.unidades;
@@ -498,6 +506,29 @@ function EstatisticasMateriaisPage() {
         return a.nome.localeCompare(b.nome);
       });
   }, [equipes, nomesEquipes, movimentacoesFiltradas]);
+
+  // O gráfico por local considera exclusivamente SAIDA. Sem produto selecionado,
+  // compara a frequência de registros, pois unidades físicas diferentes não podem ser somadas.
+  const serieSaidasPorLocal = useMemo(() => {
+    const agregados = new Map<string, { nome: string; quantidade: number; registros: number }>();
+    const nomesLocais = new Map((locais ?? []).map((local) => [local.id, local.nome]));
+    for (const mov of movimentacoesFiltradas) {
+      if (mov.tipo !== "SAIDA") continue;
+      const id = mov.local_id ?? "__SEM_LOCAL__";
+      const atual = agregados.get(id) ?? {
+        nome: id === "__SEM_LOCAL__" ? "Sem local informado" : nomesLocais.get(id) ?? "Local não encontrado",
+        quantidade: 0,
+        registros: 0,
+      };
+      atual.quantidade += mov.quantidade;
+      atual.registros += 1;
+      agregados.set(id, atual);
+    }
+    return [...agregados.entries()]
+      .map(([localId, item]) => ({ localId, ...item, valor: produtoId ? item.quantidade : item.registros }))
+      .sort((a, b) => b.valor - a.valor || a.nome.localeCompare(b.nome))
+      .slice(0, 15);
+  }, [locais, movimentacoesFiltradas, produtoId]);
 
   const serieTemporal = useMemo(() => {
     if (!movimentacoes) return [];
@@ -1227,6 +1258,8 @@ function EstatisticasMateriaisPage() {
               serieGrafico={serieGrafico}
               serieTemporal={serieTemporal}
               distribuicaoDiaSemana={distribuicaoDiaSemana}
+              serieSaidasPorLocal={serieSaidasPorLocal}
+              produtoSelecionado={produtoSelecionado}
             />
           ) : estatisticaAtiva === "consumo" ? (
             <AbaConsumo
@@ -1250,12 +1283,29 @@ function EstatisticasMateriaisPage() {
               produtoPorEquipe={produtoPorEquipe}
               estatisticasEquipes={estatisticasEquipes}
             />
+          ) : estatisticaAtiva === "locais" ? (
+            <AbaLocais
+              movimentacoes={movimentacoes ?? []}
+              movimentacoesContexto={movimentacoesContexto}
+              locais={locais ?? []}
+              produtos={produtos ?? []}
+              unidades={unidades ?? []}
+              periodo={periodo}
+              produtoId={produtoId}
+              custos={custos}
+              documentosAtivos={documentosAtivos}
+            />
           ) : estatisticaAtiva === "financeiro" ? (
             <AbaFinanceiro
               documentosAtivos={!!documentosAtivos}
               resumo={resumoFinanceiro}
               porEquipe={financeiroPorEquipe}
               porResponsavel={financeiroPorResponsavel}
+              movimentacoes={movimentacoes ?? []}
+              movimentacoesContexto={movimentacoesContexto}
+              locais={locais ?? []}
+              custos={custos}
+              periodo={periodo}
               nomesEquipes={nomesEquipes}
               nomesFuncionarios={nomesFuncionarios}
             />
@@ -1561,11 +1611,15 @@ const AbaMovimentacoes = memo(function AbaMovimentacoes({
   serieGrafico,
   serieTemporal,
   distribuicaoDiaSemana,
+  serieSaidasPorLocal,
+  produtoSelecionado,
 }: {
   fluxo: ReturnType<typeof calcularFluxoPeriodo> | null;
   serieGrafico: Array<{ equipeId: string; nome: string; entradas: number; saidas: number }>;
   serieTemporal: ReturnType<typeof agruparFluxoPorPeriodo>;
   distribuicaoDiaSemana: ReturnType<typeof agruparMovimentacoesPorDiaSemana>;
+  serieSaidasPorLocal: Array<{ localId: string; nome: string; quantidade: number; registros: number; valor: number }>;
+  produtoSelecionado: { id: string; nome: string } | null;
 }) {
   return (
     <div className="space-y-6">
@@ -1625,6 +1679,34 @@ const AbaMovimentacoes = memo(function AbaMovimentacoes({
         </ChartCard>
       </section>
 
+      <section aria-labelledby="saidas-por-local" className="space-y-3">
+        <SectionHeader
+          id="saidas-por-local"
+          icon={MapPin}
+          title="Saídas por local"
+          description={produtoSelecionado ? `Quantidade de ${produtoSelecionado.nome} retirada em cada local, ordenada do maior para o menor.` : "Ranking pela quantidade de registros de saída. Sem um produto selecionado, quantidades de unidades diferentes não são somadas."}
+        />
+        <ChartCard
+          title={produtoSelecionado ? "Quantidade retirada por local" : "Registros de saída por local"}
+          height={360}
+          isEmpty={!serieSaidasPorLocal.length}
+          footnote="Somente movimentações do tipo SAIDA entram neste gráfico. Devoluções não são exibidas nem somadas aqui."
+        >
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={serieSaidasPorLocal} layout="vertical" margin={{ left: 8, right: 20, top: 8, bottom: 8 }}>
+              <CartesianGrid horizontal={false} stroke={COR_GRID} />
+              <XAxis type="number" allowDecimals={Boolean(produtoSelecionado)} {...eixoProps} />
+              <YAxis type="category" dataKey="nome" width={150} {...eixoProps} />
+              <Tooltip
+                cursor={{ fill: "var(--muted)", opacity: 0.35 }}
+                content={<ChartTooltip labelPrefix="Local:" format={(valor) => num(valor)} />}
+              />
+              <Bar dataKey="valor" name={produtoSelecionado ? "Quantidade de saídas" : "Registros de saída"} fill={COR_SAIDA} minPointSize={3} isAnimationActive={false} radius={[0, 4, 4, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+      </section>
+
       <section aria-labelledby="tendencia-temporal" className="space-y-3">
         <SectionHeader
           id="tendencia-temporal"
@@ -1668,6 +1750,266 @@ const AbaMovimentacoes = memo(function AbaMovimentacoes({
           </ResponsiveContainer>
         </ChartCard>
       </section>
+    </div>
+  );
+});
+
+/* ========================================================================== */
+/* Locais                                                                      */
+/* ========================================================================== */
+
+const AbaLocais = memo(function AbaLocais({
+  movimentacoes,
+  movimentacoesContexto,
+  locais,
+  produtos,
+  unidades,
+  periodo,
+  produtoId,
+  custos,
+  documentosAtivos,
+}: {
+  movimentacoes: import("@/types").Movimentacao[];
+  movimentacoesContexto: import("@/types").Movimentacao[];
+  locais: import("@/types").Local[];
+  produtos: import("@/types").Produto[];
+  unidades: import("@/types").Unidade[];
+  periodo: { de: string; ate: string };
+  produtoId: string | null;
+  custos: Map<string, import("@/services/estatisticas-materiais").CustoProdutoDocumentado>;
+  documentosAtivos: boolean;
+}) {
+  const [consolidarPorRaiz, setConsolidarPorRaiz] = useState(false);
+  const [rankingExpandidos, setRankingExpandidos] = useState<string[]>([]);
+  const [detalhesLocaisExpandidos, setDetalhesLocaisExpandidos] = useState<string[]>([]);
+  const [produtosExpandidos, setProdutosExpandidos] = useState<string[]>([]);
+  const locaisPorId = useMemo(() => new Map(locais.map((local) => [local.id, local])), [locais]);
+  const origemPorId = useMemo(() => new Map(movimentacoes.map((mov) => [mov.id, mov])), [movimentacoes]);
+
+  const raizDoLocal = useCallback((localId: string | null | undefined) => {
+    if (!localId) return "__SEM_LOCAL__";
+    let atual = locaisPorId.get(localId);
+    if (!atual) return localId;
+    const vistos = new Set<string>();
+    while (atual.local_pai_id && !vistos.has(atual.id)) {
+      vistos.add(atual.id);
+      const pai = locaisPorId.get(atual.local_pai_id);
+      if (!pai) break;
+      atual = pai;
+    }
+    return atual.id;
+  }, [locaisPorId]);
+
+  const movimentosPeriodo = useMemo(
+    () => filtrarMovimentacoesPeriodo(movimentacoesContexto, periodo).filter((mov) => mov.tipo === "SAIDA" || mov.tipo === "DEVOLUCAO"),
+    [movimentacoesContexto, periodo],
+  );
+
+  const movimentosComLocal = useMemo(() => movimentosPeriodo.map((mov) => {
+    const origem = mov.tipo === "DEVOLUCAO" && mov.movimentacao_origem_id
+      ? origemPorId.get(mov.movimentacao_origem_id)
+      : undefined;
+    const localOriginal = origem?.tipo === "SAIDA" ? origem.local_id : mov.local_id;
+    const localInformado = localOriginal ?? "__SEM_LOCAL__";
+    const localId = consolidarPorRaiz ? raizDoLocal(localOriginal) : localInformado;
+    return { mov, localId };
+  }), [consolidarPorRaiz, movimentosPeriodo, origemPorId, raizDoLocal]);
+
+  const dadosLocais = useMemo(() => {
+    const agregados = new Map<string, { localId: string; nome: string; saidas: number; devolucoes: number; produtos: Set<string>; liquidoPorProduto: Map<string, number>; valorSaidas: number; valorDevolucoes: number; produtosSemCusto: Set<string> }>();
+    for (const { mov, localId } of movimentosComLocal) {
+      const local = locaisPorId.get(localId);
+      const nome = localId === "__SEM_LOCAL__" ? "Sem local informado" : local?.nome ?? "Local não encontrado";
+      const atual = agregados.get(localId) ?? { localId, nome, saidas: 0, devolucoes: 0, produtos: new Set<string>(), liquidoPorProduto: new Map<string, number>(), valorSaidas: 0, valorDevolucoes: 0, produtosSemCusto: new Set<string>() };
+      atual.produtos.add(mov.produto_id);
+      const sinal = mov.tipo === "SAIDA" ? 1 : -1;
+      const custo = custos.get(mov.produto_id)?.custoMedioUnitario;
+      if (custo == null) atual.produtosSemCusto.add(mov.produto_id);
+      else if (mov.tipo === "SAIDA") atual.valorSaidas += mov.quantidade * custo;
+      else atual.valorDevolucoes += mov.quantidade * custo;
+      if (mov.tipo === "SAIDA") atual.saidas += 1;
+      else atual.devolucoes += 1;
+      atual.liquidoPorProduto.set(mov.produto_id, (atual.liquidoPorProduto.get(mov.produto_id) ?? 0) + sinal * mov.quantidade);
+      agregados.set(localId, atual);
+    }
+    return [...agregados.values()].map((item) => {
+      const consumoLiquido = produtoId ? item.liquidoPorProduto.get(produtoId) ?? 0 : null;
+      const totalLiquidoProdutos = [...item.liquidoPorProduto.values()].filter((valor) => valor > 0).length;
+      return { ...item, consumoLiquido, totalLiquidoProdutos };
+    }).sort((a, b) => produtoId
+      ? (b.consumoLiquido ?? 0) - (a.consumoLiquido ?? 0) || a.nome.localeCompare(b.nome)
+      : b.saidas - a.saidas || a.nome.localeCompare(b.nome));
+  }, [custos, locaisPorId, movimentosComLocal, produtoId]);
+
+  const detalhesPorLocal = useMemo(() => {
+    const agrupados = new Map<string, Map<string, { saidas: number; devolucoes: number; registrosSaida: number; registrosDevolucao: number; valorSaidas: number; valorDevolucoes: number; semCusto: boolean }>>();
+    for (const { mov, localId } of movimentosComLocal) {
+      let produtosDoLocal = agrupados.get(localId);
+      if (!produtosDoLocal) {
+        produtosDoLocal = new Map();
+        agrupados.set(localId, produtosDoLocal);
+      }
+      const atual = produtosDoLocal.get(mov.produto_id) ?? { saidas: 0, devolucoes: 0, registrosSaida: 0, registrosDevolucao: 0, valorSaidas: 0, valorDevolucoes: 0, semCusto: false };
+      const custo = custos.get(mov.produto_id)?.custoMedioUnitario;
+      if (custo == null) atual.semCusto = true;
+      else if (mov.tipo === "SAIDA") atual.valorSaidas += mov.quantidade * custo;
+      else atual.valorDevolucoes += mov.quantidade * custo;
+      if (mov.tipo === "SAIDA") {
+        atual.saidas += mov.quantidade;
+        atual.registrosSaida += 1;
+      } else {
+        atual.devolucoes += mov.quantidade;
+        atual.registrosDevolucao += 1;
+      }
+      produtosDoLocal.set(mov.produto_id, atual);
+    }
+    return agrupados;
+  }, [custos, movimentosComLocal]);
+
+  const nomeProduto = useMemo(() => new Map(produtos.map((produto) => [produto.id, produto.nome])), [produtos]);
+  const siglaUnidadePorProduto = useMemo(() => {
+    const unidadesPorId = new Map(unidades.map((unidade) => [unidade.id, unidade.sigla]));
+    return new Map(produtos.map((produto) => [produto.id, unidadesPorId.get(produto.unidade_id) ?? "un."]));
+  }, [produtos, unidades]);
+
+  const alternarRanking = (localId: string) => setRankingExpandidos((atuais) =>
+    atuais.includes(localId) ? atuais.filter((id) => id !== localId) : [...atuais, localId],
+  );
+  const alternarDetalheLocal = (localId: string) => setDetalhesLocaisExpandidos((atuais) =>
+    atuais.includes(localId) ? atuais.filter((id) => id !== localId) : [...atuais, localId],
+  );
+  const alternarProduto = (chave: string) => setProdutosExpandidos((atuais) =>
+    atuais.includes(chave) ? atuais.filter((id) => id !== chave) : [...atuais, chave],
+  );
+  const maiorValorRanking = Math.max(1, ...dadosLocais.map((item) => produtoId ? Math.max(0, item.consumoLiquido ?? 0) : item.saidas));
+
+  return (
+    <div className="space-y-5">
+      <SectionHeader id="analise-locais" icon={MapPin} title="Análise por local" description={produtoId ? "Consumo líquido do produto selecionado por local: saídas menos devoluções vinculadas à saída original." : "Identifique as frentes com maior atividade e consulte o consumo líquido por material sem misturar unidades diferentes."} />
+      <div className="flex flex-col gap-3 rounded-xl border border-border/70 bg-card p-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+        <div className="text-sm text-muted-foreground">Período analisado <strong className="ml-1 text-foreground">{formatarData(periodo.de)} – {formatarData(periodo.ate)}</strong></div>
+        <Button variant={consolidarPorRaiz ? "default" : "outline"} size="sm" onClick={() => setConsolidarPorRaiz((valor) => !valor)}>
+          <MapPin className="mr-2 size-4" />{consolidarPorRaiz ? "Locais agrupados pelo principal" : "Consolidar locais descendentes"}
+        </Button>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <StatTile label="Locais com movimentação" valor={num(dadosLocais.length)} icon={MapPin} tone="primary" />
+        <StatTile label="Registros de saída" valor={num(dadosLocais.reduce((total, item) => total + item.saidas, 0))} icon={PackageOpen} tone="danger" />
+        <StatTile label="Registros de devolução" valor={num(dadosLocais.reduce((total, item) => total + item.devolucoes, 0))} icon={RotateCcw} tone="success" sub="Descontados no consumo líquido" />
+      </div>
+
+      <Card className="overflow-hidden border-border/70 shadow-sm">
+        <CardHeader className="border-b bg-muted/25 pb-4">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <CardTitle className="text-base">{produtoId ? "Ranking por consumo líquido" : "Ranking de atividade por local"}</CardTitle>
+              <p className="mt-1 text-sm text-muted-foreground">{produtoId ? `Quantidade líquida de ${nomeProduto.get(produtoId) ?? "produto selecionado"}, da maior para a menor.` : "Locais ordenados pelo número de registros de saída. As unidades não são somadas entre produtos diferentes."}</p>
+            </div>
+            <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs font-medium text-primary">
+              <ChartNoAxesCombined className="size-3.5" /> {dadosLocais.length} locais
+            </span>
+          </div>
+        </CardHeader>
+        <CardContent className="p-3 sm:p-4">
+          {dadosLocais.length ? <div className="space-y-2.5">
+            {dadosLocais.map((item, index) => {
+              const valorRanking = produtoId ? Math.max(0, item.consumoLiquido ?? 0) : item.saidas;
+              const largura = Math.max(valorRanking > 0 ? 3 : 0, (valorRanking / maiorValorRanking) * 100);
+              const expandido = rankingExpandidos.includes(item.localId);
+              return <div key={item.localId} className={`overflow-hidden rounded-xl border-l-4 border-y border-r transition-all duration-200 ${expandido ? "border-l-primary border-y-primary/30 border-r-primary/30 bg-primary/[0.055] shadow-sm ring-1 ring-primary/10" : index === 0 ? "border-l-primary/60 border-y-border/70 border-r-border/70 bg-card hover:border-l-primary hover:bg-primary/[0.025]" : "border-l-muted-foreground/25 border-y-border/70 border-r-border/70 bg-card hover:border-l-primary/70 hover:border-y-primary/25 hover:border-r-primary/25 hover:bg-muted/20"}`}>
+                <button type="button" aria-expanded={expandido} onClick={() => alternarRanking(item.localId)} className="flex w-full items-center gap-3 p-3 text-left sm:gap-4 sm:p-4">
+                  <span className={`flex size-9 shrink-0 items-center justify-center rounded-xl text-sm font-bold ${index === 0 ? "bg-primary text-primary-foreground shadow-sm" : "bg-muted text-muted-foreground"}`}>{index + 1}</span>
+                  <span className="flex min-w-0 flex-1 flex-col gap-2">
+                    <span className="flex min-w-0 flex-wrap items-center gap-2">
+                      <span className="truncate font-semibold text-foreground">{item.nome}</span>
+                      {index === 0 && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">Maior {produtoId ? "consumo" : "atividade"}</span>}
+                    </span>
+                    <span className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                      <span className={`block h-full rounded-full transition-all ${produtoId ? "bg-primary" : "bg-[var(--sidebar-primary)]"}`} style={{ width: `${largura}%` }} />
+                    </span>
+                  </span>
+                  <span className="flex shrink-0 flex-col items-end gap-1">
+                    <span className="text-base font-bold tabular-nums text-foreground">{num(valorRanking)}{produtoId ? ` ${siglaUnidadePorProduto.get(produtoId) ?? "un."}` : ""}</span>
+                    <span className="text-[11px] text-muted-foreground">{produtoId ? "consumo líquido" : `${num(item.saidas)} saídas`}</span>
+                  </span>
+                  <span className="ml-0.5 flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted">
+                    {expandido ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+                  </span>
+                </button>
+                {expandido && <div className="border-t border-border/70 bg-muted/15 px-3 py-3 sm:px-4">
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                    <div className="rounded-lg border border-border/60 bg-card p-2.5"><p className="text-xs text-muted-foreground">Registros de saída</p><p className="mt-1 font-semibold tabular-nums text-foreground">{num(item.saidas)}</p></div>
+                    <div className="rounded-lg border border-emerald-600/20 bg-emerald-500/5 p-2.5"><p className="text-xs text-muted-foreground">Devoluções</p><p className="mt-1 font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">{num(item.devolucoes)}</p></div>
+                    <div className="col-span-2 rounded-lg border border-border/60 bg-card p-2.5 sm:col-span-1"><p className="text-xs text-muted-foreground">Produtos distintos</p><p className="mt-1 font-semibold tabular-nums text-foreground">{num(item.produtos.size)}</p></div>
+                    {documentosAtivos && <><div className="rounded-lg border border-primary/20 bg-primary/5 p-2.5"><p className="text-xs text-muted-foreground">Saídas valorizadas</p><p className="mt-1 font-semibold tabular-nums">{formatarMoeda(item.valorSaidas)}</p></div><div className="rounded-lg border border-emerald-600/20 bg-emerald-500/5 p-2.5"><p className="text-xs text-muted-foreground">Devoluções valorizadas</p><p className="mt-1 font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">− {formatarMoeda(item.valorDevolucoes)}</p></div><div className="rounded-lg border border-border/60 bg-card p-2.5"><p className="text-xs text-muted-foreground">Consumo financeiro líquido</p><p className="mt-1 font-semibold tabular-nums text-primary">{formatarMoeda(item.valorSaidas - item.valorDevolucoes)}</p></div><div className="col-span-2 rounded-lg border border-amber-600/20 bg-amber-500/5 p-2.5 sm:col-span-3"><p className="text-xs text-muted-foreground">Produtos sem custo documentado neste local</p><p className="mt-1 font-semibold tabular-nums">{num(item.produtosSemCusto.size)}</p></div></>}
+                  </div>
+                  {!produtoId && <p className="mt-3 text-xs leading-relaxed text-muted-foreground">Abra o detalhamento abaixo para ver o consumo líquido de cada produto, com saídas e devoluções separadas por unidade de medida.</p>}
+                </div>}
+              </div>;
+            })}
+          </div> : <EmptyState title="Nenhuma movimentação por local" description="Não foram encontradas saídas ou devoluções no período e com os filtros selecionados." />}
+        </CardContent>
+      </Card>
+
+      {!produtoId && <Card className="overflow-hidden border-border/70 shadow-sm">
+        <CardHeader className="border-b bg-muted/25">
+          <div className="flex items-start gap-3">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><Layers3 className="size-5" /></span>
+            <div>
+              <CardTitle className="text-base">Consumo líquido por produto e local</CardTitle>
+              <p className="mt-1 text-sm leading-relaxed text-muted-foreground">Cada frente pode ser expandida para consultar os materiais. Expanda um produto para ver saídas, devoluções e saldo líquido, sempre na unidade cadastrada.</p>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-2 p-3 sm:p-4">
+          {dadosLocais.length ? dadosLocais.map((local, localIndex) => {
+            const produtosDoLocal = detalhesPorLocal.get(local.localId) ?? new Map();
+            const itens = [...produtosDoLocal.entries()]
+              .map(([id, detalhe]) => ({ id, ...detalhe, liquido: detalhe.saidas - detalhe.devolucoes, valorLiquido: detalhe.valorSaidas - detalhe.valorDevolucoes }))
+              .sort((a, b) => b.liquido - a.liquido || (nomeProduto.get(a.id) ?? "").localeCompare(nomeProduto.get(b.id) ?? ""));
+            const expandido = detalhesLocaisExpandidos.includes(local.localId);
+            const consumoPositivo = itens.filter((item) => item.liquido > 0).length;
+            return <section key={local.localId} className={`overflow-hidden rounded-xl border-l-4 border-y border-r transition-all duration-200 ${expandido ? "border-l-primary border-y-primary/35 border-r-primary/35 bg-primary/[0.035] shadow-sm ring-1 ring-primary/10" : localIndex === 0 ? "border-l-primary/60 border-y-border/70 border-r-border/70 hover:border-l-primary hover:border-y-primary/25 hover:border-r-primary/25" : "border-l-muted-foreground/25 border-y-border/70 border-r-border/70 hover:border-l-primary/70 hover:border-y-primary/25 hover:border-r-primary/25"}`}>
+              <button type="button" aria-expanded={expandido} onClick={() => alternarDetalheLocal(local.localId)} className={`flex w-full items-center gap-3 p-3 text-left transition-colors sm:p-4 ${expandido ? "bg-primary/[0.09]" : "bg-card hover:bg-muted/30"}`}>
+                <span className={`flex size-9 shrink-0 items-center justify-center rounded-lg ${localIndex === 0 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}><MapPin className="size-4" /></span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-semibold text-foreground">{local.nome}</span>
+                  <span className="mt-0.5 block text-xs text-muted-foreground">{num(itens.length)} {itens.length === 1 ? "produto" : "produtos"} · {num(consumoPositivo)} com consumo líquido positivo</span>
+                </span>
+                <span className="hidden rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground sm:inline-flex">{num(local.saidas)} saídas</span>
+                <span className="flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground">{expandido ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}</span>
+              </button>
+              {expandido && <div className="space-y-2 border-t border-border/70 bg-muted/10 p-2.5 sm:p-3">
+                {itens.length ? itens.map((item) => {
+                  const chaveProduto = `${local.localId}:${item.id}`;
+                  const produtoExpandido = produtosExpandidos.includes(chaveProduto);
+                  const unidade = siglaUnidadePorProduto.get(item.id) ?? "un.";
+                  return <div key={item.id} className={`overflow-hidden rounded-lg border-l-4 border-y border-r transition-all duration-200 ${produtoExpandido ? "border-l-primary border-y-primary/30 border-r-primary/30 bg-primary/[0.035] shadow-sm" : "border-l-muted-foreground/20 border-y-border/70 border-r-border/70 bg-card hover:border-l-primary/60"}`}>
+                    <button type="button" aria-expanded={produtoExpandido} onClick={() => alternarProduto(chaveProduto)} className={`flex w-full items-center gap-3 p-3 text-left transition-colors ${produtoExpandido ? "bg-primary/[0.075]" : "hover:bg-muted/30"}`}>
+                      <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/8 text-primary"><Package className="size-4" /></span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium text-foreground">{nomeProduto.get(item.id) ?? "Produto não encontrado"}</span>
+                        <span className="mt-0.5 block text-xs text-muted-foreground">{num(item.registrosSaida)} {item.registrosSaida === 1 ? "saída" : "saídas"} · {num(item.registrosDevolucao)} {item.registrosDevolucao === 1 ? "devolução" : "devoluções"}{documentosAtivos ? item.semCusto ? " · sem custo documentado" : ` · ${formatarMoeda(item.valorLiquido)} líquido` : ""}</span>
+                      </span>
+                      <span className="flex shrink-0 flex-col items-end">
+                        <span className={`text-sm font-bold tabular-nums ${item.liquido < 0 ? "text-destructive" : "text-foreground"}`}>{num(item.liquido)} <span className="text-xs font-medium text-muted-foreground">{unidade}</span></span>
+                        <span className="text-[10px] uppercase tracking-wide text-muted-foreground">líquido</span>
+                      </span>
+                      {produtoExpandido ? <ChevronDown className="size-4 shrink-0 text-muted-foreground" /> : <ChevronRight className="size-4 shrink-0 text-muted-foreground" />}
+                    </button>
+                    {produtoExpandido && <div className="grid gap-2 border-t border-border/60 bg-muted/15 p-3 sm:grid-cols-3">
+                      <div className="rounded-lg border border-border/60 bg-card p-2.5"><p className="text-xs text-muted-foreground">Quantidade retirada</p><p className="mt-1 font-semibold tabular-nums">{num(item.saidas)} <span className="text-xs font-normal text-muted-foreground">{unidade}</span></p></div>
+                      <div className="rounded-lg border border-emerald-600/20 bg-emerald-500/5 p-2.5"><p className="text-xs text-muted-foreground">Quantidade devolvida</p><p className="mt-1 font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">− {num(item.devolucoes)} <span className="text-xs font-normal">{unidade}</span></p></div>
+                      <div className="rounded-lg border border-primary/20 bg-primary/5 p-2.5"><p className="text-xs text-muted-foreground">Consumo líquido</p><p className="mt-1 font-semibold tabular-nums text-primary">{num(item.liquido)} <span className="text-xs font-normal">{unidade}</span></p></div>
+                      {documentosAtivos && <><div className="rounded-lg border border-border/60 bg-card p-2.5"><p className="text-xs text-muted-foreground">Valor das saídas</p><p className="mt-1 font-semibold tabular-nums">{formatarMoeda(item.valorSaidas)}</p></div><div className="rounded-lg border border-emerald-600/20 bg-emerald-500/5 p-2.5"><p className="text-xs text-muted-foreground">Valor das devoluções</p><p className="mt-1 font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">− {formatarMoeda(item.valorDevolucoes)}</p></div><div className={`rounded-lg border p-2.5 ${item.semCusto ? "border-amber-600/20 bg-amber-500/5" : "border-primary/20 bg-primary/5"}`}><p className="text-xs text-muted-foreground">Consumo financeiro líquido</p><p className={`mt-1 font-semibold tabular-nums ${item.semCusto ? "text-amber-700 dark:text-amber-400" : "text-primary"}`}>{item.semCusto ? "Valoração parcial" : formatarMoeda(item.valorLiquido)}</p></div></>}
+                    </div>}
+                  </div>;
+                }) : <div className="rounded-lg border border-dashed border-border p-5 text-center text-sm text-muted-foreground">Nenhuma movimentação de saída ou devolução para este local no período.</div>}
+              </div>}
+            </section>;
+          }) : <EmptyState title="Nenhum local encontrado" description="Ajuste o período ou os filtros para consultar o consumo por local." />}
+        </CardContent>
+      </Card>}
     </div>
   );
 });
@@ -1805,7 +2147,7 @@ const AbaConsumo = memo(function AbaConsumo({
                       <div>
                         <p className="text-sm font-semibold">Consumo por janela</p>
                         <p className="text-xs leading-relaxed text-muted-foreground">
-                          Médias calculadas só com as saídas do produto nos últimos N dias, ancoradas na data final.
+                          Consumo líquido calculado pelas saídas menos devoluções nos últimos N dias, ancorado na data final.
                         </p>
                       </div>
                       <ToneBadge tone={tomTendencia}>{textoTendencia}</ToneBadge>
@@ -1814,7 +2156,7 @@ const AbaConsumo = memo(function AbaConsumo({
                       {analiseConsumoProduto.janelas.map((janela) => (
                         <div key={janela.dias} className="rounded-lg border bg-background p-3">
                           <p className="text-[11px] text-muted-foreground">Últimos {janela.dias} dias</p>
-                          <p className="mt-1 font-display text-lg font-semibold tabular-nums">{num(janela.saidas)} saídas</p>
+                          <p className="mt-1 font-display text-lg font-semibold tabular-nums">{num(janela.saidas)} de consumo líquido</p>
                           <p className="mt-1 text-xs tabular-nums text-muted-foreground">
                             {num(janela.mediaDiaria)}/dia · {num(janela.mediaSemanal)}/sem · {num(janela.mediaMensal)}/mês
                           </p>
@@ -2374,6 +2716,11 @@ const AbaFinanceiro = memo(function AbaFinanceiro({
   resumo,
   porEquipe,
   porResponsavel,
+  movimentacoes,
+  movimentacoesContexto,
+  locais,
+  custos,
+  periodo,
   nomesEquipes,
   nomesFuncionarios,
 }: {
@@ -2381,9 +2728,40 @@ const AbaFinanceiro = memo(function AbaFinanceiro({
   resumo: ReturnType<typeof calcularResumoFinanceiro> | null;
   porEquipe: ReturnType<typeof calcularFluxoFinanceiroPorGrupo>;
   porResponsavel: ReturnType<typeof calcularFluxoFinanceiroPorGrupo>;
+  movimentacoes: import("@/types").Movimentacao[];
+  movimentacoesContexto: import("@/types").Movimentacao[];
+  locais: import("@/types").Local[];
+  custos: Map<string, import("@/services/estatisticas-materiais").CustoProdutoDocumentado>;
+  periodo: { de: string; ate: string };
   nomesEquipes: Map<string, string>;
   nomesFuncionarios: Map<string, string>;
 }) {
+  const fluxoPorLocal = useMemo(() => {
+    const movimentosPorId = new Map(movimentacoes.map((mov) => [mov.id, mov]));
+    const agregados = new Map<string, { id: string; nome: string; saidas: number; devolucoes: number; valorSaidas: number; valorDevolucoes: number; saidasSemCusto: number; devolucoesSemCusto: number; produtosSemCusto: Set<string> }>();
+    for (const mov of filtrarMovimentacoesPeriodo(movimentacoesContexto, periodo)) {
+      if (mov.tipo !== "SAIDA" && mov.tipo !== "DEVOLUCAO") continue;
+      const origem = mov.tipo === "DEVOLUCAO" && mov.movimentacao_origem_id ? movimentosPorId.get(mov.movimentacao_origem_id) : undefined;
+      const localId = (origem?.tipo === "SAIDA" ? origem.local_id : mov.local_id) ?? "__SEM_LOCAL__";
+      const nome = localId === "__SEM_LOCAL__" ? "Sem local informado" : locais.find((local) => local.id === localId)?.nome ?? "Local não encontrado";
+      const atual = agregados.get(localId) ?? { id: localId, nome, saidas: 0, devolucoes: 0, valorSaidas: 0, valorDevolucoes: 0, saidasSemCusto: 0, devolucoesSemCusto: 0, produtosSemCusto: new Set<string>() };
+      const custo = custos.get(mov.produto_id)?.custoMedioUnitario;
+      if (mov.tipo === "SAIDA") {
+        atual.saidas += 1;
+        if (custo == null) atual.saidasSemCusto += 1;
+        else atual.valorSaidas += mov.quantidade * custo;
+      } else {
+        atual.devolucoes += 1;
+        if (custo == null) atual.devolucoesSemCusto += 1;
+        else atual.valorDevolucoes += mov.quantidade * custo;
+      }
+      if (custo == null) atual.produtosSemCusto.add(mov.produto_id);
+      agregados.set(localId, atual);
+    }
+    return [...agregados.values()].map((item) => ({ ...item, consumoLiquido: item.valorSaidas - item.valorDevolucoes }))
+      .sort((a, b) => b.consumoLiquido - a.consumoLiquido || a.nome.localeCompare(b.nome)).slice(0, 10);
+  }, [custos, locais, movimentacoes, movimentacoesContexto, periodo]);
+
   return (
     <section aria-labelledby="financeiro" className="space-y-3">
       <SectionHeader
@@ -2401,23 +2779,60 @@ const AbaFinanceiro = memo(function AbaFinanceiro({
         />
       ) : (
         <>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-            <StatTile label="Valor do estoque documentado" valor={formatarMoeda(resumo?.valorEstoqueDocumentado)} icon={ChartNoAxesCombined} tone="primary" />
-            <StatTile label="Entradas documentadas" valor={formatarMoeda(resumo?.valorEntradasDocumentado)} icon={PackageCheck} tone="success" />
-            <StatTile label="Consumo financeiro" valor={formatarMoeda(resumo?.valorSaidasDocumentado)} icon={PackageOpen} tone="danger" />
-            <StatTile
-              label="Cobertura de valoração"
-              valor={`${resumo?.coberturaPorPosicoes ?? 0}%`}
-              icon={PackageCheck}
-              tone={resumo && resumo.coberturaPorPosicoes >= 95 ? "success" : "warning"}
-            />
-            <StatTile
-              label="Movimentações sem custo"
-              valor={num((resumo?.saidasSemCusto ?? 0) + (resumo?.entradasSemCusto ?? 0))}
-              icon={AlertTriangle}
-              tone={resumo && (resumo.saidasSemCusto || resumo.entradasSemCusto) ? "warning" : "success"}
-            />
+          <Card className="overflow-hidden border-l-4 border-l-primary border-y-primary/25 border-r-primary/25 bg-gradient-to-br from-primary/[0.07] via-card to-card shadow-sm">
+            <CardContent className="p-4 sm:p-5">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-start gap-3">
+                  <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><PackageCheck className="size-5" /></span>
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">Valor estimado do estoque atual</p>
+                    <p className="mt-1 text-2xl font-bold tracking-tight text-foreground sm:text-3xl">{formatarMoeda(resumo?.valorEstoqueDocumentado)}</p>
+                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">Saldo atual positivo × custo médio unitário documentado, sem limitar o cálculo ao período selecionado.</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2 sm:min-w-64">
+                  <div className="rounded-lg border border-border/70 bg-card/80 p-3"><p className="text-xs text-muted-foreground">Produtos valorados</p><p className="mt-1 text-lg font-semibold tabular-nums">{num(resumo?.produtosComCusto ?? 0)}</p></div>
+                  <div className={`rounded-lg border p-3 ${(resumo?.produtosSemCusto ?? 0) > 0 ? "border-amber-600/25 bg-amber-500/5" : "border-emerald-600/20 bg-emerald-500/5"}`}><p className="text-xs text-muted-foreground">Sem valor documentado</p><p className={`mt-1 text-lg font-semibold tabular-nums ${(resumo?.produtosSemCusto ?? 0) > 0 ? "text-amber-700 dark:text-amber-400" : "text-emerald-700 dark:text-emerald-400"}`}>{num(resumo?.produtosSemCusto ?? 0)}</p></div>
+                </div>
+              </div>
+              <div className="mt-4 border-t border-border/60 pt-3">
+                <div className="mb-2 flex items-center justify-between gap-3 text-xs"><span className="text-muted-foreground">Cobertura por produtos com estoque</span><strong className="tabular-nums text-foreground">{num(resumo?.coberturaPorProdutos ?? 100)}%</strong></div>
+                <div className="h-2 overflow-hidden rounded-full bg-muted"><div className={`h-full rounded-full transition-all ${(resumo?.coberturaPorProdutos ?? 100) >= 95 ? "bg-emerald-600" : "bg-amber-500"}`} style={{ width: `${Math.min(100, Math.max(0, resumo?.coberturaPorProdutos ?? 100))}%` }} /></div>
+                {(resumo?.produtosSemCusto ?? 0) > 0 && <p className="mt-3 flex items-start gap-2 rounded-lg border border-amber-600/20 bg-amber-500/5 p-3 text-xs leading-relaxed text-amber-800 dark:text-amber-300"><AlertTriangle className="mt-0.5 size-4 shrink-0" />O valor apresentado é parcial: {num(resumo?.produtosSemCusto ?? 0)} {resumo?.produtosSemCusto === 1 ? "produto com saldo" : "produtos com saldo"} não possuem custo unitário documentado e, portanto, não estão incluídos no total.</p>}
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <StatTile label="Entradas documentadas no período" valor={formatarMoeda(resumo?.valorEntradasDocumentado)} icon={PackageCheck} tone="success" />
+            <StatTile label="Saídas valorizadas no período" valor={formatarMoeda(resumo?.valorSaidasDocumentado)} icon={PackageOpen} tone="danger" />
+            <StatTile label="Movimentações sem custo" valor={num((resumo?.saidasSemCusto ?? 0) + (resumo?.entradasSemCusto ?? 0))} icon={AlertTriangle} tone={resumo && (resumo.saidasSemCusto || resumo.entradasSemCusto) ? "warning" : "success"} />
           </div>
+
+          <Card className="overflow-hidden border-border/70 shadow-sm">
+            <CardHeader className="border-b bg-muted/25"><div className="flex items-start gap-3"><span className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary"><MapPin className="size-4" /></span><div><CardTitle className="text-base">Consumo financeiro por local</CardTitle><p className="mt-1 text-sm text-muted-foreground">Saídas e devoluções valorizadas pelo custo médio documentado no período selecionado.</p></div></div></CardHeader>
+            <CardContent className="space-y-4 p-3 sm:p-4">
+              {fluxoPorLocal.length ? <>
+                <div className="h-72 w-full">
+                  <ResponsiveContainer width="100%" height="100%"><BarChart data={fluxoPorLocal} layout="vertical" margin={{ top: 4, right: 12, left: 8, bottom: 4 }} barCategoryGap="22%">
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={COR_GRID} />
+                    <XAxis type="number" tickFormatter={(valor: number) => new Intl.NumberFormat("pt-BR", { notation: "compact", style: "currency", currency: "BRL", maximumFractionDigits: 1 }).format(valor)} tick={{ fontSize: 11, fill: COR_EIXO }} />
+                    <YAxis type="category" dataKey="nome" width={110} tick={{ fontSize: 11, fill: COR_EIXO }} />
+                    <Tooltip formatter={(valor) => formatarMoeda(Number(valor))} contentStyle={{ borderRadius: 12, border: "1px solid var(--border)", background: "var(--card)" }} />
+                    <Legend />
+                    <Bar dataKey="valorSaidas" name="Saídas" fill={COR_SAIDA} radius={[0, 4, 4, 0]} />
+                    <Bar dataKey="valorDevolucoes" name="Devoluções" fill="#16a34a" radius={[0, 4, 4, 0]} />
+                  </BarChart></ResponsiveContainer>
+                </div>
+                <div className="space-y-2">
+                  {fluxoPorLocal.map((item, index) => <details key={item.id} className={`group overflow-hidden rounded-xl border-l-4 border-y border-r ${index === 0 ? "border-l-primary border-y-primary/25 border-r-primary/25" : "border-l-muted-foreground/25 border-border/70"}`}>
+                    <summary className="flex cursor-pointer list-none items-center gap-3 p-3 transition-colors hover:bg-muted/30 [&::-webkit-details-marker]:hidden"><span className={`flex size-8 shrink-0 items-center justify-center rounded-lg text-xs font-bold ${index === 0 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>{index + 1}</span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{item.nome}</span><span className="block text-xs text-muted-foreground">{num(item.saidas)} saídas · {num(item.devolucoes)} devoluções · {num(item.produtosSemCusto.size)} produtos sem custo</span></span><span className="flex flex-col items-end"><span className="font-semibold tabular-nums">{formatarMoeda(item.consumoLiquido)}</span><span className="text-[10px] uppercase tracking-wide text-muted-foreground">consumo líquido</span></span><ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" /></summary>
+                    <div className="grid gap-2 border-t border-border/60 bg-muted/10 p-3 sm:grid-cols-3"><div className="rounded-lg border bg-card p-3"><p className="text-xs text-muted-foreground">Saídas valorizadas</p><p className="mt-1 font-semibold tabular-nums">{formatarMoeda(item.valorSaidas)}</p></div><div className="rounded-lg border border-emerald-600/20 bg-emerald-500/5 p-3"><p className="text-xs text-muted-foreground">Devoluções valorizadas</p><p className="mt-1 font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">− {formatarMoeda(item.valorDevolucoes)}</p></div><div className="rounded-lg border border-primary/20 bg-primary/5 p-3"><p className="text-xs text-muted-foreground">Consumo líquido estimado</p><p className="mt-1 font-semibold tabular-nums text-primary">{formatarMoeda(item.consumoLiquido)}</p></div></div>
+                  </details>)}
+                </div>
+              </> : <EmptyState title="Sem movimentações financeiras por local" description="Não há saídas ou devoluções valorizáveis no período e nos filtros selecionados." />}
+            </CardContent>
+          </Card>
 
           <div className="grid gap-3 lg:grid-cols-2">
             <FinancialTable title="Fluxo financeiro por equipe" rows={porEquipe} labels={nomesEquipes} />
@@ -2454,7 +2869,7 @@ const AbaInventario = memo(function AbaInventario({
         id="inventario-acuracidade"
         icon={ClipboardCheck}
         title="Acuracidade do inventário"
-        description="Acuracidade por posições compara contagens exatas; por quantidade, mede a divergência física absoluta sobre o total registrado."
+        description="Acuracidade por posições mede contagens exatas. A média por item compara cada produto individualmente, sem somar unidades incompatíveis."
       />
 
       {acuracidade.inventariosConcluidos === 0 ? (
@@ -2473,7 +2888,7 @@ const AbaInventario = memo(function AbaInventario({
               tone={acuracidade.acuracidadePorPosicoes >= 95 ? "success" : "warning"}
             />
             <StatTile
-              label="Acuracidade por quantidade"
+              label="Acuracidade média por item"
               valor={`${num(acuracidade.acuracidadePorQuantidade)}%`}
               icon={PackageCheck}
               tone={acuracidade.acuracidadePorQuantidade >= 95 ? "success" : "warning"}
@@ -2484,7 +2899,7 @@ const AbaInventario = memo(function AbaInventario({
               icon={AlertTriangle}
               tone={acuracidade.itensDivergentes ? "warning" : "success"}
             />
-            <StatTile label="Cobertura de contagem" valor={`${num(acuracidade.coberturaContagem)}%`} icon={PackageOpen} />
+            <StatTile label="Cobertura do último inventário" valor={`${num(acuracidade.coberturaContagem)}%`} icon={PackageOpen} />
             <StatTile label="Inventários concluídos" valor={num(acuracidade.inventariosConcluidos)} icon={ClipboardCheck} tone="primary" />
           </div>
 
@@ -2516,7 +2931,7 @@ const AbaInventario = memo(function AbaInventario({
                   acuracidade.maioresDivergencias.map((item) => (
                     <div
                       key={`${item.inventarioId}:${item.produtoId}:${item.equipeId}`}
-                      className="rounded-xl border bg-background p-3"
+                      className={`rounded-xl border border-l-4 p-3 transition-colors ${item.saldoSistemaZero ? "border-l-red-600 bg-red-50/70 dark:bg-red-950/20" : item.acuracidadePercentual < 80 ? "border-l-red-500 bg-red-50/40 dark:bg-red-950/10" : item.acuracidadePercentual < 95 ? "border-l-amber-500 bg-amber-50/50 dark:bg-amber-950/10" : "border-l-primary bg-card"}`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
@@ -2533,11 +2948,16 @@ const AbaInventario = memo(function AbaInventario({
                           {num(item.diferenca)}
                         </ToneBadge>
                       </div>
-                      <div className="mt-3 grid grid-cols-3 gap-2">
+                      {item.saldoSistemaZero ? (
+                        <p className="mt-2 rounded-md border border-red-200 bg-red-100 px-2.5 py-1.5 text-xs font-medium text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">Saldo do sistema zerado com quantidade física encontrada</p>
+                      ) : null}
+                      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
                         <Metric label="Sistema" value={num(item.quantidadeSistema)} />
                         <Metric label="Contado" value={num(item.quantidadeContada)} />
-                        <Metric label="Acuracidade" value={`${num(item.acuracidadePercentual)}%`} />
+                        <Metric label="Diferença absoluta" value={num(item.divergenciaAbsoluta)} />
+                        <Metric label="Acuracidade individual" value={`${num(item.acuracidadePercentual)}%`} tone={item.acuracidadePercentual < 80 ? "danger" : item.acuracidadePercentual < 95 ? "warning" : "success"} />
                       </div>
+                      <p className="mt-2 text-xs text-muted-foreground">{item.desvioRelativoPercentual == null ? "Desvio relativo não definido: saldo de referência igual a zero." : `Desvio relativo: ${num(item.desvioRelativoPercentual)}% do saldo do sistema.`}</p>
                     </div>
                   ))
                 ) : (
@@ -2570,7 +2990,7 @@ const AbaInventario = memo(function AbaInventario({
                     </div>
                     <div className="mt-2 flex justify-between text-xs text-muted-foreground">
                       <span>Por posições</span>
-                      <span className="tabular-nums">{num(item.acuracidadePorQuantidade)}% por quantidade</span>
+                      <span className="tabular-nums">{num(item.acuracidadePorQuantidade)}% média por item</span>
                     </div>
                   </div>
                 ))}

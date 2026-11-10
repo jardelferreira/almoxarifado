@@ -1779,7 +1779,17 @@ export function calcularCustosDocumentados(
 }
 
 export type ResumoFinanceiro = {
+  /** Valor estimado do saldo atual usando custo médio documentado por produto. */
   valorEstoqueDocumentado: number;
+  /** Produtos distintos com saldo positivo e custo documentado. */
+  produtosComCusto: number;
+  /** Produtos distintos com saldo positivo, sem custo documentado. */
+  produtosSemCusto: number;
+  /** Produtos distintos com saldo positivo, independentemente da valoração. */
+  produtosComEstoque: number;
+  /** Cobertura por produtos distintos com saldo positivo. */
+  coberturaPorProdutos: number;
+  /** Cobertura por posições produto/equipe, mantida para compatibilidade. */
   posicoesComCusto: number;
   posicoesSemCusto: number;
   coberturaPorPosicoes: number;
@@ -1819,13 +1829,19 @@ export function calcularResumoFinanceiro(
 
   let valorEstoqueDocumentado = 0;
   let posicoesComCusto = 0;
+  const produtosComEstoqueIds = new Set(estoque.map((item) => item.produto.id));
+  const produtosComCustoIds = new Set<string>();
 
   for (const item of estoque) {
     const custo = custos.get(item.produto.id)?.custoMedioUnitario;
     if (custo == null) continue;
     valorEstoqueDocumentado += item.estoque * custo;
     posicoesComCusto += 1;
+    produtosComCustoIds.add(item.produto.id);
   }
+  const produtosComEstoque = produtosComEstoqueIds.size;
+  const produtosComCusto = produtosComCustoIds.size;
+  const produtosSemCusto = Math.max(0, produtosComEstoque - produtosComCusto);
 
   const movsPeriodo = filtrarMovimentacoesPeriodo(movimentacoes, periodo);
   let valorEntradasDocumentado = 0;
@@ -1854,6 +1870,10 @@ export function calcularResumoFinanceiro(
 
   return {
     valorEstoqueDocumentado: Number(valorEstoqueDocumentado.toFixed(2)),
+    produtosComCusto,
+    produtosSemCusto,
+    produtosComEstoque,
+    coberturaPorProdutos: produtosComEstoque ? Number(((produtosComCusto / produtosComEstoque) * 100).toFixed(1)) : 100,
     posicoesComCusto,
     posicoesSemCusto: Math.max(0, estoque.length - posicoesComCusto),
     coberturaPorPosicoes: estoque.length ? Number(((posicoesComCusto / estoque.length) * 100).toFixed(1)) : 100,
@@ -2105,6 +2125,8 @@ export type AcuracidadeInventarioItem = {
   diferenca: number;
   divergenciaAbsoluta: number;
   acuracidadePercentual: number;
+  desvioRelativoPercentual: number | null;
+  saldoSistemaZero: boolean;
 };
 
 export type HistoricoAcuracidadeInventario = {
@@ -2137,8 +2159,9 @@ export type ResumoAcuracidadeInventario = {
 /**
  * Calcula a acuracidade física dos inventários concluídos.
  * Acuracidade por posições mede quantas posições contadas bateram exatamente.
- * Acuracidade por quantidade mede a proporção física preservada após descontar a
- * divergência absoluta em relação ao saldo de sistema.
+ * Acuracidade média por item é a média das acuracidades individuais; não soma
+ * grandezas físicas incompatíveis (metros, peças, litros etc.). A cobertura refere-se
+ * ao inventário concluído mais recente, enquanto o histórico permanece separado.
  */
 export function calcularAcuracidadeInventarios(
   inventarios: Inventario[],
@@ -2158,6 +2181,8 @@ export function calcularAcuracidadeInventarios(
   let itensAnalisados = 0;
   let itensContados = 0;
   let itensDivergentes = 0;
+  let somaAcuracidadeItens = 0;
+  let totalAcuracidadeItens = 0;
   let quantidadeSistema = 0;
   let quantidadeContada = 0;
   let divergenciaAbsoluta = 0;
@@ -2177,11 +2202,17 @@ export function calcularAcuracidadeInventarios(
     const acuracidadePosicoes = contados.length
       ? ((contados.length - divergentesInventario.length) / contados.length) * 100
       : 100;
-    const acuracidadeQuantidade = sistemaContado > 0
-      ? Math.max(0, 1 - divergenciaInventario / sistemaContado) * 100
-      : quantidadeContadaInventario === 0
-        ? 100
-        : 0;
+    const acuracidadesIndividuais = contados.map((item) => {
+      const sistema = Math.max(0, item.quantidade_sistema);
+      const contado = Math.max(0, item.quantidade_contada ?? 0);
+      const diferenca = Math.abs(contado - sistema);
+      return sistema > 0 ? Math.max(0, 1 - diferenca / sistema) * 100 : contado === 0 ? 100 : 0;
+    });
+    const acuracidadeQuantidade = acuracidadesIndividuais.length
+      ? acuracidadesIndividuais.reduce((total, valor) => total + valor, 0) / acuracidadesIndividuais.length
+      : 100;
+    somaAcuracidadeItens += acuracidadesIndividuais.reduce((total, valor) => total + valor, 0);
+    totalAcuracidadeItens += acuracidadesIndividuais.length;
 
     const data = inventario.data_encerramento ?? inventario.data_abertura;
     historico.push({
@@ -2220,24 +2251,28 @@ export function calcularAcuracidadeInventarios(
           : quantidadeContadaItem === 0
             ? 100
             : 0,
+        desvioRelativoPercentual: quantidadeSistemaItem > 0
+          ? Number((Math.abs(diferenca) / quantidadeSistemaItem * 100).toFixed(1))
+          : quantidadeContadaItem > 0 ? null : 0,
+        saldoSistemaZero: quantidadeSistemaItem === 0 && quantidadeContadaItem > 0,
       });
     }
   }
 
   const ultimoInventario = historico[0] ?? null;
-  const coberturaContagem = itensAnalisados > 0 ? (itensContados / itensAnalisados) * 100 : 100;
+  const coberturaContagem = ultimoInventario?.coberturaContagem ?? 100;
   const acuracidadePorPosicoes = itensContados > 0
     ? ((itensContados - itensDivergentes) / itensContados) * 100
     : 100;
-  const acuracidadePorQuantidade = quantidadeSistema > 0
-    ? Math.max(0, 1 - divergenciaAbsoluta / quantidadeSistema) * 100
-    : quantidadeContada === 0
-      ? 100
-      : 0;
+  const acuracidadePorQuantidade = totalAcuracidadeItens > 0
+    ? somaAcuracidadeItens / totalAcuracidadeItens
+    : 100;
 
   divergencias.sort((a, b) =>
+    Number(b.saldoSistemaZero) - Number(a.saldoSistemaZero) ||
+    (b.desvioRelativoPercentual ?? Infinity) - (a.desvioRelativoPercentual ?? Infinity) ||
     b.divergenciaAbsoluta - a.divergenciaAbsoluta ||
-    a.data.localeCompare(b.data),
+    b.data.localeCompare(a.data),
   );
 
   return {

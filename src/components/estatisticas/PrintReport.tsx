@@ -412,16 +412,16 @@ function PrintReportBase({
           <>
             <PrintTable headers={["Indicador", "Resultado"]} rows={[
               ["Acuracidade por posições", `${num(acuracidadeInventario.acuracidadePorPosicoes)}%`],
-              ["Acuracidade por quantidade", `${num(acuracidadeInventario.acuracidadePorQuantidade)}%`],
+              ["Acuracidade média por item", `${num(acuracidadeInventario.acuracidadePorQuantidade)}%`],
               ["Itens divergentes", num(acuracidadeInventario.itensDivergentes)],
-              ["Cobertura de contagem", `${num(acuracidadeInventario.coberturaContagem)}%`],
+              ["Cobertura do inventário mais recente", `${num(acuracidadeInventario.coberturaContagem)}%`],
               ["Inventários concluídos", num(acuracidadeInventario.inventariosConcluidos)],
             ]} />
             {acuracidadeInventario.ultimoInventario ? <div style={{ marginTop: 18 }}><h3 style={{ fontSize: 13, marginBottom: 10 }}>Último inventário concluído</h3><PrintTable headers={["Data", "Itens contados", "Divergências", "Divergência absoluta"]} rows={[[acuracidadeInventario.ultimoInventario.data.slice(0, 10), num(acuracidadeInventario.ultimoInventario.itensContados), num(acuracidadeInventario.ultimoInventario.itensDivergentes), num(acuracidadeInventario.ultimoInventario.divergenciaAbsoluta)]]} /></div> : null}
-            <div style={{ marginTop: 18 }}><h3 style={{ fontSize: 13, marginBottom: 10 }}>Maiores divergências</h3><PrintTable headers={["Produto", "Equipe", "Data", "Sistema", "Contado", "Diferença", "Acuracidade"]} rows={acuracidadeInventario.maioresDivergencias.map((item) => [
-              produtosPorId.get(item.produtoId)?.nome ?? "Produto não localizado", equipesPorId.get(item.equipeId)?.nome ?? "Equipe não localizada", item.data.slice(0, 10), num(item.quantidadeSistema), num(item.quantidadeContada), num(item.diferenca), `${num(item.acuracidadePercentual)}%`,
+            <div style={{ marginTop: 18 }}><h3 style={{ fontSize: 13, marginBottom: 10 }}>Maiores divergências</h3><PrintTable headers={["Produto", "Equipe", "Data", "Sistema", "Contado", "Diferença", "Acuracidade", "Desvio relativo"]} rows={acuracidadeInventario.maioresDivergencias.map((item) => [
+              produtosPorId.get(item.produtoId)?.nome ?? "Produto não localizado", equipesPorId.get(item.equipeId)?.nome ?? "Equipe não localizada", item.data.slice(0, 10), num(item.quantidadeSistema), num(item.quantidadeContada), num(item.diferenca), `${num(item.acuracidadePercentual)}%`, item.desvioRelativoPercentual == null ? "Saldo do sistema zero" : `${num(item.desvioRelativoPercentual)}%`,
             ])} /></div>
-            <div style={{ marginTop: 18 }}><h3 style={{ fontSize: 13, marginBottom: 10 }}>Histórico</h3><PrintTable headers={["Data", "Contados", "Divergentes", "Por posições", "Por quantidade"]} rows={acuracidadeInventario.historico.map((item) => [item.data.slice(0, 10), num(item.itensContados), num(item.itensDivergentes), `${num(item.acuracidadePorPosicoes)}%`, `${num(item.acuracidadePorQuantidade)}%`])} /></div>
+            <div style={{ marginTop: 18 }}><h3 style={{ fontSize: 13, marginBottom: 10 }}>Histórico</h3><PrintTable headers={["Data", "Contados", "Divergentes", "Por posições", "Média por item"]} rows={acuracidadeInventario.historico.map((item) => [item.data.slice(0, 10), num(item.itensContados), num(item.itensDivergentes), `${num(item.acuracidadePorPosicoes)}%`, `${num(item.acuracidadePorQuantidade)}%`])} /></div>
           </>
         )}
       </div>

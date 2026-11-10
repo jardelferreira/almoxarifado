@@ -12,6 +12,7 @@ import {
   PackageCheck,
   PackageOpen,
   PackageSearch,
+  MapPin,
   RefreshCw,
   Settings2,
   ShieldAlert,
@@ -39,6 +40,7 @@ import {
   calcularDesviosConsumoProdutos,
   calcularProdutoEstatistica,
   criarPeriodoPadrao,
+  filtrarMovimentacoesPeriodo,
   type DesvioConsumoProduto,
   type ProdutoEstatistica,
 } from "@/services/estatisticas-materiais";
@@ -195,6 +197,34 @@ function PerfilProdutoPage() {
     () => (dados && produto ? dados.movimentacoes.filter((item) => item.produto_id === produto.id).sort((a, b) => b.data.localeCompare(a.data) || b.id.localeCompare(a.id)) : []),
     [dados, produto],
   );
+
+  const distribuicaoConsumoProduto = useMemo(() => {
+    if (!dados || !produto) return { equipes: [], locais: [] };
+    const origens = new Map(dados.movimentacoes.map((item) => [item.id, item]));
+    const porEquipe = new Map<string, { saidas: number; devolucoes: number; liquido: number; registrosSaida: number }>();
+    const porLocal = new Map<string, { saidas: number; devolucoes: number; liquido: number; registrosSaida: number }>();
+    for (const mov of filtrarMovimentacoesPeriodo(movimentosProduto, periodo)) {
+      if (mov.tipo !== "SAIDA" && mov.tipo !== "DEVOLUCAO") continue;
+      const origem = mov.tipo === "DEVOLUCAO" && mov.movimentacao_origem_id ? origens.get(mov.movimentacao_origem_id) : undefined;
+      const equipeId = origem?.tipo === "SAIDA" ? origem.equipe_id : mov.equipe_id;
+      const localId = (origem?.tipo === "SAIDA" ? origem.local_id : mov.local_id) ?? "__SEM_LOCAL__";
+      const sinal = mov.tipo === "SAIDA" ? 1 : -1;
+      const equipe = porEquipe.get(equipeId) ?? { saidas: 0, devolucoes: 0, liquido: 0, registrosSaida: 0 };
+      equipe.liquido += sinal * mov.quantidade;
+      if (mov.tipo === "SAIDA") { equipe.saidas += mov.quantidade; equipe.registrosSaida += 1; }
+      else equipe.devolucoes += mov.quantidade;
+      porEquipe.set(equipeId, equipe);
+      const local = porLocal.get(localId) ?? { saidas: 0, devolucoes: 0, liquido: 0, registrosSaida: 0 };
+      local.liquido += sinal * mov.quantidade;
+      if (mov.tipo === "SAIDA") { local.saidas += mov.quantidade; local.registrosSaida += 1; }
+      else local.devolucoes += mov.quantidade;
+      porLocal.set(localId, local);
+    }
+    return {
+      equipes: [...porEquipe.entries()].map(([id, valores]) => ({ id, nome: dados.equipes.find((item) => item.id === id)?.nome ?? "Equipe não encontrada", ...valores })).sort((a, b) => b.liquido - a.liquido || a.nome.localeCompare(b.nome)),
+      locais: [...porLocal.entries()].map(([id, valores]) => ({ id, nome: id === "__SEM_LOCAL__" ? "Sem local informado" : dados.locais.find((item) => item.id === id)?.nome ?? "Local não encontrado", ...valores })).sort((a, b) => b.liquido - a.liquido || a.nome.localeCompare(b.nome)),
+    };
+  }, [dados, movimentosProduto, periodo, produto]);
 
   const inventarioMap = useMemo(
     () => new Map((inventarioDados?.inventarios ?? []).map((item) => [item.id, item])),
@@ -410,6 +440,17 @@ function PerfilProdutoPage() {
                 <div className="grid grid-cols-2 gap-3"><div className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">Consumo / dia</p><p className="num mt-1 font-semibold">{num(estatistica?.consumoMedioDiario ?? 0)}</p></div><div className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">Consumo / mês</p><p className="num mt-1 font-semibold">{num(estatistica?.consumoMedioMensal ?? 0)}</p></div><div className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">Dias até mínimo</p><p className="num mt-1 font-semibold">{estatistica?.diasAteMinimo == null ? "—" : num(estatistica.diasAteMinimo)}</p></div><div className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">Ruptura estimada</p><p className="mt-1 font-semibold">{estatistica?.dataEstimadaRuptura ? formatarData(estatistica.dataEstimadaRuptura) : "—"}</p></div></div>
                 <Button asChild variant="outline" className="w-full"><Link to="/app/estatisticas"><BarChart3 className="mr-2 size-4" />Abrir análise completa</Link></Button>
               </CardContent>
+            </Card>
+          </section>
+
+          <section className="grid gap-4 xl:grid-cols-2">
+            <Card>
+              <CardHeader><CardTitle className="flex items-center gap-2"><PackageCheck className="size-5" />Equipes que mais consumiram</CardTitle><p className="text-sm text-muted-foreground">Consumo líquido nos últimos {PERIODO_DIAS} dias: saídas menos devoluções atribuídas à equipe da saída original.</p></CardHeader>
+              <CardContent className="space-y-3">{distribuicaoConsumoProduto.equipes.length ? distribuicaoConsumoProduto.equipes.slice(0, 8).map((item, index) => <div key={item.id} className="rounded-xl border p-3"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="font-medium">{index + 1}. {item.nome}</p><p className="mt-1 text-xs text-muted-foreground">Saídas: {num(item.saidas)} · Devoluções: {num(item.devolucoes)}</p></div><div className="text-right"><p className="num font-semibold">{num(item.liquido)} {unidade?.sigla ?? ""}</p><p className="text-xs text-muted-foreground">líquido</p></div></div></div>) : <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">Nenhuma saída ou devolução no período.</p>}</CardContent>
+            </Card>
+            <Card>
+              <CardHeader><CardTitle className="flex items-center gap-2"><MapPin className="size-5" />Locais informados</CardTitle><p className="text-sm text-muted-foreground">Locais registrados nas saídas deste produto, com devoluções descontadas do local de origem quando identificável.</p></CardHeader>
+              <CardContent className="space-y-3">{distribuicaoConsumoProduto.locais.length ? distribuicaoConsumoProduto.locais.slice(0, 8).map((item, index) => <div key={item.id} className="rounded-xl border p-3"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="font-medium">{index + 1}. {item.nome}</p><p className="mt-1 text-xs text-muted-foreground">Saídas: {num(item.saidas)} · Devoluções: {num(item.devolucoes)}</p></div><div className="text-right"><p className="num font-semibold">{num(item.liquido)} {unidade?.sigla ?? ""}</p><p className="text-xs text-muted-foreground">líquido</p></div></div></div>) : <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">Nenhum local foi informado nas movimentações deste período.</p>}</CardContent>
             </Card>
           </section>
 

@@ -467,9 +467,9 @@ function RelatorioEstatisticasMateriaisPage() {
                   ["Itens analisados", num(acuracidade.itensAnalisados)],
                   ["Itens contados", num(acuracidade.itensContados)],
                   ["Itens divergentes", num(acuracidade.itensDivergentes)],
-                  ["Cobertura de contagem", `${num(acuracidade.coberturaContagem)}%`],
+                  ["Cobertura do inventário mais recente", `${num(acuracidade.coberturaContagem)}%`],
                   ["Acuracidade por posições", `${num(acuracidade.acuracidadePorPosicoes)}%`],
-                  ["Acuracidade por quantidade", `${num(acuracidade.acuracidadePorQuantidade)}%`],
+                  ["Acuracidade média por item", `${num(acuracidade.acuracidadePorQuantidade)}%`],
                   ["Último inventário", acuracidade.ultimoInventario?.data?.slice(0, 10) ?? "—"],
                 ]}
               />
@@ -477,13 +477,15 @@ function RelatorioEstatisticasMateriaisPage() {
                 <div className="report-avoid-break mt-6">
                   <h3 className="mb-2 text-sm font-semibold">Maiores divergências</h3>
                   <Table
-                    headers={["Produto", "Equipe", "Sistema", "Contado", "Diferença"]}
+                    headers={["Produto", "Equipe", "Sistema", "Contado", "Diferença", "Acuracidade", "Desvio relativo"]}
                     rows={acuracidade.maioresDivergencias.map((item) => [
                       dados.produtos.find((produto) => produto.id === item.produtoId)?.nome ?? item.produtoId,
                       item.equipeId ? dados.equipes.find((equipe) => equipe.id === item.equipeId)?.nome ?? item.equipeId : "Sem equipe",
                       num(item.quantidadeSistema),
                       num(item.quantidadeContada),
                       num(item.diferenca),
+                      `${num(item.acuracidadePercentual)}%`,
+                      item.desvioRelativoPercentual == null ? "Saldo do sistema zero" : `${num(item.desvioRelativoPercentual)}%`,
                     ])}
                   />
                 </div>
