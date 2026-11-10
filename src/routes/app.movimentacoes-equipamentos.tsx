@@ -2151,7 +2151,7 @@ function MovimentacoesEquipamentosPage() {
       </div>
 
       <Dialog open={dialogAberto} onOpenChange={(open) => !salvando && setDialogAberto(open)}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+        <DialogContent className="w-[calc(100vw-1rem)] max-w-2xl max-h-[calc(100dvh-1rem)] overflow-y-auto overscroll-contain p-4 sm:w-[calc(100vw-2rem)] sm:max-h-[calc(100dvh-2rem)] sm:p-6">
           <DialogHeader>
             <DialogTitle>Nova movimentação de equipamento</DialogTitle>
           </DialogHeader>
