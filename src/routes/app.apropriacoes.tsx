@@ -194,6 +194,7 @@ export function ApropriacoesPage() {
     const abrirApropriacao = (item?: Registro) => {
         const alvo = item ?? selecionado;
         if (!alvo) return;
+        setSelecionado(alvo);
         setFuncionarioId(null);
         setDialogApropriar(true);
     };
@@ -362,8 +363,9 @@ export function ApropriacoesPage() {
 
             <Card>
                 <CardHeader className="border-b bg-muted/20 pb-4">
-                    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                        <div className="relative w-full lg:max-w-xl">
+                    <div className="flex flex-col gap-3">
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                            <div className="relative w-full lg:max-w-xl">
                             <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
                             <Input
                                 value={busca}
@@ -372,19 +374,35 @@ export function ApropriacoesPage() {
                                 className="pl-9"
                                 aria-label="Pesquisar apropriações"
                             />
+                            </div>
+                            <div className="grid w-full grid-cols-3 gap-2 lg:flex lg:w-auto">
+                                {(["TODOS", "LIVRES", "EM_USO"] as const).map((status) => (
+                                    <Button
+                                        key={status}
+                                        type="button"
+                                        size="sm"
+                                        className="w-full lg:w-auto"
+                                        variant={filtroStatus === status ? "default" : "outline"}
+                                        onClick={() => setFiltroStatus(status)}
+                                    >
+                                        {status === "TODOS" ? "Todos" : status === "LIVRES" ? "Disponíveis" : "Em uso"}
+                                    </Button>
+                                ))}
+                            </div>
                         </div>
-                        <div className="flex gap-2">
-                            {(["TODOS", "LIVRES", "EM_USO"] as const).map((status) => (
+                        <div className="flex flex-col gap-2 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+                            <span>{registros.length} equipamento{registros.length === 1 ? " encontrado" : "s encontrados"}</span>
+                            {(busca || filtroStatus !== "TODOS") && (
                                 <Button
-                                    key={status}
                                     type="button"
+                                    variant="ghost"
                                     size="sm"
-                                    variant={filtroStatus === status ? "default" : "outline"}
-                                    onClick={() => setFiltroStatus(status)}
+                                    className="w-fit px-0 text-xs text-muted-foreground hover:text-foreground"
+                                    onClick={() => { setBusca(""); setFiltroStatus("TODOS"); }}
                                 >
-                                    {status === "TODOS" ? "Todos" : status === "LIVRES" ? "Disponíveis" : "Em uso"}
+                                    Limpar filtros
                                 </Button>
-                            ))}
+                            )}
                         </div>
                     </div>
                 </CardHeader>
