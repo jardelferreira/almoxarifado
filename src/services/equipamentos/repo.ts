@@ -24,9 +24,9 @@ export type EquipamentoInput = {
 };
 
 function normalizarTexto(
-  valor?: string | null,
+  valor?: unknown,
 ): string | null {
-  const texto = valor?.trim();
+  const texto = valor == null ? "" : String(valor).trim();
 
   return texto ? texto : null;
 }

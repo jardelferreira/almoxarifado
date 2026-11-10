@@ -143,6 +143,14 @@ type EstoqueFormulario = {
   periodicidade_custo: "HORA" | "DIA" | "SEMANA" | "MES" | "ANO" | "";
 };
 
+// Dados restaurados/importados podem conter identificadores numéricos
+// (principalmente serial e patrimônio). A interface sempre os trata como
+// texto, preservando zeros à esquerda e evitando chamadas de trim em valores
+// que não sejam string.
+function textoSeguro(valor: unknown): string {
+  return valor == null ? "" : String(valor);
+}
+
 const formularioInicial: Formulario = {
   situacao: "ATIVO",
   nome: "",
@@ -596,7 +604,7 @@ function EquipamentosPage() {
 
   async function salvar() {
     if (!projetoId) return;
-    if (!formulario.nome.trim()) {
+    if (!textoSeguro(formulario.nome).trim()) {
       toast.error("Informe o nome do equipamento.");
       return;
     }
@@ -609,17 +617,17 @@ function EquipamentosPage() {
       await equipamentosRepo.salvar(projetoId, {
         ...(editando ? { id: editando.id } : {}),
         categoria_id: formulario.categoria_id,
-        nome: formulario.nome.trim(),
+        nome: textoSeguro(formulario.nome).trim(),
         tipo_controle: formulario.tipo_controle,
-        modelo: formulario.modelo.trim() || null,
-        marca: formulario.marca.trim() || null,
-        descricao: formulario.descricao.trim() || null,
-        valor_referencia: financeiroEquipamentosAtivo && formulario.valor_referencia.trim() !== "" ? Number(formulario.valor_referencia) : null,
-        custo_recorrente: financeiroEquipamentosAtivo && formulario.custo_recorrente.trim() !== "" ? Number(formulario.custo_recorrente) : null,
-        vida_util_meses: financeiroEquipamentosAtivo && formulario.vida_util_meses.trim() !== "" ? Number(formulario.vida_util_meses) : null,
-        metodo_depreciacao: financeiroEquipamentosAtivo && formulario.vida_util_meses.trim() !== "" ? "LINEAR" : null,
+        modelo: textoSeguro(formulario.modelo).trim() || null,
+        marca: textoSeguro(formulario.marca).trim() || null,
+        descricao: textoSeguro(formulario.descricao).trim() || null,
+        valor_referencia: financeiroEquipamentosAtivo && textoSeguro(formulario.valor_referencia).trim() !== "" ? Number(formulario.valor_referencia) : null,
+        custo_recorrente: financeiroEquipamentosAtivo && textoSeguro(formulario.custo_recorrente).trim() !== "" ? Number(formulario.custo_recorrente) : null,
+        vida_util_meses: financeiroEquipamentosAtivo && textoSeguro(formulario.vida_util_meses).trim() !== "" ? Number(formulario.vida_util_meses) : null,
+        metodo_depreciacao: financeiroEquipamentosAtivo && textoSeguro(formulario.vida_util_meses).trim() !== "" ? "LINEAR" : null,
         periodicidade_custo: financeiroEquipamentosAtivo && formulario.periodicidade_custo ? formulario.periodicidade_custo : null,
-        fonte_valor: financeiroEquipamentosAtivo && formulario.valor_referencia.trim() !== "" ? "INFORMADO" : null,
+        fonte_valor: financeiroEquipamentosAtivo && textoSeguro(formulario.valor_referencia).trim() !== "" ? "INFORMADO" : null,
         ativo: editando?.ativo ?? true,
         situacao: formulario.situacao,
       });
@@ -696,14 +704,14 @@ function EquipamentosPage() {
         equipe_id: estoqueFormulario.equipe_id || null,
         quantidade,
         devolvido: 0,
-        patrimonio: estoqueFormulario.patrimonio.trim() || null,
-        identificacao: estoqueFormulario.identificacao.trim() || null,
-        serial: estoqueFormulario.serial.trim() || null,
-        data_entrada: estoqueFormulario.data_entrada,
-        referencia_documento: estoqueFormulario.referencia_documento.trim() || null,
-        observacoes: estoqueFormulario.observacoes.trim() || null,
-        valor_unitario: financeiroEquipamentosAtivo && estoqueFormulario.valor_unitario.trim() !== "" ? Number(estoqueFormulario.valor_unitario) : null,
-        custo_recorrente_unitario: financeiroEquipamentosAtivo && estoqueFormulario.custo_recorrente_unitario.trim() !== "" ? Number(estoqueFormulario.custo_recorrente_unitario) : null,
+        patrimonio: textoSeguro(estoqueFormulario.patrimonio).trim() || null,
+        identificacao: textoSeguro(estoqueFormulario.identificacao).trim() || null,
+        serial: textoSeguro(estoqueFormulario.serial).trim() || null,
+        data_entrada: textoSeguro(estoqueFormulario.data_entrada),
+        referencia_documento: textoSeguro(estoqueFormulario.referencia_documento).trim() || null,
+        observacoes: textoSeguro(estoqueFormulario.observacoes).trim() || null,
+        valor_unitario: financeiroEquipamentosAtivo && textoSeguro(estoqueFormulario.valor_unitario).trim() !== "" ? Number(estoqueFormulario.valor_unitario) : null,
+        custo_recorrente_unitario: financeiroEquipamentosAtivo && textoSeguro(estoqueFormulario.custo_recorrente_unitario).trim() !== "" ? Number(estoqueFormulario.custo_recorrente_unitario) : null,
         periodicidade_custo: financeiroEquipamentosAtivo && estoqueFormulario.periodicidade_custo ? estoqueFormulario.periodicidade_custo : null,
         fonte_valor: financeiroEquipamentosAtivo && estoqueFormulario.valor_unitario.trim() !== "" ? "INFORMADO" : null,
       });
@@ -724,8 +732,8 @@ function EquipamentosPage() {
           tipo_destino: "EQUIPE",
           destino_id: almoxarifado.id,
           data: estoqueFormulario.data_entrada,
-          referencia_documento: estoqueFormulario.referencia_documento.trim() || null,
-          observacoes: estoqueFormulario.observacoes.trim() || null,
+          referencia_documento: textoSeguro(estoqueFormulario.referencia_documento).trim() || null,
+          observacoes: textoSeguro(estoqueFormulario.observacoes).trim() || null,
         });
       } catch (error) {
         await db.estoque_equipamentos.delete(estoqueCriado.id);

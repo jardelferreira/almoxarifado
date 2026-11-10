@@ -1,7 +1,7 @@
 import { getDB } from "@/db/db";
 
-function normalizar(valor?: string | null): string | null {
-  const texto = valor?.trim();
+function normalizar(valor?: unknown): string | null {
+  const texto = valor == null ? "" : String(valor).trim();
   return texto ? texto.toLowerCase() : null;
 }
 
@@ -37,7 +37,7 @@ export async function validarPatrimonioESerialUnicos(
     )
   ) {
     throw new Error(
-      `Já existe um equipamento com o patrimônio "${dados.patrimonio!.trim()}" neste projeto.`,
+      `Já existe um equipamento com o patrimônio "${String(dados.patrimonio)}" neste projeto.`,
     );
   }
 
@@ -50,7 +50,7 @@ export async function validarPatrimonioESerialUnicos(
     )
   ) {
     throw new Error(
-      `Já existe um equipamento com o serial "${dados.serial!.trim()}" neste projeto.`,
+      `Já existe um equipamento com o serial "${String(dados.serial)}" neste projeto.`,
     );
   }
 }
