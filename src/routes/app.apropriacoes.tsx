@@ -69,7 +69,7 @@ type Registro = {
 export function ApropriacoesPage() {
     const [projetoId] = useProjetoAtivoId();
     const [busca, setBusca] = useState("");
-    const [filtroStatus, setFiltroStatus] = useState<"TODOS" | "LIVRES" | "EM_USO">("TODOS");
+    const [filtroStatus, setFiltroStatus] = useState<"TODOS" | "LIVRES" | "EM_USO" | "MANUTENCAO">("TODOS");
     const [selecionado, setSelecionado] = useState<Registro | null>(null);
     const [dialogApropriar, setDialogApropriar] = useState(false);
     const [dialogDevolver, setDialogDevolver] = useState(false);
@@ -138,6 +138,7 @@ export function ApropriacoesPage() {
         return dados.registros.filter((item) => {
             if (filtroStatus === "LIVRES" && item.status !== "DISPONIVEL") return false;
             if (filtroStatus === "EM_USO" && item.status !== "EM_USO") return false;
+            if (filtroStatus === "MANUTENCAO" && item.status !== "MANUTENCAO") return false;
 
             if (!termo) return true;
             return [
@@ -339,6 +340,7 @@ export function ApropriacoesPage() {
 
     const emUso = dados.registros.filter((item) => item.responsavel).length;
     const livres = dados.registros.filter((item) => item.status === "DISPONIVEL").length;
+    const emManutencao = dados.registros.filter((item) => item.status === "MANUTENCAO").length;
 
     return (
         <div className="space-y-5">
@@ -355,10 +357,11 @@ export function ApropriacoesPage() {
                 </div>
             </header>
 
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 <Resumo icon={PackageCheck} label="Equipamentos" valor={dados.registros.length} />
                 <Resumo icon={UserCheck} label="Em uso" valor={emUso} destaque />
                 <Resumo icon={Wrench} label="Disponíveis" valor={livres} />
+                <Resumo icon={Wrench} label="Em manutenção" valor={emManutencao} />
             </div>
 
             <Card>
@@ -375,8 +378,8 @@ export function ApropriacoesPage() {
                                 aria-label="Pesquisar apropriações"
                             />
                             </div>
-                            <div className="grid w-full grid-cols-3 gap-2 lg:flex lg:w-auto">
-                                {(["TODOS", "LIVRES", "EM_USO"] as const).map((status) => (
+                            <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-4 lg:flex lg:w-auto">
+                                {(["TODOS", "LIVRES", "EM_USO", "MANUTENCAO"] as const).map((status) => (
                                     <Button
                                         key={status}
                                         type="button"
@@ -385,7 +388,7 @@ export function ApropriacoesPage() {
                                         variant={filtroStatus === status ? "default" : "outline"}
                                         onClick={() => setFiltroStatus(status)}
                                     >
-                                        {status === "TODOS" ? "Todos" : status === "LIVRES" ? "Disponíveis" : "Em uso"}
+                                        {status === "TODOS" ? "Todos" : status === "LIVRES" ? "Disponíveis" : status === "EM_USO" ? "Em uso" : "Manutenção"}
                                     </Button>
                                 ))}
                             </div>
