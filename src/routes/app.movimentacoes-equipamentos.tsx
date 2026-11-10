@@ -57,6 +57,7 @@ import { useProjetoAtivoId } from "@/hooks/useAppData";
 import { getDB } from "@/db/db";
 import { estoqueEquipamentosRepo } from "@/services/equipamentos/estoque-repo";
 import { movimentacoesEquipamentosRepo } from "@/services/equipamentos/movimentacoes-repo";
+import { substituicoesEquipamentosRepo } from "@/services/equipamentos/substituicoes-repo";
 import type {
   Empresa,
   Equipe,
@@ -102,6 +103,19 @@ type Formulario = {
   motivoBaixa: string;
   data: string;
   referenciaDocumento: string;
+  observacoes: string;
+};
+
+type FormularioSubstituicao = {
+  estoqueOrigemId: string;
+  equipamentoSubstitutoId: string;
+  quantidade: string;
+  patrimonio: string;
+  identificacao: string;
+  serial: string;
+  data: string;
+  referenciaDocumento: string;
+  motivo: string;
   observacoes: string;
 };
 
@@ -435,9 +449,23 @@ function MovimentacoesEquipamentosPage() {
   const [filtroOrigens, setFiltroOrigens] = useState<string[]>([]);
   const [filtroDestinos, setFiltroDestinos] = useState<string[]>([]);
   const [dialogAberto, setDialogAberto] = useState(false);
+  const [substituicaoAberta, setSubstituicaoAberta] = useState(false);
   const [detalhe, setDetalhe] = useState<MovimentacaoEquipamento | null>(null);
   const [formulario, setFormulario] = useState<Formulario>(formularioInicial);
   const [salvando, setSalvando] = useState(false);
+  const [salvandoSubstituicao, setSalvandoSubstituicao] = useState(false);
+  const [formularioSubstituicao, setFormularioSubstituicao] = useState<FormularioSubstituicao>({
+    estoqueOrigemId: "",
+    equipamentoSubstitutoId: "",
+    quantidade: "1",
+    patrimonio: "",
+    identificacao: "",
+    serial: "",
+    data: hoje(),
+    referenciaDocumento: "",
+    motivo: "",
+    observacoes: "",
+  });
   const observacoesRef = useRef<HTMLTextAreaElement>(null);
 
   async function carregar() {
@@ -1535,6 +1563,68 @@ function MovimentacoesEquipamentosPage() {
     setDialogAberto(true);
   }
 
+  function abrirSubstituicao() {
+    setFormularioSubstituicao({
+      estoqueOrigemId: "",
+      equipamentoSubstitutoId: "",
+      quantidade: "1",
+      patrimonio: "",
+      identificacao: "",
+      serial: "",
+      data: hoje(),
+      referenciaDocumento: "",
+      motivo: "",
+      observacoes: "",
+    });
+    setSubstituicaoAberta(true);
+  }
+
+  async function salvarSubstituicao() {
+    if (!projetoId) return;
+    const origem = estoquePorId.get(formularioSubstituicao.estoqueOrigemId);
+    const equipamentoOrigem = origem ? equipamentoPorId.get(origem.equipamento_id) : undefined;
+    const equipamentoSubstituto = equipamentoPorId.get(formularioSubstituicao.equipamentoSubstitutoId);
+    if (!origem || !equipamentoOrigem || !equipamentoSubstituto) {
+      toast.error("Selecione o equipamento devolvido e o cadastro do substituto.");
+      return;
+    }
+    const quantidade = equipamentoOrigem.tipo_controle === "INDIVIDUAL"
+      ? 1
+      : Number(formularioSubstituicao.quantidade);
+    if (!Number.isInteger(quantidade) || quantidade <= 0) {
+      toast.error("Informe uma quantidade inteira maior que zero.");
+      return;
+    }
+    if (!formularioSubstituicao.data) {
+      toast.error("Informe a data da substituição.");
+      return;
+    }
+
+    try {
+      setSalvandoSubstituicao(true);
+      await substituicoesEquipamentosRepo.criar({
+        projetoId,
+        estoqueOrigemId: origem.id,
+        equipamentoSubstitutoId: equipamentoSubstituto.id,
+        quantidade,
+        data: formularioSubstituicao.data,
+        patrimonio: formularioSubstituicao.patrimonio,
+        identificacao: formularioSubstituicao.identificacao,
+        serial: formularioSubstituicao.serial,
+        referenciaDocumento: formularioSubstituicao.referenciaDocumento,
+        motivo: formularioSubstituicao.motivo,
+        observacoes: formularioSubstituicao.observacoes,
+      });
+      await carregar();
+      setSubstituicaoAberta(false);
+      toast.success("Substituição concluída: devolução, entrada e herança de consumo registradas.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível registrar a substituição.");
+    } finally {
+      setSalvandoSubstituicao(false);
+    }
+  }
+
   function alterarTipo(tipo: MovimentacaoEquipamentoTipo) {
     setFormulario((atual) => ({
       ...atual,
@@ -1977,6 +2067,17 @@ function MovimentacoesEquipamentosPage() {
     );
   };
 
+  const estoquesParaSubstituicao = estoques.filter((stock) => {
+    const estado = estados.get(stock.id);
+    return stock.ativo !== false && (estado?.almoxarifado ?? 0) > 0;
+  });
+  const equipamentoOrigemSubstituicao = formularioSubstituicao.estoqueOrigemId
+    ? equipamentoPorId.get(estoquePorId.get(formularioSubstituicao.estoqueOrigemId)?.equipamento_id ?? "")
+    : undefined;
+  const equipamentosSubstitutos = equipamentosAtivos.filter((equipamento) =>
+    !equipamentoOrigemSubstituicao || equipamento.tipo_controle === equipamentoOrigemSubstituicao.tipo_controle,
+  );
+
   return (
     <>
       <div className="space-y-6">
@@ -1990,7 +2091,10 @@ function MovimentacoesEquipamentosPage() {
               <p className="text-sm text-muted-foreground">Controle a entrada, saída, devolução, transferência e manutenção.</p>
             </div>
           </div>
-          <Button onClick={abrirNovo} className="shadow-sm"><Plus className="mr-2 h-4 w-4" />Nova movimentação</Button>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button onClick={abrirSubstituicao} variant="outline" className="shadow-sm"><ArrowRightLeft className="mr-2 h-4 w-4" />Substituir equipamento</Button>
+            <Button onClick={abrirNovo} className="shadow-sm"><Plus className="mr-2 h-4 w-4" />Nova movimentação</Button>
+          </div>
         </div>
 
         <Card className="overflow-hidden">
@@ -2607,6 +2711,102 @@ function MovimentacoesEquipamentosPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogAberto(false)} disabled={salvando}>Cancelar</Button>
             <Button onClick={() => void salvar()} disabled={salvando}>{salvando ? "Registrando..." : "Registrar movimentação"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={substituicaoAberta} onOpenChange={(open) => !salvandoSubstituicao && setSubstituicaoAberta(open)}>
+        <DialogContent className="w-[calc(100vw-1rem)] max-w-2xl max-h-[calc(100dvh-1rem)] overflow-y-auto overscroll-contain p-4 sm:w-[calc(100vw-2rem)] sm:max-h-[calc(100dvh-2rem)] sm:p-6">
+          <DialogHeader>
+            <DialogTitle>Substituir equipamento</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-5">
+            <div className="rounded-lg border bg-muted/20 p-3 text-sm text-muted-foreground">
+              A operação registra, na mesma transação, a devolução do equipamento antigo ao fornecedor, a entrada do novo registro físico e a herança das regras de consumo.
+            </div>
+
+            <div className="space-y-2">
+              <Label>Equipamento devolvido</Label>
+              <Combobox
+                opcoes={estoquesParaSubstituicao.map((stock) => {
+                  const equipamento = equipamentoPorId.get(stock.equipamento_id);
+                  const estado = estados.get(stock.id);
+                  return {
+                    value: stock.id,
+                    label: `${equipamento?.nome ?? "Equipamento"} · disponível: ${estado?.almoxarifado ?? 0}`,
+                    hint: detalhesRegistroFisico(stock, equipamento, empresaPorId),
+                  };
+                }).sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))}
+                value={formularioSubstituicao.estoqueOrigemId}
+                onChange={(value) => setFormularioSubstituicao((atual) => ({
+                  ...atual,
+                  estoqueOrigemId: value ?? "",
+                  equipamentoSubstitutoId: "",
+                  quantidade: "1",
+                }))}
+                placeholder="Selecione o equipamento disponível no Almoxarifado"
+                vazio="Nenhum equipamento disponível no Almoxarifado"
+              />
+            </div>
+
+            {equipamentoOrigemSubstituicao && (
+              <div className="rounded-lg border bg-muted/30 p-3 text-sm">
+                <div className="font-medium">Equipamento atual: {equipamentoOrigemSubstituicao.nome}</div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  Controle {equipamentoOrigemSubstituicao.tipo_controle === "INDIVIDUAL" ? "individual" : "quantitativo"}. O substituto deve manter o mesmo tipo de controle.
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label>Cadastro do equipamento substituto</Label>
+              <Combobox
+                opcoes={equipamentosSubstitutos.map((equipamento) => ({
+                  value: equipamento.id,
+                  label: `${equipamento.nome}${equipamento.marca ? ` · ${equipamento.marca}` : ""}`,
+                  hint: equipamento.modelo || (equipamento.tipo_controle === "INDIVIDUAL" ? "Individual" : "Quantitativo"),
+                })).sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))}
+                value={formularioSubstituicao.equipamentoSubstitutoId}
+                onChange={(value) => setFormularioSubstituicao((atual) => ({ ...atual, equipamentoSubstitutoId: value ?? "" }))}
+                placeholder="Selecione o cadastro que entrará no estoque"
+                vazio={equipamentoOrigemSubstituicao ? "Nenhum cadastro com o mesmo tipo de controle" : "Nenhum equipamento ativo cadastrado"}
+                disabled={!equipamentoOrigemSubstituicao}
+              />
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Quantidade</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  step={1}
+                  disabled={equipamentoOrigemSubstituicao?.tipo_controle === "INDIVIDUAL"}
+                  value={formularioSubstituicao.quantidade}
+                  onChange={(event) => setFormularioSubstituicao((atual) => ({ ...atual, quantidade: event.target.value }))}
+                />
+                <p className="text-xs text-muted-foreground">A quantidade não pode ultrapassar o saldo físico no Almoxarifado.</p>
+              </div>
+              <div className="space-y-2"><Label>Data</Label><Input type="date" value={formularioSubstituicao.data} onChange={(event) => setFormularioSubstituicao((atual) => ({ ...atual, data: event.target.value }))} /></div>
+            </div>
+
+            {equipamentoOrigemSubstituicao?.tipo_controle === "INDIVIDUAL" && (
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div className="space-y-2"><Label>Patrimônio</Label><Input value={formularioSubstituicao.patrimonio} onChange={(event) => setFormularioSubstituicao((atual) => ({ ...atual, patrimonio: event.target.value }))} /></div>
+                <div className="space-y-2"><Label>Identificação</Label><Input value={formularioSubstituicao.identificacao} onChange={(event) => setFormularioSubstituicao((atual) => ({ ...atual, identificacao: event.target.value }))} /></div>
+                <div className="space-y-2"><Label>Serial</Label><Input value={formularioSubstituicao.serial} onChange={(event) => setFormularioSubstituicao((atual) => ({ ...atual, serial: event.target.value }))} /></div>
+              </div>
+            )}
+
+            <div className="space-y-2"><Label>Documento de referência</Label><Input value={formularioSubstituicao.referenciaDocumento} onChange={(event) => setFormularioSubstituicao((atual) => ({ ...atual, referenciaDocumento: event.target.value }))} placeholder="NF, termo de troca, OS..." /></div>
+            <div className="space-y-2"><Label>Motivo da substituição</Label><Input value={formularioSubstituicao.motivo} onChange={(event) => setFormularioSubstituicao((atual) => ({ ...atual, motivo: event.target.value }))} placeholder="Defeito, garantia, troca contratual..." /></div>
+            <div className="space-y-2"><Label>Observações</Label><textarea value={formularioSubstituicao.observacoes} onChange={(event) => setFormularioSubstituicao((atual) => ({ ...atual, observacoes: event.target.value }))} className="min-h-24 w-full rounded-md border bg-background px-3 py-2 text-sm" /></div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSubstituicaoAberta(false)} disabled={salvandoSubstituicao}>Cancelar</Button>
+            <Button onClick={() => void salvarSubstituicao()} disabled={salvandoSubstituicao}>{salvandoSubstituicao ? "Concluindo..." : "Concluir substituição"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

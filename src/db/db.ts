@@ -25,6 +25,7 @@ import type {
   InteligenciaAcao,
   ManutencaoEquipamento,
   RegraConsumoEquipamento,
+  SubstituicaoEquipamento,
   PerfilParametroCusto,
   ConsumoEquipamento,
   ManutencaoDocumento,
@@ -61,6 +62,7 @@ export class AlmoxarifadoDB extends Dexie {
   manutencoes_equipamentos!: Table<ManutencaoEquipamento, string>;
   regras_consumo_equipamentos!: Table<RegraConsumoEquipamento, string>;
   perfis_parametros_custos!: Table<PerfilParametroCusto, string>;
+  substituicoes_equipamentos!: Table<SubstituicaoEquipamento, string>;
 
   constructor() {
     super("almoxarifado");
@@ -166,6 +168,12 @@ export class AlmoxarifadoDB extends Dexie {
     this.version(20).stores({
       manutencoes_equipamentos:
         "id, projeto_id, estoque_equipamento_id, equipamento_id, status_operacional, status_detalhamento, data_abertura, empresa_id, movimento_sinalizacao_id, movimento_envio_id, movimento_retorno_id, [projeto_id+estoque_equipamento_id], [projeto_id+status_operacional]",
+    });
+
+    // Relação auditável entre o equipamento devolvido e o seu substituto.
+    this.version(21).stores({
+      substituicoes_equipamentos:
+        "id, projeto_id, estoque_origem_id, equipamento_origem_id, estoque_substituto_id, equipamento_substituto_id, movimentacao_devolucao_id, movimentacao_entrada_id, data",
     });
   }
 }
