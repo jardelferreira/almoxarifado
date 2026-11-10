@@ -68,15 +68,10 @@ export class AlmoxarifadoDB extends Dexie {
     /**
      * Versão ÚNICA do schema.
      *
-     * O app ainda não foi distribuído, então o histórico de 19 versões
-     * (com migrações de dados legados) foi consolidado aqui, já contemplando
-     * todas as tabelas e índices atuais. NÃO há `upgrade()`: não existem
-     * dados antigos a migrar.
-     *
-     * A partir da primeira distribuição, qualquer mudança de schema deve ser
-     * uma NOVA versão (`this.version(2)...`) listando apenas o que mudou,
-     * com `upgrade()` quando houver dados a transformar. Nunca edite esta
-     * versão depois de distribuída.
+     * A versão 1 é a base do schema atualmente distribuído.
+     * A partir da primeira distribuição, qualquer mudança deve ser registrada
+     * em uma nova versão, listando somente as stores ou índices adicionados.
+     * Nunca edite uma versão já distribuída.
      *
      * Atenção em ambientes de desenvolvimento: um navegador que já abriu este
      * banco em versões anteriores (Dexie 190, por exemplo) recusa abrir uma
@@ -154,6 +149,15 @@ export class AlmoxarifadoDB extends Dexie {
         "id, projeto_id, equipamento_id, estoque_equipamento_id, produto_id, direcionador, ativo, vigencia_inicio, vigencia_fim, [projeto_id+equipamento_id], [equipamento_id+estoque_equipamento_id], [equipamento_id+produto_id]",
       perfis_parametros_custos:
         "id, projeto_id, perfil_id, versao, atualizado_em, [projeto_id+perfil_id], [perfil_id+versao]",
+    });
+
+    // Alguns bancos locais foram criados antes da inclusão do detalhamento
+    // de manutenção. A migração cria a object store sem apagar os demais
+    // dados, permitindo que os fluxos de movimentação usem a tabela com
+    // segurança.
+    this.version(2).stores({
+      manutencoes_equipamentos:
+        "id, projeto_id, estoque_equipamento_id, equipamento_id, status_operacional, status_detalhamento, data_abertura, empresa_id, movimento_sinalizacao_id, movimento_envio_id, movimento_retorno_id, [projeto_id+estoque_equipamento_id], [projeto_id+status_operacional]",
     });
   }
 }
