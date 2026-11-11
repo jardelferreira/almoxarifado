@@ -38,10 +38,28 @@ export function Combobox({
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [busca, setBusca] = useState("");
   const atual = opcoes.find((o) => o.value === value);
+  const termosBusca = normalizarBusca(busca).split(" ").filter(Boolean);
+  const opcoesFiltradas = opcoes.filter((opcao) => {
+    if (termosBusca.length === 0) return true;
+    const textoPesquisavel = normalizarBusca(`${opcao.label} ${opcao.hint ?? ""}`);
+    return termosBusca.every((termo) => textoPesquisavel.includes(termo));
+  });
+
+  const fechar = () => {
+    setOpen(false);
+    setBusca("");
+  };
 
   return (
-    <Popover open={disabled ? false : open} onOpenChange={setOpen}>
+    <Popover
+      open={disabled ? false : open}
+      onOpenChange={(proximo) => {
+        setOpen(proximo);
+        if (!proximo) setBusca("");
+      }}
+    >
       <PopoverTrigger asChild>
         <Button
           variant="outline"
@@ -57,58 +75,72 @@ export function Combobox({
       </PopoverTrigger>
       {!disabled && (
         <PopoverContent
-          className="w-[var(--radix-popover-trigger-width)] max-w-[calc(100vw-2rem)] p-0"
+          className="w-[var(--radix-popover-trigger-width)] max-w-[calc(100vw-2rem)] overflow-hidden p-0"
           align="start"
           side="bottom"
         >
-          <Command>
-          <CommandInput placeholder="Pesquisar…" />
-          <CommandList>
-            <CommandEmpty>{vazio}</CommandEmpty>
-            <CommandGroup>
-              {allowClear && (
-                <CommandItem
-                  value="__todos__"
-                  onSelect={() => {
-                    onChange(null);
-                    setOpen(false);
-                  }}
-                >
-                  <Check className={cn("size-4", value ? "opacity-0" : "opacity-100")} />
-                  {placeholder}
-                </CommandItem>
-              )}
-              {opcoes.map((o) => (
-                <CommandItem
-                  key={o.value}
-                  value={`${o.label} ${o.hint ?? ""}`}
-                  className="items-start py-2"
-                  onSelect={() => {
-                    onChange(o.value);
-                    setOpen(false);
-                  }}
-                >
-                  <Check
-                    className={cn(
-                      "size-4",
-                      value === o.value ? "opacity-100" : "opacity-0",
-                    )}
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span className="block whitespace-normal break-words font-medium leading-5" title={o.label}>{o.label}</span>
-                    {o.hint && (
-                      <span className="mt-0.5 block whitespace-normal break-words text-xs leading-4 text-muted-foreground" title={o.hint}>
-                        {o.hint}
+          <Command shouldFilter={false}>
+            <CommandInput placeholder="Pesquisar…" value={busca} onValueChange={setBusca} />
+            <CommandList className="max-h-[min(22rem,calc(100vh-10rem))]">
+              {opcoesFiltradas.length === 0 && <CommandEmpty>{vazio}</CommandEmpty>}
+              <CommandGroup>
+                {allowClear && !busca.trim() && (
+                  <CommandItem
+                    value="__todos__"
+                    onSelect={() => {
+                      onChange(null);
+                      fechar();
+                    }}
+                  >
+                    <Check className={cn("size-4", value ? "opacity-0" : "opacity-100")} />
+                    {placeholder}
+                  </CommandItem>
+                )}
+                {opcoesFiltradas.map((o) => (
+                  <CommandItem
+                    key={o.value}
+                    value={`${o.label} ${o.hint ?? ""}`}
+                    className="min-w-0 items-start py-2"
+                    onSelect={() => {
+                      onChange(o.value);
+                      fechar();
+                    }}
+                  >
+                    <Check
+                      className={cn("size-4", value === o.value ? "opacity-100" : "opacity-0")}
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span
+                        className="block whitespace-normal break-words font-medium leading-5"
+                        title={o.label}
+                      >
+                        {o.label}
                       </span>
-                    )}
-                  </span>
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          </CommandList>
+                      {o.hint && (
+                        <span
+                          className="mt-0.5 block whitespace-normal break-words text-xs leading-4 text-muted-foreground"
+                          title={o.hint}
+                        >
+                          {o.hint}
+                        </span>
+                      )}
+                    </span>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            </CommandList>
           </Command>
         </PopoverContent>
       )}
     </Popover>
   );
+}
+
+function normalizarBusca(valor: string): string {
+  return valor
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("pt-BR")
+    .trim()
+    .replace(/\s+/g, " ");
 }
