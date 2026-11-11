@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getDB } from "@/db/db";
 import { useProjetoAtivoId } from "@/hooks/useAppData";
 import { estadoEquipamentosRepo } from "@/services/equipamentos/estado-repo";
@@ -47,6 +48,7 @@ type ItemPainel = {
 };
 
 type AcaoPainel = "APROPRIAR" | "DEVOLVER";
+type ModoPainel = "ATENDIMENTO" | "CONSULTA";
 
 type ProprietarioConsulta = {
   id: string;
@@ -74,6 +76,7 @@ export function PainelApropriacoesPage() {
   const [quantidade, setQuantidade] = useState("1");
   const [salvando, setSalvando] = useState(false);
   const [buscaEquipamento, setBuscaEquipamento] = useState("");
+  const [modo, setModo] = useState<ModoPainel>("ATENDIMENTO");
 
   const dados = useLiveQuery(async () => {
     if (!projetoId) return null;
@@ -144,7 +147,6 @@ export function PainelApropriacoesPage() {
       funcionarios: funcionarios
         .filter((item) => item.status === "ATIVO")
         .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")),
-      funcionariosTodos: funcionarios,
       equipes,
       itens: itens.sort((a, b) => a.equipamento.nome.localeCompare(b.equipamento.nome, "pt-BR")),
       disponiveis: disponiveis.sort((a, b) =>
@@ -290,17 +292,17 @@ export function PainelApropriacoesPage() {
     return <p className="text-sm text-muted-foreground">Carregando painel de apropriações…</p>;
 
   return (
-    <div className="space-y-5">
-      <header className="flex flex-col gap-3 border-b pb-4 sm:flex-row sm:items-end sm:justify-between">
+    <div className="space-y-6 text-[15px] lg:text-base">
+      <header className="flex flex-col gap-3 border-b pb-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+          <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.16em] text-muted-foreground lg:text-base">
             <ClipboardSignature className="size-4 text-primary" aria-hidden="true" />
             Painéis · Atendimento
           </div>
-          <h1 className="mt-1 font-display text-2xl font-bold tracking-tight sm:text-3xl">
+          <h1 className="mt-1 font-display text-3xl font-bold tracking-tight lg:text-4xl">
             Painel de apropriações
           </h1>
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+          <p className="mt-2 max-w-3xl text-base text-muted-foreground lg:text-lg">
             Atenda o funcionário, confira os equipamentos em seu nome e registre apropriações ou
             devoluções.
           </p>
@@ -310,283 +312,326 @@ export function PainelApropriacoesPage() {
         </Badge>
       </header>
 
-      <Card>
-        <CardHeader className="border-b bg-muted/20 pb-4">
-          <div className="flex items-center gap-2">
-            <UserRound className="size-4 text-primary" aria-hidden="true" />
-            <div>
-              <h2 className="font-semibold">Funcionário atendido</h2>
-              <p className="text-xs text-muted-foreground">
-                Selecione uma pessoa para consultar ou atualizar a ficha.
-              </p>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4 p-4">
-          <Combobox
-            opcoes={dados.funcionarios.map((item) => ({
-              value: item.id,
-              label: item.nome,
-              hint: [
-                item.matricula && `Matrícula: ${item.matricula}`,
-                item.cpf && `CPF: ${formatarCpf(item.cpf)}`,
-              ]
-                .filter(Boolean)
-                .join(" · "),
-            }))}
-            value={funcionarioId}
-            onChange={setFuncionarioId}
-            placeholder="Pesquisar funcionário…"
-            vazio="Nenhum funcionário ativo encontrado."
-          />
-          {funcionario && (
-            <div className="grid gap-3 rounded-xl border bg-muted/20 p-4 sm:grid-cols-4">
+      <Tabs value={modo} onValueChange={(value) => setModo(value as ModoPainel)} className="w-full">
+        <TabsList className="grid h-auto w-full grid-cols-2 gap-1 rounded-xl border bg-card p-1 shadow-sm">
+          <TabsTrigger
+            value="ATENDIMENTO"
+            className="gap-2 rounded-lg px-3 py-3 text-sm font-semibold sm:text-base lg:text-lg"
+          >
+            <UserRound className="size-4 sm:size-5" aria-hidden="true" />
+            Atendimento ao funcionário
+          </TabsTrigger>
+          <TabsTrigger
+            value="CONSULTA"
+            className="gap-2 rounded-lg px-3 py-3 text-sm font-semibold sm:text-base lg:text-lg"
+          >
+            <Search className="size-4 sm:size-5" aria-hidden="true" />
+            Consulta de equipamento
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      {modo === "ATENDIMENTO" && (
+        <Card className="border-l-4 border-l-primary shadow-sm">
+          <CardHeader className="border-b bg-muted/20 pb-4">
+            <div className="flex items-center gap-2">
+              <UserRound className="size-4 text-primary" aria-hidden="true" />
               <div>
-                <p className="text-xs text-muted-foreground">Nome</p>
-                <p className="font-semibold">{funcionario.nome}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">CPF</p>
-                <p className="font-medium">{formatarCpf(funcionario.cpf) || "Não informado"}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Matrícula / função</p>
-                <p className="font-medium">
-                  {[funcionario.matricula, funcionario.funcao].filter(Boolean).join(" · ") ||
-                    "Não informado"}
+                <h2 className="text-base font-semibold lg:text-lg">Funcionário atendido</h2>
+                <p className="text-sm text-muted-foreground lg:text-base">
+                  Selecione uma pessoa para consultar ou atualizar a ficha.
                 </p>
               </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Equipe</p>
-                <p className="font-medium">{equipe?.nome ?? "Sem equipe definida"}</p>
-              </div>
             </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="border-b bg-muted/20 pb-4">
-          <div className="flex items-center gap-2">
-            <Search className="size-4 text-primary" aria-hidden="true" />
-            <div>
-              <h2 className="font-semibold">Consultar posse de equipamento</h2>
-              <p className="text-xs text-muted-foreground">
-                Pesquise por nome, marca, modelo, patrimônio, identificação, serial ou funcionário.
-              </p>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4 p-4">
-          <div className="relative">
-            <Search
-              className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-              aria-hidden="true"
+          </CardHeader>
+          <CardContent className="space-y-4 p-4">
+            <Combobox
+              opcoes={dados.funcionarios.map((item) => ({
+                value: item.id,
+                label: item.nome,
+                hint: [
+                  item.matricula && `Matrícula: ${item.matricula}`,
+                  item.cpf && `CPF: ${formatarCpf(item.cpf)}`,
+                ]
+                  .filter(Boolean)
+                  .join(" · "),
+              }))}
+              value={funcionarioId}
+              onChange={setFuncionarioId}
+              placeholder="Pesquisar funcionário…"
+              vazio="Nenhum funcionário ativo encontrado."
             />
-            <Input
-              value={buscaEquipamento}
-              onChange={(event) => setBuscaEquipamento(event.target.value)}
-              className="pl-9"
-              placeholder="Ex.: furadeira, patrimônio, serial ou nome do funcionário"
-              aria-label="Pesquisar equipamentos e responsáveis"
-            />
-          </div>
-          {!buscaEquipamento.trim() ? (
-            <p className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
-              Digite pelo menos uma informação para consultar quem está em posse.
-            </p>
-          ) : consultasFiltradas.length === 0 ? (
-            <p className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
-              Nenhum equipamento ou responsável corresponde à pesquisa.
-            </p>
-          ) : (
-            <div className="space-y-3">
-              <p className="text-xs font-medium text-muted-foreground">
-                {consultasFiltradas.length} registro(s) encontrado(s)
-              </p>
-              {consultasFiltradas.map((item) => (
-                <div key={item.estoque.id} className="rounded-xl border p-4">
-                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                    <div className="min-w-0">
-                      <p className="break-words font-semibold">{item.equipamento.nome}</p>
-                      <p className="mt-1 break-words text-sm text-muted-foreground">
-                        {[item.equipamento.marca, item.equipamento.modelo]
-                          .filter(Boolean)
-                          .join(" · ") || "Sem marca ou modelo"}
-                      </p>
-                      <p className="mt-2 break-words text-xs text-muted-foreground">
-                        {item.identificacao}
-                        {item.estoque.patrimonio && item.identificacao !== item.estoque.patrimonio
-                          ? ` · Patrimônio: ${item.estoque.patrimonio}`
-                          : ""}
-                        {item.estoque.serial && item.identificacao !== item.estoque.serial
-                          ? ` · Serial: ${item.estoque.serial}`
-                          : ""}
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap gap-2 text-xs">
-                      <Badge variant={item.proprietarios.length ? "default" : "outline"}>
-                        {item.proprietarios.length ? "Em posse" : situacaoConsulta(item)}
-                      </Badge>
-                      <Badge variant="outline">Disponível: {num(item.disponivel)}</Badge>
-                      {item.manutencao > 0 && (
-                        <Badge variant="outline">Manutenção: {num(item.manutencao)}</Badge>
-                      )}
-                    </div>
-                  </div>
-                  <div className="mt-4 border-t pt-3">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Responsável atual
-                    </p>
-                    {item.proprietarios.length === 0 ? (
-                      <p className="mt-2 text-sm text-muted-foreground">
-                        Nenhum funcionário possui este equipamento no momento.
-                      </p>
-                    ) : (
-                      <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                        {item.proprietarios.map((proprietario) => (
-                          <div
-                            key={proprietario.id}
-                            className="flex min-w-0 items-start justify-between gap-3 rounded-lg bg-muted/30 p-3"
-                          >
-                            <div className="min-w-0">
-                              <p className="break-words text-sm font-medium">
-                                {proprietario.nome}
-                                {!proprietario.ativo && (
-                                  <span className="ml-1 text-xs font-normal text-muted-foreground">
-                                    (inativo)
-                                  </span>
-                                )}
-                              </p>
-                              {proprietario.matricula && (
-                                <p className="mt-0.5 text-xs text-muted-foreground">
-                                  Matrícula: {proprietario.matricula}
-                                </p>
-                              )}
-                            </div>
-                            <span className="shrink-0 text-sm font-semibold">
-                              {num(proprietario.quantidade)}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+            {funcionario && (
+              <div className="grid gap-3 rounded-xl border bg-muted/20 p-4 sm:grid-cols-4">
+                <div>
+                  <p className="text-sm text-muted-foreground">Nome</p>
+                  <p className="text-base font-semibold lg:text-lg">{funcionario.nome}</p>
                 </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {funcionario ? (
-        <>
-          <div className="grid gap-3 sm:grid-cols-3">
-            <Resumo
-              label="Itens vinculados"
-              valor={dados.itens.length}
-              icon={<PackageCheck className="size-4" />}
-            />
-            <Resumo
-              label="Quantidade em uso"
-              valor={dados.itens.reduce((total, item) => total + item.quantidade, 0)}
-              icon={<UserRound className="size-4" />}
-            />
-            <Resumo
-              label="Unidades disponíveis"
-              valor={dados.disponiveis.reduce((total, item) => total + item.disponivel, 0)}
-              icon={<UserRoundPlus className="size-4" />}
-            />
-          </div>
-          <Card>
-            <CardHeader className="flex flex-col gap-3 border-b bg-muted/20 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="font-semibold">Ficha de atendimento</h2>
-                <p className="text-xs text-muted-foreground">
-                  Equipamentos atualmente vinculados a este funcionário.
-                </p>
+                <div>
+                  <p className="text-sm text-muted-foreground">CPF</p>
+                  <p className="text-base font-medium lg:text-lg">
+                    {formatarCpf(funcionario.cpf) || "Não informado"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Matrícula / função</p>
+                  <p className="text-base font-medium lg:text-lg">
+                    {[funcionario.matricula, funcionario.funcao].filter(Boolean).join(" · ") ||
+                      "Não informado"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Equipe</p>
+                  <p className="text-base font-medium lg:text-lg">
+                    {equipe?.nome ?? "Sem equipe definida"}
+                  </p>
+                </div>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() =>
-                    imprimirAtendimento(funcionario, equipe?.nome ?? "Sem equipe", dados.itens)
-                  }
-                >
-                  <FileDown className="mr-2 size-4" />
-                  Imprimir / PDF
-                </Button>
-                <Button type="button" size="sm" onClick={abrirApropriacao}>
-                  <UserRoundPlus className="mr-2 size-4" />
-                  Apropriar
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="p-0">
-              {dados.itens.length === 0 ? (
-                <div className="p-8 text-center text-sm text-muted-foreground">
-                  Nenhum equipamento apropriado para este funcionário.
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[720px] text-sm">
-                    <thead className="bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                      <tr>
-                        <th className="px-4 py-3">Equipamento</th>
-                        <th className="px-4 py-3">Identificação</th>
-                        <th className="px-4 py-3 text-right">Quantidade</th>
-                        <th className="px-4 py-3 text-right">Ação</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                      {dados.itens.map((item) => (
-                        <tr key={item.estoque.id} className="hover:bg-muted/20">
-                          <td className="px-4 py-3">
-                            <p className="font-medium">{item.equipamento.nome}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {[item.equipamento.marca, item.equipamento.modelo]
-                                .filter(Boolean)
-                                .join(" · ") || "Sem modelo"}
-                            </p>
-                          </td>
-                          <td className="px-4 py-3 text-muted-foreground">{item.identificacao}</td>
-                          <td className="px-4 py-3 text-right font-semibold">
-                            {num(item.quantidade)}
-                          </td>
-                          <td className="px-4 py-3 text-right">
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                              onClick={() => abrirDevolucao(item)}
-                            >
-                              <UserRoundMinus className="mr-1.5 size-4" />
-                              Desapropriar
-                            </Button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </>
-      ) : (
-        <Card>
-          <CardContent className="p-10 text-center">
-            <UserRound className="mx-auto size-10 text-muted-foreground/50" />
-            <p className="mt-3 font-medium">Selecione um funcionário para iniciar o atendimento</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              A ficha, os equipamentos e as ações aparecerão nesta área.
-            </p>
+            )}
           </CardContent>
         </Card>
       )}
+
+      {modo === "CONSULTA" && (
+        <Card className="border-l-4 border-l-amber-500 shadow-sm">
+          <CardHeader className="border-b bg-muted/20 pb-4">
+            <div className="flex items-center gap-2">
+              <Search className="size-4 text-primary" aria-hidden="true" />
+              <div>
+                <h2 className="text-base font-semibold lg:text-lg">
+                  Consultar posse de equipamento
+                </h2>
+                <p className="text-sm text-muted-foreground lg:text-base">
+                  Pesquise por nome, marca, modelo, patrimônio, identificação, serial ou
+                  funcionário.
+                </p>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4 p-4">
+            <div className="relative">
+              <Search
+                className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                aria-hidden="true"
+              />
+              <Input
+                value={buscaEquipamento}
+                onChange={(event) => setBuscaEquipamento(event.target.value)}
+                className="h-11 pl-9 text-base lg:h-12 lg:text-lg"
+                placeholder="Ex.: furadeira, patrimônio, serial ou nome do funcionário"
+                aria-label="Pesquisar equipamentos e responsáveis"
+              />
+            </div>
+            {!buscaEquipamento.trim() ? (
+              <p className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
+                Digite pelo menos uma informação para consultar quem está em posse.
+              </p>
+            ) : consultasFiltradas.length === 0 ? (
+              <p className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
+                Nenhum equipamento ou responsável corresponde à pesquisa.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-xs font-medium text-muted-foreground">
+                  {consultasFiltradas.length} registro(s) encontrado(s)
+                </p>
+                {consultasFiltradas.map((item) => (
+                  <div
+                    key={item.estoque.id}
+                    className="rounded-xl border border-l-4 border-l-sky-500 bg-card p-4 shadow-sm"
+                  >
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="min-w-0">
+                        <p className="break-words text-base font-semibold lg:text-lg">
+                          {item.equipamento.nome}
+                        </p>
+                        <p className="mt-1 break-words text-base text-muted-foreground">
+                          {[item.equipamento.marca, item.equipamento.modelo]
+                            .filter(Boolean)
+                            .join(" · ") || "Sem marca ou modelo"}
+                        </p>
+                        <p className="mt-2 break-words text-sm text-muted-foreground">
+                          {item.identificacao}
+                          {item.estoque.patrimonio && item.identificacao !== item.estoque.patrimonio
+                            ? ` · Patrimônio: ${item.estoque.patrimonio}`
+                            : ""}
+                          {item.estoque.serial && item.identificacao !== item.estoque.serial
+                            ? ` · Serial: ${item.estoque.serial}`
+                            : ""}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2 text-xs">
+                        <Badge variant={item.proprietarios.length ? "default" : "outline"}>
+                          {item.proprietarios.length ? "Em posse" : situacaoConsulta(item)}
+                        </Badge>
+                        <Badge variant="outline">Disponível: {num(item.disponivel)}</Badge>
+                        {item.manutencao > 0 && (
+                          <Badge variant="outline">Manutenção: {num(item.manutencao)}</Badge>
+                        )}
+                      </div>
+                    </div>
+                    <div className="mt-4 border-t pt-3">
+                      <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                        Responsável atual
+                      </p>
+                      {item.proprietarios.length === 0 ? (
+                        <p className="mt-2 text-base text-muted-foreground">
+                          Nenhum funcionário possui este equipamento no momento.
+                        </p>
+                      ) : (
+                        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                          {item.proprietarios.map((proprietario) => (
+                            <div
+                              key={proprietario.id}
+                              className="flex min-w-0 items-start justify-between gap-3 rounded-lg border-l-2 border-l-emerald-500 bg-muted/30 p-3"
+                            >
+                              <div className="min-w-0">
+                                <p className="break-words text-base font-medium">
+                                  {proprietario.nome}
+                                  {!proprietario.ativo && (
+                                    <span className="ml-1 text-sm font-normal text-muted-foreground">
+                                      (inativo)
+                                    </span>
+                                  )}
+                                </p>
+                                {proprietario.matricula && (
+                                  <p className="mt-0.5 text-sm text-muted-foreground">
+                                    Matrícula: {proprietario.matricula}
+                                  </p>
+                                )}
+                              </div>
+                              <span className="shrink-0 text-sm font-semibold">
+                                {num(proprietario.quantidade)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {modo === "ATENDIMENTO" &&
+        (funcionario ? (
+          <>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Resumo
+                label="Itens vinculados"
+                valor={dados.itens.length}
+                icon={<PackageCheck className="size-4" />}
+                accentClassName="border-l-primary"
+              />
+              <Resumo
+                label="Quantidade em uso"
+                valor={dados.itens.reduce((total, item) => total + item.quantidade, 0)}
+                icon={<UserRound className="size-4" />}
+                accentClassName="border-l-emerald-500"
+              />
+              <Resumo
+                label="Unidades disponíveis"
+                valor={dados.disponiveis.reduce((total, item) => total + item.disponivel, 0)}
+                icon={<UserRoundPlus className="size-4" />}
+                accentClassName="border-l-amber-500"
+              />
+            </div>
+            <Card className="border-l-4 border-l-emerald-500 shadow-sm">
+              <CardHeader className="flex flex-col gap-3 border-b bg-muted/20 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="text-base font-semibold lg:text-lg">Ficha de atendimento</h2>
+                  <p className="text-sm text-muted-foreground lg:text-base">
+                    Equipamentos atualmente vinculados a este funcionário.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      imprimirAtendimento(funcionario, equipe?.nome ?? "Sem equipe", dados.itens)
+                    }
+                  >
+                    <FileDown className="mr-2 size-4" />
+                    Imprimir / PDF
+                  </Button>
+                  <Button type="button" size="sm" onClick={abrirApropriacao}>
+                    <UserRoundPlus className="mr-2 size-4" />
+                    Apropriar
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="p-0">
+                {dados.itens.length === 0 ? (
+                  <div className="p-8 text-center text-sm text-muted-foreground">
+                    Nenhum equipamento apropriado para este funcionário.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[720px] text-base">
+                      <thead className="bg-muted/30 text-left text-sm uppercase tracking-wide text-muted-foreground">
+                        <tr>
+                          <th className="px-4 py-3">Equipamento</th>
+                          <th className="px-4 py-3">Identificação</th>
+                          <th className="px-4 py-3 text-right">Quantidade</th>
+                          <th className="px-4 py-3 text-right">Ação</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {dados.itens.map((item) => (
+                          <tr key={item.estoque.id} className="hover:bg-muted/20">
+                            <td className="px-4 py-3">
+                              <p className="font-medium">{item.equipamento.nome}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {[item.equipamento.marca, item.equipamento.modelo]
+                                  .filter(Boolean)
+                                  .join(" · ") || "Sem modelo"}
+                              </p>
+                            </td>
+                            <td className="px-4 py-3 text-muted-foreground">
+                              {item.identificacao}
+                            </td>
+                            <td className="px-4 py-3 text-right font-semibold">
+                              {num(item.quantidade)}
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                onClick={() => abrirDevolucao(item)}
+                              >
+                                <UserRoundMinus className="mr-1.5 size-4" />
+                                Desapropriar
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </>
+        ) : (
+          <Card>
+            <CardContent className="p-10 text-center">
+              <UserRound className="mx-auto size-10 text-muted-foreground/50" />
+              <p className="mt-3 font-medium">
+                Selecione um funcionário para iniciar o atendimento
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                A ficha, os equipamentos e as ações aparecerão nesta área.
+              </p>
+            </CardContent>
+          </Card>
+        ))}
 
       <Dialog open={dialogAcao} onOpenChange={(open) => !salvando && setDialogAcao(open)}>
         <DialogContent>
@@ -670,9 +715,19 @@ export function PainelApropriacoesPage() {
   );
 }
 
-function Resumo({ label, valor, icon }: { label: string; valor: number; icon: ReactNode }) {
+function Resumo({
+  label,
+  valor,
+  icon,
+  accentClassName,
+}: {
+  label: string;
+  valor: number;
+  icon: ReactNode;
+  accentClassName: string;
+}) {
   return (
-    <Card>
+    <Card className={`border-l-4 ${accentClassName} shadow-sm`}>
       <CardContent className="flex items-center justify-between gap-3 p-4">
         <div>
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
