@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteImport } from './routes/app'
+import { Route as ConsultaEstoqueRouteImport } from './routes/consulta-estoque'
 import { Route as ConsultaFuncionarioRouteImport } from './routes/consulta-funcionario'
 import { Route as AppIndexRouteImport } from './routes/app.index'
 import { Route as AppApropriacoesRouteImport } from './routes/app.apropriacoes'
@@ -50,6 +51,11 @@ const IndexRoute = IndexRouteImport.update({
 const AppRoute = AppRouteImport.update({
   id: '/app',
   path: '/app',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConsultaEstoqueRoute = ConsultaEstoqueRouteImport.update({
+  id: '/consulta-estoque',
+  path: '/consulta-estoque',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ConsultaFuncionarioRoute = ConsultaFuncionarioRouteImport.update({
@@ -214,6 +220,7 @@ const AppEstatisticasRelatorioRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
+  '/consulta-estoque': typeof ConsultaEstoqueRoute
   '/consulta-funcionario': typeof ConsultaFuncionarioRoute
   '/app/apropriacoes': typeof AppApropriacoesRoute
   '/app/cadastros': typeof AppCadastrosRoute
@@ -247,6 +254,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/consulta-estoque': typeof ConsultaEstoqueRoute
   '/consulta-funcionario': typeof ConsultaFuncionarioRoute
   '/app/apropriacoes': typeof AppApropriacoesRoute
   '/app/cadastros': typeof AppCadastrosRoute
@@ -282,6 +290,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
+  '/consulta-estoque': typeof ConsultaEstoqueRoute
   '/consulta-funcionario': typeof ConsultaFuncionarioRoute
   '/app/apropriacoes': typeof AppApropriacoesRoute
   '/app/cadastros': typeof AppCadastrosRoute
@@ -318,6 +327,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/app'
+    | '/consulta-estoque'
     | '/consulta-funcionario'
     | '/app/apropriacoes'
     | '/app/cadastros'
@@ -351,6 +361,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/consulta-estoque'
     | '/consulta-funcionario'
     | '/app/apropriacoes'
     | '/app/cadastros'
@@ -385,6 +396,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/app'
+    | '/consulta-estoque'
     | '/consulta-funcionario'
     | '/app/apropriacoes'
     | '/app/cadastros'
@@ -420,6 +432,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRoute: typeof AppRouteWithChildren
+  ConsultaEstoqueRoute: typeof ConsultaEstoqueRoute
   ConsultaFuncionarioRoute: typeof ConsultaFuncionarioRoute
 }
 
@@ -437,6 +450,13 @@ declare module '@tanstack/react-router' {
       path: '/app'
       fullPath: '/app'
       preLoaderRoute: typeof AppRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/consulta-estoque': {
+      id: '/consulta-estoque'
+      path: '/consulta-estoque'
+      fullPath: '/consulta-estoque'
+      preLoaderRoute: typeof ConsultaEstoqueRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/consulta-funcionario': {
@@ -731,6 +751,7 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRoute: AppRouteWithChildren,
+  ConsultaEstoqueRoute: ConsultaEstoqueRoute,
   ConsultaFuncionarioRoute: ConsultaFuncionarioRoute,
 }
 export const routeTree = rootRouteImport

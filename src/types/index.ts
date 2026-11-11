@@ -36,3 +36,4 @@ export * from "./previsto-real-equipamento";
 
 export * from "./vigia-equipamentos";
 export * from "./painel-funcionarios";
+export * from "./painel-estoque";
