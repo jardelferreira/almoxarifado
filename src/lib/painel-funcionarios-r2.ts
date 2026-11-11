@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { env } from "cloudflare:workers";
 import type { PublicacaoPainelFuncionarios, RegistroPublicacaoFuncionario } from "@/types";
-import { autorizarProjetoNuvem } from "@/lib/sincronizacao-r2";
+import { autorizarProjetoNuvem } from "@/lib/projeto-auth-r2";
 
 const PREFIXO = "painel-funcionarios";
 

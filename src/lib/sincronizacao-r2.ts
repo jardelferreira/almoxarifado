@@ -190,10 +190,6 @@ async function autorizar(projetoId: string, senha: string): Promise<void> {
   }
 }
 
-export async function autorizarProjetoNuvem(projetoId: string, senha: string): Promise<void> {
-  await autorizar(projetoId, senha);
-}
-
 function validarChaveRecuperacao(chave: string): string {
   if (typeof chave !== "string" || chave.length < 32 || chave.length > 128) {
     throw new Error("A chave de recuperação informada é inválida.");

@@ -15,6 +15,7 @@ import { Route as ConsultaFuncionarioRouteImport } from './routes/consulta-funci
 import { Route as AppIndexRouteImport } from './routes/app.index'
 import { Route as AppApropriacoesRouteImport } from './routes/app.apropriacoes'
 import { Route as AppCadastrosRouteImport } from './routes/app.cadastros'
+import { Route as AppCompartilharPainelRouteImport } from './routes/app.compartilhar-painel'
 import { Route as AppConfiguracoesRouteImport } from './routes/app.configuracoes'
 import { Route as AppCronologiaRouteImport } from './routes/app.cronologia'
 import { Route as AppDadosRouteImport } from './routes/app.dados'
@@ -69,6 +70,11 @@ const AppApropriacoesRoute = AppApropriacoesRouteImport.update({
 const AppCadastrosRoute = AppCadastrosRouteImport.update({
   id: '/cadastros',
   path: '/cadastros',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppCompartilharPainelRoute = AppCompartilharPainelRouteImport.update({
+  id: '/compartilhar-painel',
+  path: '/compartilhar-painel',
   getParentRoute: () => AppRoute,
 } as any)
 const AppConfiguracoesRoute = AppConfiguracoesRouteImport.update({
@@ -211,6 +217,7 @@ export interface FileRoutesByFullPath {
   '/consulta-funcionario': typeof ConsultaFuncionarioRoute
   '/app/apropriacoes': typeof AppApropriacoesRoute
   '/app/cadastros': typeof AppCadastrosRoute
+  '/app/compartilhar-painel': typeof AppCompartilharPainelRoute
   '/app/configuracoes': typeof AppConfiguracoesRoute
   '/app/cronologia': typeof AppCronologiaRoute
   '/app/dados': typeof AppDadosRoute
@@ -243,6 +250,7 @@ export interface FileRoutesByTo {
   '/consulta-funcionario': typeof ConsultaFuncionarioRoute
   '/app/apropriacoes': typeof AppApropriacoesRoute
   '/app/cadastros': typeof AppCadastrosRoute
+  '/app/compartilhar-painel': typeof AppCompartilharPainelRoute
   '/app/configuracoes': typeof AppConfiguracoesRoute
   '/app/cronologia': typeof AppCronologiaRoute
   '/app/dados': typeof AppDadosRoute
@@ -277,6 +285,7 @@ export interface FileRoutesById {
   '/consulta-funcionario': typeof ConsultaFuncionarioRoute
   '/app/apropriacoes': typeof AppApropriacoesRoute
   '/app/cadastros': typeof AppCadastrosRoute
+  '/app/compartilhar-painel': typeof AppCompartilharPainelRoute
   '/app/configuracoes': typeof AppConfiguracoesRoute
   '/app/cronologia': typeof AppCronologiaRoute
   '/app/dados': typeof AppDadosRoute
@@ -312,6 +321,7 @@ export interface FileRouteTypes {
     | '/consulta-funcionario'
     | '/app/apropriacoes'
     | '/app/cadastros'
+    | '/app/compartilhar-painel'
     | '/app/configuracoes'
     | '/app/cronologia'
     | '/app/dados'
@@ -344,6 +354,7 @@ export interface FileRouteTypes {
     | '/consulta-funcionario'
     | '/app/apropriacoes'
     | '/app/cadastros'
+    | '/app/compartilhar-painel'
     | '/app/configuracoes'
     | '/app/cronologia'
     | '/app/dados'
@@ -377,6 +388,7 @@ export interface FileRouteTypes {
     | '/consulta-funcionario'
     | '/app/apropriacoes'
     | '/app/cadastros'
+    | '/app/compartilhar-painel'
     | '/app/configuracoes'
     | '/app/cronologia'
     | '/app/dados'
@@ -453,6 +465,13 @@ declare module '@tanstack/react-router' {
       path: '/cadastros'
       fullPath: '/app/cadastros'
       preLoaderRoute: typeof AppCadastrosRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/compartilhar-painel': {
+      id: '/app/compartilhar-painel'
+      path: '/compartilhar-painel'
+      fullPath: '/app/compartilhar-painel'
+      preLoaderRoute: typeof AppCompartilharPainelRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/configuracoes': {
@@ -648,6 +667,7 @@ const AppEstatisticasRouteWithChildren = AppEstatisticasRoute._addFileChildren(
 interface AppRouteChildren {
   AppApropriacoesRoute: typeof AppApropriacoesRoute
   AppCadastrosRoute: typeof AppCadastrosRoute
+  AppCompartilharPainelRoute: typeof AppCompartilharPainelRoute
   AppConfiguracoesRoute: typeof AppConfiguracoesRoute
   AppCronologiaRoute: typeof AppCronologiaRoute
   AppDadosRoute: typeof AppDadosRoute
@@ -678,6 +698,7 @@ interface AppRouteChildren {
 const AppRouteChildren: AppRouteChildren = {
   AppApropriacoesRoute: AppApropriacoesRoute,
   AppCadastrosRoute: AppCadastrosRoute,
+  AppCompartilharPainelRoute: AppCompartilharPainelRoute,
   AppConfiguracoesRoute: AppConfiguracoesRoute,
   AppCronologiaRoute: AppCronologiaRoute,
   AppDadosRoute: AppDadosRoute,
