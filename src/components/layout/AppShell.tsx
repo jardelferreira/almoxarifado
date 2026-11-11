@@ -29,6 +29,7 @@ import {
   Calendar,
   Clock3,
   OptionIcon,
+  QrCode,
   SlidersHorizontal,
 } from "lucide-react";
 import type { ReactNode } from "react";
@@ -80,6 +81,12 @@ const navGroups: NavGroup[] = [
         label: "Painel de apropriações",
         icon: UserCheck,
         subgrupo: "Atendimento",
+      },
+      {
+        to: "/app/compartilhar-painel",
+        label: "Compartilhar painel",
+        icon: QrCode,
+        subgrupo: "Consulta pública",
       },
     ],
   },
