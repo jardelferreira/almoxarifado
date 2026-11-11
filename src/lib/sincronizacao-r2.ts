@@ -7,6 +7,7 @@ const VERSAO_CONTROLE = 1;
 // O runtime do Cloudflare Workers limita PBKDF2 a 100.000 iterações.
 const ITERACOES_SENHA = 100_000;
 const TAMANHO_SALT = 16;
+const TAMANHO_CHAVE_RECUPERACAO = 32;
 const TAMANHO_MAX_ENVELOPE = 25 * 1024 * 1024;
 
 type ControleProjeto = {
@@ -17,11 +18,15 @@ type ControleProjeto = {
   senha_salt: string;
   senha_iteracoes: number;
   criado_em: string;
+  recuperacao_hash?: string;
+  recuperacao_salt?: string;
+  recuperacao_iteracoes?: number;
 };
 
 type DadosProjeto = {
   projetoId: string;
   senha: string;
+  operacao?: "configurar" | "gerar_recuperacao";
 };
 
 type EnvioProjeto = DadosProjeto & {
@@ -63,6 +68,10 @@ function base64(bytes: Uint8Array): string {
   return btoa(binario);
 }
 
+function base64Url(bytes: Uint8Array): string {
+  return base64(bytes).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/g, "");
+}
+
 function bytes(valor: string): Uint8Array {
   const binario = atob(valor);
   return Uint8Array.from(binario, (caractere) => caractere.charCodeAt(0));
@@ -95,17 +104,41 @@ function compararBytes(a: Uint8Array, b: Uint8Array): boolean {
   return diferenca === 0;
 }
 
-async function criarControle(projetoId: string, senha: string): Promise<ControleProjeto> {
+async function criarControle(projetoId: string, senha: string): Promise<{ controle: ControleProjeto; chaveRecuperacao: string }> {
   const salt = crypto.getRandomValues(new Uint8Array(TAMANHO_SALT));
   const hash = await derivarHashSenha(senha, salt, ITERACOES_SENHA);
+  const chaveRecuperacao = base64Url(crypto.getRandomValues(new Uint8Array(TAMANHO_CHAVE_RECUPERACAO)));
+  const recuperacaoSalt = crypto.getRandomValues(new Uint8Array(TAMANHO_SALT));
+  const recuperacaoHash = await derivarHashSenha(chaveRecuperacao, recuperacaoSalt, ITERACOES_SENHA);
   return {
-    formato: FORMATO_CONTROLE,
-    versao: VERSAO_CONTROLE,
-    projeto_id: projetoId,
-    senha_hash: base64(hash),
-    senha_salt: base64(salt),
-    senha_iteracoes: ITERACOES_SENHA,
-    criado_em: new Date().toISOString(),
+    chaveRecuperacao,
+    controle: {
+      formato: FORMATO_CONTROLE,
+      versao: VERSAO_CONTROLE,
+      projeto_id: projetoId,
+      senha_hash: base64(hash),
+      senha_salt: base64(salt),
+      senha_iteracoes: ITERACOES_SENHA,
+      criado_em: new Date().toISOString(),
+      recuperacao_hash: base64(recuperacaoHash),
+      recuperacao_salt: base64(recuperacaoSalt),
+      recuperacao_iteracoes: ITERACOES_SENHA,
+    },
+  };
+}
+
+async function adicionarChaveRecuperacao(controle: ControleProjeto): Promise<{ controle: ControleProjeto; chaveRecuperacao: string }> {
+  const chaveRecuperacao = base64Url(crypto.getRandomValues(new Uint8Array(TAMANHO_CHAVE_RECUPERACAO)));
+  const recuperacaoSalt = crypto.getRandomValues(new Uint8Array(TAMANHO_SALT));
+  const recuperacaoHash = await derivarHashSenha(chaveRecuperacao, recuperacaoSalt, ITERACOES_SENHA);
+  return {
+    chaveRecuperacao,
+    controle: {
+      ...controle,
+      recuperacao_hash: base64(recuperacaoHash),
+      recuperacao_salt: base64(recuperacaoSalt),
+      recuperacao_iteracoes: ITERACOES_SENHA,
+    },
   };
 }
 
@@ -123,6 +156,13 @@ async function lerControle(projetoId: string): Promise<ControleProjeto> {
   ) {
     throw new Error("O controle remoto do projeto está inválido.");
   }
+  const camposRecuperacao = [controle.recuperacao_hash, controle.recuperacao_salt, controle.recuperacao_iteracoes];
+  if (camposRecuperacao.some((campo) => campo !== undefined) &&
+      (typeof controle.recuperacao_hash !== "string" ||
+        typeof controle.recuperacao_salt !== "string" ||
+        controle.recuperacao_iteracoes !== ITERACOES_SENHA)) {
+    throw new Error("O controle remoto possui dados de recuperação incompletos.");
+  }
   return controle as ControleProjeto;
 }
 
@@ -132,6 +172,25 @@ async function autorizar(projetoId: string, senha: string): Promise<void> {
   if (!compararBytes(hash, bytes(controle.senha_hash))) {
     throw new Error("Senha de sincronização incorreta.");
   }
+}
+
+function validarChaveRecuperacao(chave: string): string {
+  if (typeof chave !== "string" || chave.length < 32 || chave.length > 128) {
+    throw new Error("A chave de recuperação informada é inválida.");
+  }
+  return chave;
+}
+
+async function autorizarRecuperacao(projetoId: string, chave: string): Promise<ControleProjeto> {
+  const controle = await lerControle(projetoId);
+  if (!controle.recuperacao_hash || !controle.recuperacao_salt || !controle.recuperacao_iteracoes) {
+    throw new Error("Este projeto ainda não possui uma chave de recuperação configurada.");
+  }
+  const hash = await derivarHashSenha(chave, bytes(controle.recuperacao_salt), controle.recuperacao_iteracoes);
+  if (!compararBytes(hash, bytes(controle.recuperacao_hash))) {
+    throw new Error("Chave de recuperação incorreta.");
+  }
+  return controle;
 }
 
 function validarEnvelope(envelope: string): void {
@@ -163,19 +222,36 @@ export const criarProjetoNuvem = createServerFn({ method: "POST" })
   .validator((data: DadosProjeto) => ({
     projetoId: validarProjetoId(data.projetoId),
     senha: validarSenha(data.senha),
+    operacao: data.operacao,
   }))
   .handler(async ({ data }) => {
+    if (data.operacao === "gerar_recuperacao") {
+      await autorizar(data.projetoId, data.senha);
+      const controleKey = chaveControle(data.projetoId);
+      const atual = await env.ALMOXARIFADO_BUCKET.head(controleKey);
+      const objeto = await env.ALMOXARIFADO_BUCKET.get(controleKey);
+      if (!atual || !objeto) throw new Error("O controle remoto do projeto não foi encontrado.");
+      const controle = await objeto.json() as ControleProjeto;
+      if (controle.recuperacao_hash) throw new Error("Este projeto já possui uma chave de recuperação configurada.");
+      const novo = await adicionarChaveRecuperacao(controle);
+      const salvo = await env.ALMOXARIFADO_BUCKET.put(controleKey, JSON.stringify(novo.controle), {
+        onlyIf: { etagMatches: normalizarEtag(atual.httpEtag) ?? "" },
+        httpMetadata: { contentType: "application/json; charset=utf-8" },
+      });
+      if (!salvo) throw new Error("CONFLITO_NUVEM: o controle remoto mudou durante a geração da chave.");
+      return { chaveRecuperacao: novo.chaveRecuperacao };
+    }
     const controleKey = chaveControle(data.projetoId);
     const existente = await env.ALMOXARIFADO_BUCKET.head(controleKey);
     if (existente) throw new Error("Este projeto já possui sincronização configurada na nuvem.");
 
-    const controle = await criarControle(data.projetoId, data.senha);
-    const salvo = await env.ALMOXARIFADO_BUCKET.put(controleKey, JSON.stringify(controle), {
+    const novo = await criarControle(data.projetoId, data.senha);
+    const salvo = await env.ALMOXARIFADO_BUCKET.put(controleKey, JSON.stringify(novo.controle), {
       onlyIf: { etagDoesNotMatch: "*" },
       httpMetadata: { contentType: "application/json; charset=utf-8" },
     });
     if (!salvo) throw new Error("O projeto foi configurado por outra operação. Tente novamente.");
-    return { projetoId: data.projetoId, configuradoEm: controle.criado_em };
+    return { projetoId: data.projetoId, configuradoEm: novo.controle.criado_em, chaveRecuperacao: novo.chaveRecuperacao };
   });
 
 export const consultarProjetoNuvem = createServerFn({ method: "POST" })
