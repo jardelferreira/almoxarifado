@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { env } from "cloudflare:workers";
 import type { PainelEstoqueDados } from "@/types";
-import { autorizarProjetoNuvem } from "@/lib/projeto-auth-r2";
+import { autorizarEObterTokenPainelEstoque } from "@/lib/projeto-auth-r2";
 
 const PREFIXO = "painel-estoque";
 
@@ -19,11 +19,6 @@ function validarToken(token: string): string {
 
 function chave(projetoId: string, token: string) {
   return `${PREFIXO}/${encodeURIComponent(projetoId)}/${token}.json`;
-}
-
-function novoToken(): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(32));
-  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 function validarPublicacao(publicacao: PainelEstoqueDados): PainelEstoqueDados {
@@ -44,14 +39,9 @@ export const publicarPainelEstoqueNuvem = createServerFn({ method: "POST" })
     publicacao: validarPublicacao(data.publicacao),
   }))
   .handler(async ({ data }) => {
-    await autorizarProjetoNuvem(data.projetoId, data.senha);
+    const token = await autorizarEObterTokenPainelEstoque(data.projetoId, data.senha);
     if (data.publicacao.projeto_id !== data.projetoId)
       throw new Error("A publicação não pertence ao projeto informado.");
-    const prefixo = `${PREFIXO}/${encodeURIComponent(data.projetoId)}/`;
-    const existentes = await env.ALMOXARIFADO_BUCKET.list({ prefix: prefixo });
-    if (existentes.objects.length)
-      await env.ALMOXARIFADO_BUCKET.delete(existentes.objects.map((item) => item.key));
-    const token = novoToken();
     await env.ALMOXARIFADO_BUCKET.put(
       chave(data.projetoId, token),
       JSON.stringify(data.publicacao),
