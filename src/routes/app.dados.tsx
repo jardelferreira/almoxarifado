@@ -338,7 +338,19 @@ function DadosPage() {
       setEstadoNuvem({ existe: true, etag: resposta.etag, atualizadoEm: resposta.atualizadoEm, tamanho: resposta.tamanho });
       toast.success("Snapshot criptografado enviado para a nuvem.");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Não foi possível enviar o snapshot.");
+      const mensagem = error instanceof Error ? error.message : "Não foi possível enviar o snapshot.";
+      if (mensagem.includes("CONFLITO_NUVEM")) {
+        try {
+          const estadoAtualizado = await consultarProjetoNuvem({ data: { projetoId, senha: senhaNuvem } });
+          setEstadoNuvem(estadoAtualizado);
+        } catch {
+          // A mensagem principal abaixo já orienta o operador a consultar
+          // novamente; não ocultamos o conflito por uma falha secundária.
+        }
+        toast.error("Conflito detectado: outro dispositivo atualizou o projeto. O estado remoto foi recarregado; baixe-o para revisar antes de enviar novamente.");
+      } else {
+        toast.error(mensagem);
+      }
     } finally {
       setSincronizando(false);
     }
