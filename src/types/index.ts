@@ -35,3 +35,4 @@ export * from "./mesclagem-parametros-custo";
 export * from "./previsto-real-equipamento";
 
 export * from "./vigia-equipamentos";
+export * from "./painel-funcionarios";

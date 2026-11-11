@@ -73,3 +73,23 @@ export async function verificarPin(pin: string, registro: PinHash): Promise<bool
   const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt: new Uint8Array(salt) as unknown as BufferSource, iterations: registro.pin_iteracoes, hash: "SHA-256" }, chave, 256);
   return bytesParaBase64(new Uint8Array(bits)) === registro.pin_hash;
 }
+
+export async function derivarHashPin(
+  pin: string,
+  saltBase64: string,
+  iteracoes: number,
+): Promise<string> {
+  if (!validarPin(pin)) throw new Error("O PIN deve conter de 4 a 8 números.");
+  const salt = base64ParaBytes(saltBase64);
+  const chave = await crypto.subtle.importKey("raw", new TextEncoder().encode(pin), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", salt: salt as unknown as BufferSource, iterations: iteracoes, hash: "SHA-256" },
+    chave,
+    256,
+  );
+  return bytesParaBase64(new Uint8Array(bits));
+}
+
+export function base64ParaBytesSeguros(valor: string): Uint8Array {
+  return base64ParaBytes(valor);
+}
