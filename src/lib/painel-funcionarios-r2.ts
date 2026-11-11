@@ -62,14 +62,6 @@ export const publicarPainelFuncionariosNuvem = createServerFn({ method: "POST" }
     if (data.publicacao.projeto_id !== data.projetoId)
       throw new Error("A publicação não pertence ao projeto informado.");
 
-    const prefixo = `${PREFIXO}/${encodeURIComponent(data.projetoId)}/`;
-    const existentes = await env.ALMOXARIFADO_BUCKET.list({ prefix: prefixo });
-    const atuais = new Set(
-      data.publicacao.funcionarios.map((item) => chaveRegistro(data.projetoId, item.cpf_hash)),
-    );
-    const remover = existentes.objects.map((item) => item.key).filter((key) => !atuais.has(key));
-    if (remover.length) await env.ALMOXARIFADO_BUCKET.delete(remover);
-
     await Promise.all(
       data.publicacao.funcionarios.map((registro) => {
         const corpo: RegistroPublicacaoFuncionario = registro;
