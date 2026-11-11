@@ -26,7 +26,8 @@ type ControleProjeto = {
 type DadosProjeto = {
   projetoId: string;
   senha: string;
-  operacao?: "configurar" | "gerar_recuperacao";
+  operacao?: "configurar" | "gerar_recuperacao" | "rotacionar_recuperacao";
+  chaveRecuperacao?: string;
 };
 
 type EnvioProjeto = DadosProjeto & {
@@ -142,6 +143,21 @@ async function adicionarChaveRecuperacao(controle: ControleProjeto): Promise<{ c
   };
 }
 
+async function rotacionarControle(controle: ControleProjeto, novaSenha: string): Promise<{ controle: ControleProjeto; chaveRecuperacao: string }> {
+  const senhaSalt = crypto.getRandomValues(new Uint8Array(TAMANHO_SALT));
+  const senhaHash = await derivarHashSenha(novaSenha, senhaSalt, ITERACOES_SENHA);
+  const novo = await adicionarChaveRecuperacao(controle);
+  return {
+    chaveRecuperacao: novo.chaveRecuperacao,
+    controle: {
+      ...novo.controle,
+      senha_hash: base64(senhaHash),
+      senha_salt: base64(senhaSalt),
+      senha_iteracoes: ITERACOES_SENHA,
+    },
+  };
+}
+
 async function lerControle(projetoId: string): Promise<ControleProjeto> {
   const objeto = await env.ALMOXARIFADO_BUCKET.get(chaveControle(projetoId));
   if (!objeto) throw new Error("O projeto ainda não foi configurado para sincronização na nuvem.");
@@ -223,8 +239,23 @@ export const criarProjetoNuvem = createServerFn({ method: "POST" })
     projetoId: validarProjetoId(data.projetoId),
     senha: validarSenha(data.senha),
     operacao: data.operacao,
+    chaveRecuperacao: data.chaveRecuperacao,
   }))
   .handler(async ({ data }) => {
+    if (data.operacao === "rotacionar_recuperacao") {
+      const chave = validarChaveRecuperacao(data.chaveRecuperacao ?? "");
+      const controle = await autorizarRecuperacao(data.projetoId, chave);
+      const controleKey = chaveControle(data.projetoId);
+      const atual = await env.ALMOXARIFADO_BUCKET.head(controleKey);
+      if (!atual) throw new Error("O controle remoto do projeto não foi encontrado.");
+      const novo = await rotacionarControle(controle, data.senha);
+      const salvo = await env.ALMOXARIFADO_BUCKET.put(controleKey, JSON.stringify(novo.controle), {
+        onlyIf: { etagMatches: normalizarEtag(atual.httpEtag) ?? "" },
+        httpMetadata: { contentType: "application/json; charset=utf-8" },
+      });
+      if (!salvo) throw new Error("CONFLITO_NUVEM: o controle remoto mudou durante a troca da senha.");
+      return { chaveRecuperacao: novo.chaveRecuperacao };
+    }
     if (data.operacao === "gerar_recuperacao") {
       await autorizar(data.projetoId, data.senha);
       const controleKey = chaveControle(data.projetoId);
