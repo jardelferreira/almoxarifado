@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Copy,
   Download,
@@ -44,6 +44,12 @@ type CompartilhamentoEstoque = {
   itens: number;
 };
 
+const DURACAO_SESSAO_MS = 8 * 60 * 60 * 1000;
+
+function chaveSessao(projetoId: string): string {
+  return `almox.painel.senha.${projetoId}`;
+}
+
 export function CompartilharPainelPage() {
   const [projetoId] = useProjetoAtivoId();
   const [senha, setSenha] = useState("");
@@ -51,6 +57,30 @@ export function CompartilharPainelPage() {
   const [compartilhamento, setCompartilhamento] = useState<Compartilhamento | null>(null);
   const [compartilhamentoEstoque, setCompartilhamentoEstoque] =
     useState<CompartilhamentoEstoque | null>(null);
+
+  useEffect(() => {
+    if (!projetoId) return;
+    try {
+      const salvo = sessionStorage.getItem(chaveSessao(projetoId));
+      if (!salvo) return;
+      const sessao = JSON.parse(salvo) as { senha?: string; expiraEm?: number };
+      if (sessao.senha && sessao.expiraEm && sessao.expiraEm > Date.now()) {
+        setSenha(sessao.senha);
+      } else {
+        sessionStorage.removeItem(chaveSessao(projetoId));
+      }
+    } catch {
+      sessionStorage.removeItem(chaveSessao(projetoId));
+    }
+  }, [projetoId]);
+
+  const guardarSessao = (senhaAtual: string) => {
+    if (!projetoId) return;
+    sessionStorage.setItem(
+      chaveSessao(projetoId),
+      JSON.stringify({ senha: senhaAtual, expiraEm: Date.now() + DURACAO_SESSAO_MS }),
+    );
+  };
 
   const publicar = async () => {
     if (!projetoId || senha.length < 16) {
@@ -63,6 +93,7 @@ export function CompartilharPainelPage() {
       const resultado = await publicarPainelFuncionariosNuvem({
         data: { projetoId, senha, publicacao },
       });
+      guardarSessao(senha);
       const url = `${window.location.origin}/consulta-funcionario?projeto=${encodeURIComponent(projetoId)}`;
       const qrDataUrl = await QRCode.toDataURL(url, {
         width: 900,
@@ -97,6 +128,7 @@ export function CompartilharPainelPage() {
       const resultado = await publicarPainelEstoqueNuvem({
         data: { projetoId, senha, publicacao },
       });
+      guardarSessao(senha);
       const url = `${window.location.origin}/consulta-estoque?projeto=${encodeURIComponent(projetoId)}&acesso=${resultado.token}`;
       const qrDataUrl = await QRCode.toDataURL(url, {
         width: 900,

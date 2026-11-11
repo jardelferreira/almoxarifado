@@ -1,6 +1,7 @@
 import { createFileRoute, useSearch } from "@tanstack/react-router";
 import { useState } from "react";
 import {
+  AlertTriangle,
   ClipboardList,
   Loader2,
   LockKeyhole,
@@ -216,6 +217,15 @@ function FichaResultado({
           </div>
         </CardContent>
       </Card>
+      {painelDesatualizado(dados.atualizado_em) && (
+        <div className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+          <AlertTriangle className="mt-0.5 size-5 shrink-0" />
+          <p>
+            <strong>Informação possivelmente desatualizada.</strong> Esta é a última ficha publicada
+            pelo almoxarifado. A consulta continua disponível até uma nova atualização.
+          </p>
+        </div>
+      )}
       <Tabs value={modo} onValueChange={(value) => setModo(value as ModoConsulta)}>
         <TabsList className="grid h-auto w-full grid-cols-2 rounded-xl border bg-card p-1">
           <TabsTrigger
@@ -320,4 +330,9 @@ function FichaResultado({
       )}
     </div>
   );
+}
+
+function painelDesatualizado(atualizadoEm: string): boolean {
+  const data = Date.parse(atualizadoEm);
+  return Number.isFinite(data) && Date.now() - data > 24 * 60 * 60 * 1000;
 }

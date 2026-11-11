@@ -12,6 +12,7 @@ type ControleProjeto = {
   senha_hash: string;
   senha_salt: string;
   senha_iteracoes: number;
+  painel_estoque_token?: string;
 };
 
 function chaveControle(projetoId: string): string {
@@ -79,4 +80,27 @@ export async function autorizarProjetoNuvem(projetoId: string, senha: string): P
   if (!compararBytes(hash, bytes(controle.senha_hash))) {
     throw new Error("Senha de sincronização incorreta.");
   }
+}
+
+export async function autorizarEObterTokenPainelEstoque(
+  projetoId: string,
+  senha: string,
+): Promise<string> {
+  const controle = await lerControle(projetoId);
+  const hash = await derivarHashSenha(senha, bytes(controle.senha_salt), controle.senha_iteracoes);
+  if (!compararBytes(hash, bytes(controle.senha_hash))) {
+    throw new Error("Senha de sincronização incorreta.");
+  }
+  if (controle.painel_estoque_token) return controle.painel_estoque_token;
+
+  const token = Array.from(crypto.getRandomValues(new Uint8Array(32)), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+  const objeto = await env.ALMOXARIFADO_BUCKET.get(chaveControle(projetoId));
+  if (!objeto) throw new Error("O controle remoto do projeto não foi encontrado.");
+  const atualizado = { ...controle, painel_estoque_token: token };
+  await env.ALMOXARIFADO_BUCKET.put(chaveControle(projetoId), JSON.stringify(atualizado), {
+    httpMetadata: { contentType: "application/json; charset=utf-8", cacheControl: "no-store" },
+  });
+  return token;
 }

@@ -395,6 +395,16 @@ function ConsultaEstoquePage() {
     <main className="min-h-screen bg-muted/30 px-3 py-4 sm:px-6 sm:py-6">
       <div className="mx-auto max-w-3xl space-y-4 sm:space-y-5">
         <Cabecalho projetoNome={dados.projeto_nome} atualizado={dados.atualizado_em} />
+        {painelDesatualizado(dados.atualizado_em) && (
+          <div className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+            <AlertTriangle className="mt-0.5 size-5 shrink-0" />
+            <p>
+              <strong>Informação possivelmente desatualizada.</strong> Esta é a última versão
+              publicada pelo almoxarifado. A consulta continua disponível enquanto o operador não
+              realizar uma nova atualização.
+            </p>
+          </div>
+        )}
         <Card className="overflow-hidden border-l-4 border-l-primary shadow-sm">
           <CardContent className="space-y-3 p-4 sm:p-5">
             <div className="relative">
@@ -500,6 +510,11 @@ function rotuloStatus(status: PainelEstoqueItem["status"]): string {
   if (status === "DISPONIVEL") return "Disponível";
   if (status === "BAIXO") return "Abaixo do mínimo";
   return "Sem saldo";
+}
+
+function painelDesatualizado(atualizadoEm: string): boolean {
+  const data = Date.parse(atualizadoEm);
+  return Number.isFinite(data) && Date.now() - data > 24 * 60 * 60 * 1000;
 }
 
 function textoPdf(valor: unknown): string {
