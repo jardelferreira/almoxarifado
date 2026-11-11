@@ -5,6 +5,9 @@ import {
   ArchiveRestore,
   AlertTriangle,
   CheckCircle2,
+  Cloud,
+  CloudDownload,
+  CloudUpload,
   Database,
   Download,
   FileJson,
@@ -12,6 +15,7 @@ import {
   Fingerprint,
   HardDriveDownload,
   Import,
+  LockKeyhole,
   RefreshCw,
   ShieldAlert,
   ShieldCheck,
@@ -27,10 +31,13 @@ import { getDB } from "@/db/db";
 import {
   BACKUP_VERSAO,
   analisarBackupDados,
+  criarBackupDados,
   gerarBackupDados,
   restaurarBackupDados,
   type BackupAnalise,
 } from "@/services/backup";
+import { criptografarSnapshotProjeto, descriptografarSnapshotProjeto, lerEnvelopeSincronizacao } from "@/services/sincronizacao-projeto";
+import { baixarProjetoNuvem, consultarProjetoNuvem, criarProjetoNuvem, enviarProjetoNuvem } from "@/lib/sincronizacao-r2";
 import { exportarProjetoParaExcel } from "@/services/exportacao-projeto";
 import { lerArquivo, salvarDataset, type DatasetImportado } from "@/services/excel";
 import { num } from "@/utils/format";
@@ -73,6 +80,7 @@ const MODULOS: Modulo[] = [
   { tabela: "estoque_equipamentos", label: "Estoque de equipamentos", descricao: "Unidades físicas e lotes controlados.", grupo: "Equipamentos" },
   { tabela: "apropriacoes", label: "Apropriações", descricao: "Equipamentos atribuídos a funcionários.", grupo: "Equipamentos" },
   { tabela: "movimentacoes_equipamentos", label: "Movimentações de equipamentos", descricao: "Histórico físico e operacional dos equipamentos.", grupo: "Equipamentos" },
+  { tabela: "substituicoes_equipamentos", label: "Substituições de equipamentos", descricao: "Relação auditável entre o equipamento devolvido e seu substituto.", grupo: "Equipamentos" },
   { tabela: "regras_consumo_equipamentos", label: "Regras de consumo", descricao: "Parâmetros de consumo por equipamento e produto.", grupo: "Equipamentos" },
   { tabela: "consumos_equipamentos", label: "Consumos de equipamentos", descricao: "Apropriações analíticas das saídas de materiais.", grupo: "Equipamentos" },
   { tabela: "manutencoes_equipamentos", label: "Manutenções", descricao: "Ocorrências técnicas e ciclo de manutenção.", grupo: "Equipamentos" },
@@ -115,6 +123,9 @@ function DadosPage() {
   const [restaurando, setRestaurando] = useState(false);
   const [statusRestauracao, setStatusRestauracao] = useState("Revalidando integridade e relacionamentos…");
   const [processando, setProcessando] = useState(false);
+  const [senhaNuvem, setSenhaNuvem] = useState("");
+  const [sincronizando, setSincronizando] = useState(false);
+  const [estadoNuvem, setEstadoNuvem] = useState<{ existe: boolean; etag: string | null; atualizadoEm: string | null; tamanho: number } | null>(null);
 
   const dados = useLiveQuery(async () => {
     const db = getDB();
@@ -273,6 +284,89 @@ function DadosPage() {
     }
   };
 
+  const configurarNuvem = async () => {
+    if (!projetoId || senhaNuvem.length < 16) {
+      toast.error("Abra um projeto e informe uma senha de sincronização com pelo menos 16 caracteres.");
+      return;
+    }
+    try {
+      setSincronizando(true);
+      await criarProjetoNuvem({ data: { projetoId, senha: senhaNuvem } });
+      setEstadoNuvem({ existe: false, etag: null, atualizadoEm: null, tamanho: 0 });
+      toast.success("Sincronização do projeto configurada na nuvem.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível configurar a sincronização.");
+    } finally {
+      setSincronizando(false);
+    }
+  };
+
+  const consultarNuvem = async () => {
+    if (!projetoId || senhaNuvem.length < 16) {
+      toast.error("Informe a senha de sincronização para consultar o projeto.");
+      return;
+    }
+    try {
+      setSincronizando(true);
+      const estado = await consultarProjetoNuvem({ data: { projetoId, senha: senhaNuvem } });
+      setEstadoNuvem(estado);
+      toast.success(estado.existe ? "Snapshot remoto localizado." : "Projeto configurado, mas ainda sem snapshot.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível consultar a nuvem.");
+    } finally {
+      setSincronizando(false);
+    }
+  };
+
+  const enviarNuvem = async () => {
+    if (!projetoId || senhaNuvem.length < 16) {
+      toast.error("Informe a senha de sincronização antes de enviar.");
+      return;
+    }
+    try {
+      setSincronizando(true);
+      const backup = await criarBackupDados(projetoId);
+      const snapshot = await criptografarSnapshotProjeto(projetoId, backup, senhaNuvem);
+      const resposta = await enviarProjetoNuvem({
+        data: {
+          projetoId,
+          senha: senhaNuvem,
+          envelope: new TextDecoder().decode(snapshot.bytes),
+          etagAtual: estadoNuvem?.etag ?? null,
+        },
+      });
+      setEstadoNuvem({ existe: true, etag: resposta.etag, atualizadoEm: resposta.atualizadoEm, tamanho: resposta.tamanho });
+      toast.success("Snapshot criptografado enviado para a nuvem.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível enviar o snapshot.");
+    } finally {
+      setSincronizando(false);
+    }
+  };
+
+  const baixarNuvem = async () => {
+    if (!projetoId || senhaNuvem.length < 16) {
+      toast.error("Informe a senha de sincronização antes de baixar.");
+      return;
+    }
+    try {
+      setSincronizando(true);
+      const remoto = await baixarProjetoNuvem({ data: { projetoId, senha: senhaNuvem } });
+      const envelope = lerEnvelopeSincronizacao(new TextEncoder().encode(remoto.envelope));
+      const backup = await descriptografarSnapshotProjeto(envelope, projetoId, senhaNuvem);
+      const json = JSON.stringify(backup, null, 2);
+      const analise = await analisarBackupDados(json, projetoId);
+      setEstadoNuvem({ existe: true, etag: remoto.etag, atualizadoEm: remoto.atualizadoEm, tamanho: new TextEncoder().encode(remoto.envelope).byteLength });
+      setBackupAceite(false);
+      setBackupPreview({ fileName: "snapshot-remoto.enc.json", fileSize: new TextEncoder().encode(remoto.envelope).byteLength, json, analise });
+      toast.success("Snapshot remoto baixado. Revise os dados antes de restaurar.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível baixar o snapshot remoto.");
+    } finally {
+      setSincronizando(false);
+    }
+  };
+
   const podeRestaurar = !!backupPreview && backupPreview.analise.valido && backupPreview.analise.projeto_igual && backupAceite && !restaurando;
 
   return (
@@ -373,6 +467,57 @@ function DadosPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card className="overflow-hidden border-primary/25 shadow-sm">
+        <CardHeader className="border-b bg-primary/[0.04] p-5 sm:p-6">
+          <div className="flex items-start gap-3">
+            <div className="rounded-xl bg-primary/10 p-2.5 text-primary"><Cloud className="size-5" /></div>
+            <div className="min-w-0">
+              <h2 className="font-semibold">Sincronização segura com a nuvem</h2>
+              <p className="mt-1 text-sm leading-5 text-muted-foreground">O projeto é armazenado como um objeto criptografado no R2. O envio é manual e só substitui uma versão remota que você já consultou.</p>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4 p-5 sm:p-6">
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+            <label className="space-y-2">
+              <span className="flex items-center gap-2 text-sm font-medium"><LockKeyhole className="size-4 text-primary" /> Senha do projeto</span>
+              <input
+                type="password"
+                value={senhaNuvem}
+                onChange={(event) => setSenhaNuvem(event.target.value)}
+                placeholder="Mínimo de 16 caracteres"
+                autoComplete="new-password"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none transition focus-visible:ring-2 focus-visible:ring-ring"
+                disabled={!projetoId || sincronizando}
+              />
+            </label>
+            <Button variant="outline" onClick={() => void configurarNuvem()} disabled={!projetoId || sincronizando || senhaNuvem.length < 16}>
+              <Cloud className="size-4" /> Configurar projeto
+            </Button>
+          </div>
+
+          <div className="flex flex-col gap-3 rounded-xl border bg-muted/10 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0 text-sm">
+              <p className="font-medium">{estadoNuvem?.existe ? "Snapshot remoto disponível" : estadoNuvem ? "Projeto configurado, sem snapshot" : "Estado remoto não consultado"}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{estadoNuvem?.atualizadoEm ? `Atualizado em ${new Date(estadoNuvem.atualizadoEm).toLocaleString("pt-BR")}` : "Consulte o projeto para carregar a versão atual."}</p>
+            </div>
+            <Button variant="secondary" onClick={() => void consultarNuvem()} disabled={!projetoId || sincronizando || senhaNuvem.length < 16}>
+              <RefreshCw className="size-4" /> Consultar estado
+            </Button>
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Button onClick={() => void enviarNuvem()} disabled={!projetoId || sincronizando || senhaNuvem.length < 16 || (estadoNuvem === null)}>
+              <CloudUpload className="size-4" /> {sincronizando ? "Processando…" : "Enviar snapshot"}
+            </Button>
+            <Button variant="outline" onClick={() => void baixarNuvem()} disabled={!projetoId || sincronizando || senhaNuvem.length < 16 || !estadoNuvem?.existe}>
+              <CloudDownload className="size-4" /> Baixar para revisar
+            </Button>
+          </div>
+          <p className="text-xs leading-5 text-muted-foreground">A senha não é salva no navegador. Sem ela, não será possível descriptografar o snapshot remoto. O botão de baixar abre a mesma revisão de segurança usada pelos backups locais.</p>
+        </CardContent>
+      </Card>
 
       <Card className="overflow-hidden border-border/70 shadow-sm">
         <CardHeader className="border-b bg-muted/20 p-5 sm:p-6">
