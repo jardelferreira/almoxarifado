@@ -37,6 +37,11 @@ function chaveEstado(projetoId: string): string {
   return `${PREFIXO}/${encodeURIComponent(projetoId)}/estado-atual.enc`;
 }
 
+function normalizarEtag(etag: string | null | undefined): string | null {
+  if (!etag) return null;
+  return etag.replace(/^"|"$/g, "");
+}
+
 function validarProjetoId(projetoId: string): string {
   const valor = projetoId.trim();
   if (!/^[a-zA-Z0-9_-]{8,160}$/.test(valor)) {
@@ -183,7 +188,7 @@ export const consultarProjetoNuvem = createServerFn({ method: "POST" })
     const estado = await env.ALMOXARIFADO_BUCKET.head(chaveEstado(data.projetoId));
     return {
       existe: Boolean(estado),
-      etag: estado?.httpEtag ?? null,
+      etag: normalizarEtag(estado?.httpEtag),
       atualizadoEm: estado?.uploaded?.toISOString() ?? null,
       tamanho: estado?.size ?? 0,
     };
@@ -207,15 +212,17 @@ export const enviarProjetoNuvem = createServerFn({ method: "POST" })
     await autorizar(data.projetoId, data.senha);
     const atual = await env.ALMOXARIFADO_BUCKET.head(chaveEstado(data.projetoId));
     if (atual && !data.etagAtual) throw new Error("CONFLITO_NUVEM: já existe uma versão remota deste projeto.");
-    if (atual && data.etagAtual !== atual.httpEtag) throw new Error("CONFLITO_NUVEM: a versão remota foi alterada por outro dispositivo.");
+    const etagRemoto = normalizarEtag(atual?.httpEtag);
+    const etagInformado = normalizarEtag(data.etagAtual);
+    if (atual && etagInformado !== etagRemoto) throw new Error("CONFLITO_NUVEM: a versão remota foi alterada por outro dispositivo.");
     if (!atual && data.etagAtual) throw new Error("CONFLITO_NUVEM: a versão remota foi removida.");
 
     const salvo = await env.ALMOXARIFADO_BUCKET.put(chaveEstado(data.projetoId), data.envelope, {
-      onlyIf: atual ? { etagMatches: atual.httpEtag } : { etagDoesNotMatch: "*" },
+      onlyIf: atual ? { etagMatches: etagRemoto ?? "" } : { etagDoesNotMatch: "*" },
       httpMetadata: { contentType: "application/json; charset=utf-8" },
     });
     if (!salvo) throw new Error("CONFLITO_NUVEM: o estado remoto mudou durante o envio.");
-    return { etag: salvo.httpEtag, atualizadoEm: salvo.uploaded.toISOString(), tamanho: salvo.size };
+    return { etag: normalizarEtag(salvo.httpEtag), atualizadoEm: salvo.uploaded.toISOString(), tamanho: salvo.size };
   });
 
 export const baixarProjetoNuvem = createServerFn({ method: "POST" })
@@ -229,7 +236,7 @@ export const baixarProjetoNuvem = createServerFn({ method: "POST" })
     if (!objeto) throw new Error("Ainda não existe snapshot remoto para este projeto.");
     return {
       envelope: await objeto.text(),
-      etag: objeto.httpEtag,
+      etag: normalizarEtag(objeto.httpEtag),
       atualizadoEm: objeto.uploaded.toISOString(),
     };
   });
