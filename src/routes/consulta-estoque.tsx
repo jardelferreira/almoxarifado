@@ -1,13 +1,12 @@
 import { createFileRoute, useSearch } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import * as XLSX from "xlsx";
 import {
   AlertTriangle,
+  FileDown,
   FileSpreadsheet,
   Filter,
   Loader2,
   PackageSearch,
-  Printer,
   Search,
   ShieldCheck,
   X,
@@ -76,8 +75,9 @@ function ConsultaEstoquePage() {
     });
   }, [busca, dados, equipe, status]);
 
-  const exportarExcel = () => {
+  const exportarExcel = async () => {
     if (!dados) return;
+    const XLSXStyle = await import("xlsx-js-style");
     const linhas = itens.map((item) => ({
       Produto: item.produto,
       Código: item.codigo ?? "",
@@ -88,7 +88,7 @@ function ConsultaEstoquePage() {
       "Estoque mínimo": item.minimo,
       Situação: rotuloStatus(item.status),
     }));
-    const planilha = XLSX.utils.json_to_sheet(linhas);
+    const planilha = XLSXStyle.utils.json_to_sheet(linhas);
     planilha["!cols"] = [
       { wch: 36 },
       { wch: 16 },
@@ -99,30 +99,264 @@ function ConsultaEstoquePage() {
       { wch: 18 },
       { wch: 18 },
     ];
-    const pasta = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(pasta, planilha, "Estoque");
-    XLSX.writeFile(pasta, `consulta-estoque-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    planilha["!autofilter"] = { ref: planilha["!ref"] };
+    const intervalo = XLSXStyle.utils.decode_range(planilha["!ref"] ?? "A1:H1");
+    for (let coluna = intervalo.s.c; coluna <= intervalo.e.c; coluna += 1) {
+      const celula = planilha[XLSXStyle.utils.encode_cell({ r: 0, c: coluna })];
+      if (celula) {
+        celula.s = {
+          fill: { fgColor: { rgb: "17324D" } },
+          font: { bold: true, color: { rgb: "FFFFFF" } },
+          alignment: { horizontal: "center", vertical: "center" },
+          border: { bottom: { style: "medium", color: { rgb: "F59E0B" } } },
+        };
+      }
+    }
+    for (let linha = 1; linha <= intervalo.e.r; linha += 1) {
+      const situacao = planilha[XLSXStyle.utils.encode_cell({ r: linha, c: 7 })];
+      if (situacao) {
+        const disponivel = situacao.v === "Disponível";
+        const baixo = situacao.v === "Abaixo do mínimo";
+        situacao.s = {
+          fill: { fgColor: { rgb: disponivel ? "E8F5EE" : baixo ? "FFF4D6" : "FDE8E8" } },
+          font: { bold: true, color: { rgb: disponivel ? "146C43" : baixo ? "8A5A00" : "A61B29" } },
+        };
+      }
+      for (let coluna = 0; coluna <= intervalo.e.c; coluna += 1) {
+        const celula = planilha[XLSXStyle.utils.encode_cell({ r: linha, c: coluna })];
+        if (celula && !celula.s) celula.s = { alignment: { vertical: "center" } };
+      }
+    }
+    const pasta = XLSXStyle.utils.book_new();
+    XLSXStyle.utils.book_append_sheet(pasta, planilha, "Estoque");
+    XLSXStyle.writeFile(pasta, `consulta-estoque-${new Date().toISOString().slice(0, 10)}.xlsx`);
     toast.success(`${itens.length} posição(ões) exportada(s) para Excel.`);
   };
 
-  const imprimir = () => {
+  const exportarPdf = async () => {
     if (!dados) return;
-    const janela = window.open("", "_blank", "width=1100,height=800");
-    if (!janela) {
-      toast.error("O navegador bloqueou a janela de impressão.");
-      return;
+    try {
+      const { PDFDocument, PageSizes, StandardFonts, rgb } = await import("pdf-lib");
+      const pdf = await PDFDocument.create();
+      const fonte = await pdf.embedFont(StandardFonts.Helvetica);
+      const fonteNegrito = await pdf.embedFont(StandardFonts.HelveticaBold);
+      const [paginaLargura, paginaAltura] = PageSizes.A4;
+      const margem = 36;
+      const azul = rgb(0.09, 0.2, 0.3);
+      const azulClaro = rgb(0.91, 0.95, 0.97);
+      const cinza = rgb(0.36, 0.45, 0.51);
+      const amber = rgb(0.96, 0.62, 0.04);
+      const verde = rgb(0.08, 0.42, 0.25);
+      const vermelho = rgb(0.65, 0.12, 0.16);
+      const larguraUtil = paginaLargura - margem * 2;
+      const colunas = [146, 76, 46, 98, 53, 53, 51];
+      const cabecalhos = [
+        "Produto",
+        "Categoria",
+        "Unidade",
+        "Equipe",
+        "Saldo",
+        "Mínimo",
+        "Situação",
+      ];
+      const alturaLinha = 24;
+      const alturaCabecalho = 24;
+      const alturaRodape = 24;
+      const limiteTexto = (valor: string, largura: number, tamanho: number) => {
+        const seguro = textoPdf(valor);
+        if (fonte.widthOfTextAtSize(seguro, tamanho) <= largura) return seguro;
+        let resultado = seguro;
+        while (
+          resultado.length > 1 &&
+          fonte.widthOfTextAtSize(`${resultado}...`, tamanho) > largura
+        ) {
+          resultado = resultado.slice(0, -1);
+        }
+        return `${resultado}...`;
+      };
+      const statusCor = (status: PainelEstoqueItem["status"]) =>
+        status === "DISPONIVEL" ? verde : status === "BAIXO" ? amber : vermelho;
+
+      let pagina = pdf.addPage(PageSizes.A4);
+      let y = paginaAltura - margem;
+      const desenharTopo = () => {
+        pagina.drawRectangle({
+          x: 0,
+          y: paginaAltura - 78,
+          width: paginaLargura,
+          height: 78,
+          color: azul,
+        });
+        pagina.drawRectangle({ x: 0, y: paginaAltura - 78, width: 10, height: 78, color: amber });
+        pagina.drawText("ALMOXARIFADO · CONSULTA PÚBLICA", {
+          x: margem,
+          y: paginaAltura - 30,
+          size: 9,
+          font: fonteNegrito,
+          color: rgb(0.78, 0.87, 0.91),
+        });
+        pagina.drawText(limiteTexto("Consulta de estoque", larguraUtil, 20), {
+          x: margem,
+          y: paginaAltura - 55,
+          size: 20,
+          font: fonteNegrito,
+          color: rgb(1, 1, 1),
+        });
+        y = paginaAltura - 102;
+      };
+      const desenharCabecalhoTabela = () => {
+        let x = margem;
+        pagina.drawRectangle({
+          x: margem,
+          y: y - alturaCabecalho + 5,
+          width: larguraUtil,
+          height: alturaCabecalho,
+          color: azulClaro,
+        });
+        cabecalhos.forEach((cabecalho, indice) => {
+          pagina.drawText(cabecalho, {
+            x: x + 4,
+            y: y - 10,
+            size: 7.5,
+            font: fonteNegrito,
+            color: azul,
+          });
+          x += colunas[indice] ?? 0;
+        });
+        y -= alturaCabecalho;
+      };
+      const desenharRodape = () => {
+        pagina.drawLine({
+          start: { x: margem, y: 30 },
+          end: { x: paginaLargura - margem, y: 30 },
+          thickness: 0.6,
+          color: rgb(0.8, 0.85, 0.88),
+        });
+        pagina.drawText(`ALMOXARIFADO · ${dados.projeto_nome}`, {
+          x: margem,
+          y: 17,
+          size: 7,
+          font: fonte,
+          color: cinza,
+        });
+        pagina.drawText(`Página ${pdf.getPageCount()}`, {
+          x: paginaLargura - margem - 48,
+          y: 17,
+          size: 7,
+          font: fonte,
+          color: cinza,
+        });
+      };
+      const iniciarPagina = (primeira: boolean) => {
+        if (!primeira) {
+          pagina = pdf.addPage(PageSizes.A4);
+        }
+        desenharTopo();
+        if (primeira) {
+          pagina.drawText(
+            textoPdf(
+              `${dados.projeto_nome} · ${itens.length} posição(ões) · Atualizado em ${new Date(dados.atualizado_em).toLocaleString("pt-BR")}`,
+            ),
+            { x: margem, y, size: 8, font: fonte, color: cinza },
+          );
+          y -= 20;
+          const resumo = [
+            ["Posições", itens.length],
+            ["Disponíveis", itens.filter((item) => item.status === "DISPONIVEL").length],
+            ["Abaixo do mínimo", itens.filter((item) => item.status === "BAIXO").length],
+            ["Sem saldo", itens.filter((item) => item.status === "ZERADO").length],
+          ];
+          const larguraResumo = (larguraUtil - 18) / 4;
+          resumo.forEach(([rotulo, valor], indice) => {
+            const x = margem + indice * (larguraResumo + 6);
+            pagina.drawRectangle({
+              x,
+              y: y - 36,
+              width: larguraResumo,
+              height: 36,
+              borderColor: rgb(0.8, 0.85, 0.88),
+              borderWidth: 0.8,
+              color: rgb(0.98, 0.99, 0.99),
+            });
+            pagina.drawText(String(rotulo), {
+              x: x + 7,
+              y: y - 14,
+              size: 7,
+              font: fonte,
+              color: cinza,
+            });
+            pagina.drawText(String(valor), {
+              x: x + 7,
+              y: y - 29,
+              size: 12,
+              font: fonteNegrito,
+              color: azul,
+            });
+          });
+          y -= 52;
+        }
+        desenharCabecalhoTabela();
+      };
+
+      iniciarPagina(true);
+      itens.forEach((item, indice) => {
+        if (y - alturaLinha < margem + alturaRodape) {
+          desenharRodape();
+          iniciarPagina(false);
+        }
+        const valores = [
+          item.produto,
+          item.categoria ?? "-",
+          item.unidade ?? "-",
+          item.equipe,
+          num(item.quantidade),
+          num(item.minimo),
+          rotuloStatus(item.status),
+        ];
+        let x = margem;
+        if (indice % 2 === 0)
+          pagina.drawRectangle({
+            x: margem,
+            y: y - alturaLinha + 5,
+            width: larguraUtil,
+            height: alturaLinha,
+            color: rgb(0.98, 0.99, 0.99),
+          });
+        valores.forEach((valor, coluna) => {
+          const largura = colunas[coluna] ?? 0;
+          const tamanho = coluna === 0 ? 8 : 7.5;
+          const cor = coluna === 6 ? statusCor(item.status) : azul;
+          pagina.drawText(limiteTexto(valor, largura - 8, tamanho), {
+            x: x + 4,
+            y: y - 11,
+            size: tamanho,
+            font: coluna === 0 ? fonteNegrito : fonte,
+            color: cor,
+          });
+          x += largura;
+        });
+        y -= alturaLinha;
+      });
+      if (!itens.length)
+        pagina.drawText("Nenhum item corresponde aos filtros.", {
+          x: margem + 4,
+          y: y - 12,
+          size: 9,
+          font: fonte,
+          color: cinza,
+        });
+      desenharRodape();
+      const bytes = await pdf.save();
+      const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `consulta-estoque-${new Date().toISOString().slice(0, 10)}.pdf`;
+      link.click();
+      URL.revokeObjectURL(url);
+      toast.success(`${itens.length} posição(ões) exportada(s) para PDF A4.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível gerar o PDF.");
     }
-    const linhas = itens
-      .map(
-        (item) =>
-          `<tr><td><strong>${escapar(item.produto)}</strong><br><small>${escapar(item.codigo ?? "")}</small></td><td>${escapar(item.categoria ?? "—")}</td><td>${escapar(item.unidade ?? "—")}</td><td>${escapar(item.equipe)}</td><td class="right">${escapar(num(item.quantidade))}</td><td class="right">${escapar(num(item.minimo))}</td><td>${escapar(rotuloStatus(item.status))}</td></tr>`,
-      )
-      .join("");
-    janela.document.write(
-      `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Consulta de estoque</title><style>@page{size:landscape;margin:10mm}body{font-family:Arial,sans-serif;color:#172b3b;font-size:10px}h1{margin:0 0 4px;font-size:22px}.sub{color:#607382;margin-bottom:14px}.meta{display:flex;gap:28px;margin-bottom:14px}.meta b{display:block;font-size:8px;text-transform:uppercase;color:#607382;margin-bottom:3px}table{width:100%;border-collapse:collapse}th,td{border-bottom:1px solid #d2dce2;padding:6px;text-align:left;vertical-align:top}th{background:#edf3f6;font-size:8px;text-transform:uppercase}.right{text-align:right}.footer{margin-top:14px;color:#607382;font-size:8px}</style></head><body><h1>${escapar(dados.projeto_nome)} — Consulta de estoque</h1><div class="sub">Visão conforme os filtros aplicados · Atualizado em ${escapar(new Date(dados.atualizado_em).toLocaleString("pt-BR"))}</div><div class="meta"><div><b>Posições</b>${itens.length}</div><div><b>Disponíveis</b>${itens.filter((item) => item.status === "DISPONIVEL").length}</div><div><b>Abaixo do mínimo</b>${itens.filter((item) => item.status === "BAIXO").length}</div><div><b>Sem saldo</b>${itens.filter((item) => item.status === "ZERADO").length}</div></div><table><thead><tr><th>Produto</th><th>Categoria</th><th>Unidade</th><th>Equipe</th><th class="right">Saldo</th><th class="right">Mínimo</th><th>Situação</th></tr></thead><tbody>${linhas || '<tr><td colspan="7">Nenhum item corresponde aos filtros.</td></tr>'}</tbody></table><div class="footer">Relatório gerado pelo ALMOXARIFADO em ${escapar(new Date().toLocaleString("pt-BR"))}</div><script>window.addEventListener('load',()=>setTimeout(()=>window.print(),250));</script></body></html>`,
-    );
-    janela.document.close();
-    janela.focus();
   };
 
   if (!dados) {
@@ -224,7 +458,7 @@ function ConsultaEstoquePage() {
                 type="button"
                 size="sm"
                 variant="outline"
-                onClick={exportarExcel}
+                onClick={() => void exportarExcel()}
                 className="w-full sm:w-auto"
               >
                 <FileSpreadsheet className="mr-1.5 size-4" /> Excel
@@ -233,10 +467,10 @@ function ConsultaEstoquePage() {
                 type="button"
                 size="sm"
                 variant="outline"
-                onClick={imprimir}
+                onClick={() => void exportarPdf()}
                 className="w-full sm:w-auto"
               >
-                <Printer className="mr-1.5 size-4" /> PDF / Imprimir
+                <FileDown className="mr-1.5 size-4" /> Exportar PDF
               </Button>
             </div>
           </CardContent>
@@ -268,13 +502,12 @@ function rotuloStatus(status: PainelEstoqueItem["status"]): string {
   return "Sem saldo";
 }
 
-function escapar(valor: unknown): string {
+function textoPdf(valor: unknown): string {
   return String(valor)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
+    .replaceAll("—", "-")
+    .replaceAll("–", "-")
+    .replaceAll("·", "-")
+    .replaceAll("…", "...");
 }
 
 function Cabecalho({ projetoNome, atualizado }: { projetoNome?: string; atualizado?: string }) {
