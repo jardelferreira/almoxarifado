@@ -9,6 +9,7 @@ import {
   MessageCircle,
   Printer,
   QrCode,
+  PackageSearch,
   Share2,
 } from "lucide-react";
 import QRCode from "qrcode";
@@ -19,7 +20,9 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useProjetoAtivoId } from "@/hooks/useAppData";
 import { publicarPainelFuncionariosNuvem } from "@/lib/painel-funcionarios-r2";
+import { publicarPainelEstoqueNuvem } from "@/lib/painel-estoque-r2";
 import { montarPublicacaoPainelFuncionarios } from "@/services/painel-funcionarios";
+import { montarPublicacaoPainelEstoque } from "@/services/painel-estoque";
 
 export const Route = createFileRoute("/app/compartilhar-painel")({
   ssr: false,
@@ -34,11 +37,20 @@ type Compartilhamento = {
   funcionarios: number;
 };
 
+type CompartilhamentoEstoque = {
+  url: string;
+  qrDataUrl: string;
+  publicadoEm: string;
+  itens: number;
+};
+
 export function CompartilharPainelPage() {
   const [projetoId] = useProjetoAtivoId();
   const [senha, setSenha] = useState("");
   const [publicando, setPublicando] = useState(false);
   const [compartilhamento, setCompartilhamento] = useState<Compartilhamento | null>(null);
+  const [compartilhamentoEstoque, setCompartilhamentoEstoque] =
+    useState<CompartilhamentoEstoque | null>(null);
 
   const publicar = async () => {
     if (!projetoId || senha.length < 16) {
@@ -68,6 +80,40 @@ export function CompartilharPainelPage() {
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Não foi possível atualizar o painel público.",
+      );
+    } finally {
+      setPublicando(false);
+    }
+  };
+
+  const publicarEstoque = async () => {
+    if (!projetoId || senha.length < 16) {
+      toast.error("Informe a senha do projeto com pelo menos 16 caracteres.");
+      return;
+    }
+    try {
+      setPublicando(true);
+      const publicacao = await montarPublicacaoPainelEstoque(projetoId);
+      const resultado = await publicarPainelEstoqueNuvem({
+        data: { projetoId, senha, publicacao },
+      });
+      const url = `${window.location.origin}/consulta-estoque?projeto=${encodeURIComponent(projetoId)}&acesso=${resultado.token}`;
+      const qrDataUrl = await QRCode.toDataURL(url, {
+        width: 900,
+        margin: 2,
+        errorCorrectionLevel: "H",
+        color: { dark: "#17324d", light: "#ffffff" },
+      });
+      setCompartilhamentoEstoque({
+        url,
+        qrDataUrl,
+        publicadoEm: resultado.publicadoEm,
+        itens: resultado.itensPublicados,
+      });
+      toast.success(`${resultado.itensPublicados} posição(ões) de estoque publicada(s).`);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Não foi possível atualizar o painel de estoque.",
       );
     } finally {
       setPublicando(false);
@@ -111,6 +157,37 @@ export function CompartilharPainelPage() {
     }
     janela.document.write(
       `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Painel de consulta do funcionário</title><style>@page{size:A4 portrait;margin:14mm}*{box-sizing:border-box}body{margin:0;background:#f4f7f9;color:#17324d;font-family:Arial,sans-serif}.folha{min-height:265mm;border:1px solid #cbd7df;border-radius:18px;background:#fff;padding:22mm 18mm;position:relative;overflow:hidden}.folha:before{content:"";position:absolute;inset:0 auto 0 0;width:14px;background:#f59e0b}.marca{text-transform:uppercase;letter-spacing:2px;font-size:12px;font-weight:bold;color:#1c5877}h1{font-size:30px;margin:12px 0 8px}p{font-size:16px;line-height:1.55;color:#526777}.qr{display:block;width:132mm;height:132mm;margin:24mm auto 15mm;border:12px solid #fff;box-shadow:0 5px 20px #17324d22}.instrucoes{border-top:2px solid #dbe5ea;padding-top:14px;text-align:center}.rodape{position:absolute;bottom:14mm;left:18mm;right:18mm;border-top:1px solid #dbe5ea;padding-top:8px;color:#708492;font-size:11px;text-align:center}</style></head><body><main class="folha"><div class="marca">Almoxarifado · Atendimento digital</div><h1>Consulte sua ficha</h1><p>Aponte a câmera do celular para o QR Code e informe seu CPF. Se houver PIN cadastrado, o painel solicitará essa confirmação.</p><img class="qr" src="${compartilhamento.qrDataUrl}" alt="QR Code do painel de consulta"><div class="instrucoes"><strong>Consulta de equipamentos e materiais</strong><p>Link: ${escapar(compartilhamento.url)}</p></div><div class="rodape">Informações somente para consulta · Atualização controlada pelo almoxarifado</div></main><script>window.addEventListener('load',()=>setTimeout(()=>window.print(),250));</script></body></html>`,
+    );
+    janela.document.close();
+    janela.focus();
+  };
+
+  const copiarUrl = async (url: string, mensagem: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success(mensagem);
+    } catch {
+      toast.error("Não foi possível copiar o link.");
+    }
+  };
+
+  const compartilharLink = (url: string, tipo: string) => {
+    window.open(
+      `https://wa.me/?text=${encodeURIComponent(`Acesse o painel de consulta ${tipo}: ${url}`)}`,
+      "_blank",
+      "noopener,noreferrer",
+    );
+  };
+
+  const imprimirQrEstoque = () => {
+    if (!compartilhamentoEstoque) return;
+    const janela = window.open("", "_blank", "width=900,height=900");
+    if (!janela) {
+      toast.error("O navegador bloqueou a janela de impressão.");
+      return;
+    }
+    janela.document.write(
+      `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Consulta de estoque</title><style>@page{size:A4 portrait;margin:14mm}*{box-sizing:border-box}body{margin:0;background:#f4f7f9;color:#17324d;font-family:Arial,sans-serif}.folha{min-height:265mm;border:1px solid #cbd7df;border-radius:18px;background:#fff;padding:22mm 18mm;position:relative;overflow:hidden}.folha:before{content:"";position:absolute;inset:0 auto 0 0;width:14px;background:#f59e0b}.marca{text-transform:uppercase;letter-spacing:2px;font-size:12px;font-weight:bold;color:#1c5877}h1{font-size:30px;margin:12px 0 8px}p{font-size:16px;line-height:1.55;color:#526777}.qr{display:block;width:132mm;height:132mm;margin:24mm auto 15mm;border:12px solid #fff;box-shadow:0 5px 20px #17324d22}.instrucoes{border-top:2px solid #dbe5ea;padding-top:14px;text-align:center}.rodape{position:absolute;bottom:14mm;left:18mm;right:18mm;border-top:1px solid #dbe5ea;padding-top:8px;color:#708492;font-size:11px;text-align:center}</style></head><body><main class="folha"><div class="marca">Almoxarifado · Consulta digital</div><h1>Consulte o estoque</h1><p>Aponte a câmera do celular para o QR Code e consulte os materiais publicados pelo almoxarifado.</p><img class="qr" src="${compartilhamentoEstoque.qrDataUrl}" alt="QR Code do painel de estoque"><div class="instrucoes"><strong>Consulta de saldo, equipe e situação dos materiais</strong><p>Link: ${escapar(compartilhamentoEstoque.url)}</p></div><div class="rodape">Informações somente para consulta · Atualização controlada pelo almoxarifado</div></main><script>window.addEventListener('load',()=>setTimeout(()=>window.print(),250));</script></body></html>`,
     );
     janela.document.close();
     janela.focus();
@@ -216,6 +293,94 @@ export function CompartilharPainelPage() {
                   </Button>
                   <Button size="sm" variant="outline" onClick={compartilharWhatsApp}>
                     <MessageCircle className="mr-1.5 size-4" /> WhatsApp
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+      <Card className="border-l-4 border-l-amber-500 shadow-sm">
+        <CardHeader className="border-b bg-amber-500/[0.04] pb-4">
+          <div className="flex items-center gap-3">
+            <div className="rounded-xl bg-amber-500/10 p-2.5 text-amber-700">
+              <PackageSearch className="size-5" />
+            </div>
+            <div>
+              <h2 className="text-base font-semibold lg:text-lg">
+                Compartilhar consulta de estoque
+              </h2>
+              <p className="text-sm text-muted-foreground lg:text-base">
+                Gere um link próprio e um QR Code para consulta mobile, somente leitura.
+              </p>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4 p-4">
+          <Button
+            onClick={() => void publicarEstoque()}
+            disabled={publicando || senha.length < 16}
+            className="h-11"
+          >
+            <PackageSearch className="size-4" /> Atualizar painel de estoque
+          </Button>
+          <p className="text-xs leading-5 text-muted-foreground">
+            A senha acima autoriza a publicação; ela não é compartilhada com quem consulta. O painel
+            mostra saldo, unidade, equipe e status.
+          </p>
+          {compartilhamentoEstoque && (
+            <div className="grid gap-4 rounded-2xl border bg-muted/15 p-4 lg:grid-cols-[180px_minmax(0,1fr)] lg:items-center">
+              <img
+                src={compartilhamentoEstoque.qrDataUrl}
+                alt="QR Code do painel de estoque"
+                className="mx-auto aspect-square w-44 rounded-xl border bg-white p-2"
+              />
+              <div className="min-w-0 space-y-3">
+                <div>
+                  <p className="font-semibold">Painel de estoque atualizado</p>
+                  <p className="text-sm text-muted-foreground">
+                    {compartilhamentoEstoque.itens} posição(ões) publicada(s) em{" "}
+                    {new Date(compartilhamentoEstoque.publicadoEm).toLocaleString("pt-BR")}.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 rounded-lg border bg-background p-2">
+                  <Link2 className="size-4 shrink-0 text-primary" />
+                  <span className="min-w-0 flex-1 truncate text-sm">
+                    {compartilhamentoEstoque.url}
+                  </span>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() =>
+                      void copiarUrl(compartilhamentoEstoque.url, "Link do estoque copiado.")
+                    }
+                    aria-label="Copiar link do estoque"
+                  >
+                    <Copy className="size-4" />
+                  </Button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      const link = document.createElement("a");
+                      link.href = compartilhamentoEstoque.qrDataUrl;
+                      link.download = `qrcode-painel-estoque-${projetoId}.png`;
+                      link.click();
+                    }}
+                  >
+                    <Download className="mr-1.5 size-4" /> Baixar QR
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => compartilharLink(compartilhamentoEstoque.url, "de estoque")}
+                  >
+                    <MessageCircle className="mr-1.5 size-4" /> WhatsApp
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={imprimirQrEstoque}>
+                    <Printer className="mr-1.5 size-4" /> Imprimir QR
                   </Button>
                 </div>
               </div>
