@@ -316,14 +316,14 @@ export function PainelApropriacoesPage() {
         <TabsList className="grid h-auto w-full grid-cols-2 gap-1 rounded-xl border bg-card p-1 shadow-sm">
           <TabsTrigger
             value="ATENDIMENTO"
-            className="gap-2 rounded-lg px-3 py-3 text-sm font-semibold sm:text-base lg:text-lg"
+            className="gap-2 rounded-lg px-3 py-3 text-sm font-semibold transition-colors data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md data-[state=active]:shadow-primary/25 sm:text-base lg:text-lg"
           >
             <UserRound className="size-4 sm:size-5" aria-hidden="true" />
             Atendimento ao funcionário
           </TabsTrigger>
           <TabsTrigger
             value="CONSULTA"
-            className="gap-2 rounded-lg px-3 py-3 text-sm font-semibold sm:text-base lg:text-lg"
+            className="gap-2 rounded-lg px-3 py-3 text-sm font-semibold transition-colors data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md data-[state=active]:shadow-primary/25 sm:text-base lg:text-lg"
           >
             <Search className="size-4 sm:size-5" aria-hidden="true" />
             Consulta de equipamento

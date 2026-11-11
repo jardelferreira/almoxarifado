@@ -27,6 +27,7 @@ import {
   Wrench,
   X,
   Calendar,
+  Clock3,
   OptionIcon,
   SlidersHorizontal,
 } from "lucide-react";
@@ -329,6 +330,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     return window.localStorage.getItem(SIDEBAR_STORAGE_KEY) === "true";
   });
   const [mobileMenuAberto, setMobileMenuAberto] = useState(false);
+  const [agora, setAgora] = useState<Date | null>(null);
 
   const projeto = useLiveQuery(
     () => (projetoId ? getDB().projetos.get(projetoId) : undefined),
@@ -355,6 +357,13 @@ export function AppShell({ children }: { children: ReactNode }) {
       String(sidebarAberta),
     );
   }, [sidebarAberta]);
+
+  useEffect(() => {
+    const atualizarRelogio = () => setAgora(new Date());
+    atualizarRelogio();
+    const intervalo = window.setInterval(atualizarRelogio, 1000);
+    return () => window.clearInterval(intervalo);
+  }, []);
 
   const trocarProjeto = () => {
     setProjetoAtivo(null);
@@ -603,6 +612,31 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
+            <div
+              className="flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-2.5 py-1.5 text-xs font-semibold text-primary sm:px-3 sm:text-sm"
+              title="Horário local do dispositivo"
+              aria-label={`Horário atual ${agora ? agora.toLocaleTimeString("pt-BR") : "carregando"}`}
+            >
+              <Clock3 className="size-3.5 sm:size-4" aria-hidden="true" />
+              <span className="tabular-nums">
+                {agora
+                  ? new Intl.DateTimeFormat("pt-BR", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      second: "2-digit",
+                    }).format(agora)
+                  : "--:--:--"}
+              </span>
+              <span className="hidden border-l border-primary/20 pl-2 text-xs font-medium text-muted-foreground xl:inline">
+                {agora
+                  ? new Intl.DateTimeFormat("pt-BR", {
+                      day: "2-digit",
+                      month: "2-digit",
+                    }).format(agora)
+                  : "--/--"}
+              </span>
+            </div>
+
             <div
               className="hidden items-center gap-1.5 rounded-full border border-border/80 bg-muted/30 px-2.5 py-1.5 text-xs font-medium text-muted-foreground lg:flex"
               role="status"
