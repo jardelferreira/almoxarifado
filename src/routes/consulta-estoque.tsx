@@ -1,10 +1,13 @@
 import { createFileRoute, useSearch } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
+import * as XLSX from "xlsx";
 import {
   AlertTriangle,
+  FileSpreadsheet,
   Filter,
   Loader2,
   PackageSearch,
+  Printer,
   Search,
   ShieldCheck,
   X,
@@ -72,6 +75,55 @@ function ConsultaEstoquePage() {
       );
     });
   }, [busca, dados, equipe, status]);
+
+  const exportarExcel = () => {
+    if (!dados) return;
+    const linhas = itens.map((item) => ({
+      Produto: item.produto,
+      Código: item.codigo ?? "",
+      Categoria: item.categoria ?? "",
+      Unidade: item.unidade ?? "",
+      Equipe: item.equipe,
+      Saldo: item.quantidade,
+      "Estoque mínimo": item.minimo,
+      Situação: rotuloStatus(item.status),
+    }));
+    const planilha = XLSX.utils.json_to_sheet(linhas);
+    planilha["!cols"] = [
+      { wch: 36 },
+      { wch: 16 },
+      { wch: 24 },
+      { wch: 12 },
+      { wch: 24 },
+      { wch: 12 },
+      { wch: 18 },
+      { wch: 18 },
+    ];
+    const pasta = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(pasta, planilha, "Estoque");
+    XLSX.writeFile(pasta, `consulta-estoque-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    toast.success(`${itens.length} posição(ões) exportada(s) para Excel.`);
+  };
+
+  const imprimir = () => {
+    if (!dados) return;
+    const janela = window.open("", "_blank", "width=1100,height=800");
+    if (!janela) {
+      toast.error("O navegador bloqueou a janela de impressão.");
+      return;
+    }
+    const linhas = itens
+      .map(
+        (item) =>
+          `<tr><td><strong>${escapar(item.produto)}</strong><br><small>${escapar(item.codigo ?? "")}</small></td><td>${escapar(item.categoria ?? "—")}</td><td>${escapar(item.unidade ?? "—")}</td><td>${escapar(item.equipe)}</td><td class="right">${escapar(num(item.quantidade))}</td><td class="right">${escapar(num(item.minimo))}</td><td>${escapar(rotuloStatus(item.status))}</td></tr>`,
+      )
+      .join("");
+    janela.document.write(
+      `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Consulta de estoque</title><style>@page{size:landscape;margin:10mm}body{font-family:Arial,sans-serif;color:#172b3b;font-size:10px}h1{margin:0 0 4px;font-size:22px}.sub{color:#607382;margin-bottom:14px}.meta{display:flex;gap:28px;margin-bottom:14px}.meta b{display:block;font-size:8px;text-transform:uppercase;color:#607382;margin-bottom:3px}table{width:100%;border-collapse:collapse}th,td{border-bottom:1px solid #d2dce2;padding:6px;text-align:left;vertical-align:top}th{background:#edf3f6;font-size:8px;text-transform:uppercase}.right{text-align:right}.footer{margin-top:14px;color:#607382;font-size:8px}</style></head><body><h1>${escapar(dados.projeto_nome)} — Consulta de estoque</h1><div class="sub">Visão conforme os filtros aplicados · Atualizado em ${escapar(new Date(dados.atualizado_em).toLocaleString("pt-BR"))}</div><div class="meta"><div><b>Posições</b>${itens.length}</div><div><b>Disponíveis</b>${itens.filter((item) => item.status === "DISPONIVEL").length}</div><div><b>Abaixo do mínimo</b>${itens.filter((item) => item.status === "BAIXO").length}</div><div><b>Sem saldo</b>${itens.filter((item) => item.status === "ZERADO").length}</div></div><table><thead><tr><th>Produto</th><th>Categoria</th><th>Unidade</th><th>Equipe</th><th class="right">Saldo</th><th class="right">Mínimo</th><th>Situação</th></tr></thead><tbody>${linhas || '<tr><td colspan="7">Nenhum item corresponde aos filtros.</td></tr>'}</tbody></table><div class="footer">Relatório gerado pelo ALMOXARIFADO em ${escapar(new Date().toLocaleString("pt-BR"))}</div><script>window.addEventListener('load',()=>setTimeout(()=>window.print(),250));</script></body></html>`,
+    );
+    janela.document.close();
+    janela.focus();
+  };
 
   if (!dados) {
     return (
@@ -154,11 +206,38 @@ function ConsultaEstoquePage() {
                 <option value="ZERADO">Sem saldo</option>
               </select>
             </div>
-            <div className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
-              <span className="flex items-center gap-2">
-                <Filter className="size-4" /> {itens.length} posição(ões) encontrada(s)
+            <div className="flex flex-col gap-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center justify-between gap-3">
+                <span className="flex items-center gap-2">
+                  <Filter className="size-4" /> {itens.length} posição(ões) encontrada(s)
+                </span>
+                <span className="text-right text-xs sm:hidden">
+                  Atualizado {new Date(dados.atualizado_em).toLocaleString("pt-BR")}
+                </span>
+              </div>
+              <span className="hidden sm:inline">
+                Atualizado {new Date(dados.atualizado_em).toLocaleString("pt-BR")}
               </span>
-              <span>Atualizado {new Date(dados.atualizado_em).toLocaleString("pt-BR")}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2 border-t pt-3 sm:flex sm:flex-wrap">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={exportarExcel}
+                className="w-full sm:w-auto"
+              >
+                <FileSpreadsheet className="mr-1.5 size-4" /> Excel
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={imprimir}
+                className="w-full sm:w-auto"
+              >
+                <Printer className="mr-1.5 size-4" /> PDF / Imprimir
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -181,6 +260,21 @@ function ConsultaEstoquePage() {
       </div>
     </main>
   );
+}
+
+function rotuloStatus(status: PainelEstoqueItem["status"]): string {
+  if (status === "DISPONIVEL") return "Disponível";
+  if (status === "BAIXO") return "Abaixo do mínimo";
+  return "Sem saldo";
+}
+
+function escapar(valor: unknown): string {
+  return String(valor)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
 function Cabecalho({ projetoNome, atualizado }: { projetoNome?: string; atualizado?: string }) {
