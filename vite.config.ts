@@ -16,5 +16,10 @@ export default defineConfig({
         },
       }),
     ],
+    build: {
+      rolldownOptions: {
+        external: ["cloudflare:workers"],
+      },
+    },
   },
 });
