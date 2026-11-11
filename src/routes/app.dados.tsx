@@ -5,6 +5,10 @@ import {
   ArchiveRestore,
   AlertTriangle,
   CheckCircle2,
+  Cloud,
+  CloudDownload,
+  CloudUpload,
+  Copy,
   Database,
   Download,
   FileJson,
@@ -12,6 +16,8 @@ import {
   Fingerprint,
   HardDriveDownload,
   Import,
+  LockKeyhole,
+  KeyRound,
   RefreshCw,
   ShieldAlert,
   ShieldCheck,
@@ -27,10 +33,13 @@ import { getDB } from "@/db/db";
 import {
   BACKUP_VERSAO,
   analisarBackupDados,
+  criarBackupDados,
   gerarBackupDados,
   restaurarBackupDados,
   type BackupAnalise,
 } from "@/services/backup";
+import { criptografarSnapshotProjeto, descriptografarSnapshotProjeto, lerEnvelopeSincronizacao } from "@/services/sincronizacao-projeto";
+import { baixarProjetoNuvem, consultarProjetoNuvem, criarProjetoNuvem, enviarProjetoNuvem } from "@/lib/sincronizacao-r2";
 import { exportarProjetoParaExcel } from "@/services/exportacao-projeto";
 import { lerArquivo, salvarDataset, type DatasetImportado } from "@/services/excel";
 import { num } from "@/utils/format";
@@ -73,6 +82,7 @@ const MODULOS: Modulo[] = [
   { tabela: "estoque_equipamentos", label: "Estoque de equipamentos", descricao: "Unidades físicas e lotes controlados.", grupo: "Equipamentos" },
   { tabela: "apropriacoes", label: "Apropriações", descricao: "Equipamentos atribuídos a funcionários.", grupo: "Equipamentos" },
   { tabela: "movimentacoes_equipamentos", label: "Movimentações de equipamentos", descricao: "Histórico físico e operacional dos equipamentos.", grupo: "Equipamentos" },
+  { tabela: "substituicoes_equipamentos", label: "Substituições de equipamentos", descricao: "Relação auditável entre o equipamento devolvido e seu substituto.", grupo: "Equipamentos" },
   { tabela: "regras_consumo_equipamentos", label: "Regras de consumo", descricao: "Parâmetros de consumo por equipamento e produto.", grupo: "Equipamentos" },
   { tabela: "consumos_equipamentos", label: "Consumos de equipamentos", descricao: "Apropriações analíticas das saídas de materiais.", grupo: "Equipamentos" },
   { tabela: "manutencoes_equipamentos", label: "Manutenções", descricao: "Ocorrências técnicas e ciclo de manutenção.", grupo: "Equipamentos" },
@@ -115,6 +125,15 @@ function DadosPage() {
   const [restaurando, setRestaurando] = useState(false);
   const [statusRestauracao, setStatusRestauracao] = useState("Revalidando integridade e relacionamentos…");
   const [processando, setProcessando] = useState(false);
+  const [senhaNuvem, setSenhaNuvem] = useState("");
+  const [sincronizando, setSincronizando] = useState(false);
+  const [estadoNuvem, setEstadoNuvem] = useState<{ existe: boolean; etag: string | null; atualizadoEm: string | null; tamanho: number } | null>(null);
+  const [chaveRecuperacao, setChaveRecuperacao] = useState<string | null>(null);
+  const [dialogRecuperacao, setDialogRecuperacao] = useState(false);
+  const [dialogRotacao, setDialogRotacao] = useState(false);
+  const [chaveRecuperacaoEntrada, setChaveRecuperacaoEntrada] = useState("");
+  const [novaSenha, setNovaSenha] = useState("");
+  const [confirmacaoNovaSenha, setConfirmacaoNovaSenha] = useState("");
 
   const dados = useLiveQuery(async () => {
     const db = getDB();
@@ -273,6 +292,203 @@ function DadosPage() {
     }
   };
 
+  const configurarNuvem = async () => {
+    if (!projetoId || senhaNuvem.length < 16) {
+      toast.error("Abra um projeto e informe uma senha de sincronização com pelo menos 16 caracteres.");
+      return;
+    }
+    try {
+      setSincronizando(true);
+      const resultado = await criarProjetoNuvem({ data: { projetoId, senha: senhaNuvem } });
+      setEstadoNuvem({ existe: false, etag: null, atualizadoEm: null, tamanho: 0 });
+      setChaveRecuperacao(resultado.chaveRecuperacao);
+      setDialogRecuperacao(true);
+      toast.success("Sincronização do projeto configurada na nuvem.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível configurar a sincronização.");
+    } finally {
+      setSincronizando(false);
+    }
+  };
+
+  const gerarRecuperacao = async () => {
+    if (!projetoId || senhaNuvem.length < 16) {
+      toast.error("Informe a senha atual do projeto para gerar a chave de recuperação.");
+      return;
+    }
+    try {
+      setSincronizando(true);
+      const resultado = await criarProjetoNuvem({ data: { projetoId, senha: senhaNuvem, operacao: "gerar_recuperacao" } });
+      setChaveRecuperacao(resultado.chaveRecuperacao);
+      setDialogRecuperacao(true);
+      toast.success("Chave de recuperação gerada. Guarde-a fora do sistema.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível gerar a chave de recuperação.");
+    } finally {
+      setSincronizando(false);
+    }
+  };
+
+  const rotacionarSenha = async () => {
+    if (!projetoId || chaveRecuperacaoEntrada.length < 32) {
+      toast.error("Informe a chave de recuperação completa.");
+      return;
+    }
+    if (novaSenha.length < 16) {
+      toast.error("A nova senha deve ter pelo menos 16 caracteres.");
+      return;
+    }
+    if (novaSenha !== confirmacaoNovaSenha) {
+      toast.error("A confirmação da nova senha não confere.");
+      return;
+    }
+    if (estadoNuvem === null) {
+      toast.error("Consulte o estado remoto antes de trocar a senha.");
+      return;
+    }
+    let chaveGerada: string | null = null;
+    try {
+      setSincronizando(true);
+      const backup = await criarBackupDados(projetoId);
+      const resultado = await criarProjetoNuvem({
+        data: {
+          projetoId,
+          senha: novaSenha,
+          chaveRecuperacao: chaveRecuperacaoEntrada,
+          operacao: "rotacionar_recuperacao",
+        },
+      });
+      chaveGerada = resultado.chaveRecuperacao;
+      setSenhaNuvem(novaSenha);
+      setChaveRecuperacao(chaveGerada);
+      const snapshot = await criptografarSnapshotProjeto(projetoId, backup, novaSenha);
+      const resposta = await enviarProjetoNuvem({
+        data: {
+          projetoId,
+          senha: novaSenha,
+          envelope: new TextDecoder().decode(snapshot.bytes),
+          etagAtual: estadoNuvem.etag,
+        },
+      });
+      setChaveRecuperacaoEntrada("");
+      setNovaSenha("");
+      setConfirmacaoNovaSenha("");
+      setDialogRotacao(false);
+      setEstadoNuvem({ existe: true, etag: resposta.etag, atualizadoEm: resposta.atualizadoEm, tamanho: resposta.tamanho });
+      setDialogRecuperacao(true);
+      toast.success("Senha trocada e snapshot remoto recriptografado com sucesso.");
+    } catch (error) {
+      if (chaveGerada) {
+        setDialogRotacao(false);
+        setDialogRecuperacao(true);
+      }
+      toast.error(error instanceof Error ? error.message : "Não foi possível trocar a senha do projeto.");
+    } finally {
+      setSincronizando(false);
+    }
+  };
+
+  const copiarChaveRecuperacao = async () => {
+    if (!chaveRecuperacao) return;
+    try {
+      await navigator.clipboard.writeText(chaveRecuperacao);
+      toast.success("Chave de recuperação copiada.");
+    } catch {
+      toast.error("Não foi possível copiar a chave. Use o botão de download.");
+    }
+  };
+
+  const baixarChaveRecuperacao = () => {
+    if (!chaveRecuperacao || !projetoId) return;
+    const blob = new Blob([
+      `ALMOXARIFADO — CHAVE DE RECUPERAÇÃO\n\nProjeto: ${projetoId}\nChave: ${chaveRecuperacao}\n\nGuarde este arquivo offline. A chave não será exibida novamente automaticamente.\n`,
+    ], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `chave-recuperacao-${projetoId}.txt`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const consultarNuvem = async () => {
+    if (!projetoId || senhaNuvem.length < 16) {
+      toast.error("Informe a senha de sincronização para consultar o projeto.");
+      return;
+    }
+    try {
+      setSincronizando(true);
+      const estado = await consultarProjetoNuvem({ data: { projetoId, senha: senhaNuvem } });
+      setEstadoNuvem(estado);
+      toast.success(estado.existe ? "Snapshot remoto localizado." : "Projeto configurado, mas ainda sem snapshot.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível consultar a nuvem.");
+    } finally {
+      setSincronizando(false);
+    }
+  };
+
+  const enviarNuvem = async () => {
+    if (!projetoId || senhaNuvem.length < 16) {
+      toast.error("Informe a senha de sincronização antes de enviar.");
+      return;
+    }
+    try {
+      setSincronizando(true);
+      const backup = await criarBackupDados(projetoId);
+      const snapshot = await criptografarSnapshotProjeto(projetoId, backup, senhaNuvem);
+      const resposta = await enviarProjetoNuvem({
+        data: {
+          projetoId,
+          senha: senhaNuvem,
+          envelope: new TextDecoder().decode(snapshot.bytes),
+          etagAtual: estadoNuvem?.etag ?? null,
+        },
+      });
+      setEstadoNuvem({ existe: true, etag: resposta.etag, atualizadoEm: resposta.atualizadoEm, tamanho: resposta.tamanho });
+      toast.success("Snapshot criptografado enviado para a nuvem.");
+    } catch (error) {
+      const mensagem = error instanceof Error ? error.message : "Não foi possível enviar o snapshot.";
+      if (mensagem.includes("CONFLITO_NUVEM")) {
+        try {
+          const estadoAtualizado = await consultarProjetoNuvem({ data: { projetoId, senha: senhaNuvem } });
+          setEstadoNuvem(estadoAtualizado);
+        } catch {
+          // A mensagem principal abaixo já orienta o operador a consultar
+          // novamente; não ocultamos o conflito por uma falha secundária.
+        }
+        toast.error("Conflito detectado: outro dispositivo atualizou o projeto. O estado remoto foi recarregado; baixe-o para revisar antes de enviar novamente.");
+      } else {
+        toast.error(mensagem);
+      }
+    } finally {
+      setSincronizando(false);
+    }
+  };
+
+  const baixarNuvem = async () => {
+    if (!projetoId || senhaNuvem.length < 16) {
+      toast.error("Informe a senha de sincronização antes de baixar.");
+      return;
+    }
+    try {
+      setSincronizando(true);
+      const remoto = await baixarProjetoNuvem({ data: { projetoId, senha: senhaNuvem } });
+      const envelope = lerEnvelopeSincronizacao(new TextEncoder().encode(remoto.envelope));
+      const backup = await descriptografarSnapshotProjeto(envelope, projetoId, senhaNuvem);
+      const json = JSON.stringify(backup, null, 2);
+      const analise = await analisarBackupDados(json, projetoId);
+      setEstadoNuvem({ existe: true, etag: remoto.etag, atualizadoEm: remoto.atualizadoEm, tamanho: new TextEncoder().encode(remoto.envelope).byteLength });
+      setBackupAceite(false);
+      setBackupPreview({ fileName: "snapshot-remoto.enc.json", fileSize: new TextEncoder().encode(remoto.envelope).byteLength, json, analise });
+      toast.success("Snapshot remoto baixado. Revise os dados antes de restaurar.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível baixar o snapshot remoto.");
+    } finally {
+      setSincronizando(false);
+    }
+  };
+
   const podeRestaurar = !!backupPreview && backupPreview.analise.valido && backupPreview.analise.projeto_igual && backupAceite && !restaurando;
 
   return (
@@ -373,6 +589,139 @@ function DadosPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card className="overflow-hidden border-primary/25 shadow-sm">
+        <CardHeader className="border-b bg-primary/[0.04] p-5 sm:p-6">
+          <div className="flex items-start gap-3">
+            <div className="rounded-xl bg-primary/10 p-2.5 text-primary"><Cloud className="size-5" /></div>
+            <div className="min-w-0">
+              <h2 className="font-semibold">Sincronização segura com a nuvem</h2>
+              <p className="mt-1 text-sm leading-5 text-muted-foreground">O projeto é armazenado como um objeto criptografado no R2. O envio é manual e só substitui uma versão remota que você já consultou.</p>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4 p-5 sm:p-6">
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+            <label className="space-y-2">
+              <span className="flex items-center gap-2 text-sm font-medium"><LockKeyhole className="size-4 text-primary" /> Senha do projeto</span>
+              <input
+                type="password"
+                value={senhaNuvem}
+                onChange={(event) => setSenhaNuvem(event.target.value)}
+                placeholder="Mínimo de 16 caracteres"
+                autoComplete="new-password"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none transition focus-visible:ring-2 focus-visible:ring-ring"
+                disabled={!projetoId || sincronizando}
+              />
+            </label>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Button variant="outline" onClick={() => void configurarNuvem()} disabled={!projetoId || sincronizando || senhaNuvem.length < 16}>
+                <Cloud className="size-4" /> Configurar projeto
+              </Button>
+              <Button variant="ghost" onClick={() => void gerarRecuperacao()} disabled={!projetoId || sincronizando || senhaNuvem.length < 16}>
+                <KeyRound className="size-4" /> Gerar recuperação
+              </Button>
+              <Button variant="ghost" onClick={() => setDialogRotacao(true)} disabled={!projetoId || sincronizando}>
+                <LockKeyhole className="size-4" /> Trocar senha
+              </Button>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-3 rounded-xl border bg-muted/10 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0 text-sm">
+              <p className="font-medium">{estadoNuvem?.existe ? "Snapshot remoto disponível" : estadoNuvem ? "Projeto configurado, sem snapshot" : "Estado remoto não consultado"}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{estadoNuvem?.atualizadoEm ? `Atualizado em ${new Date(estadoNuvem.atualizadoEm).toLocaleString("pt-BR")}` : "Consulte o projeto para carregar a versão atual."}</p>
+            </div>
+            <Button variant="secondary" onClick={() => void consultarNuvem()} disabled={!projetoId || sincronizando || senhaNuvem.length < 16}>
+              <RefreshCw className="size-4" /> Consultar estado
+            </Button>
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Button onClick={() => void enviarNuvem()} disabled={!projetoId || sincronizando || senhaNuvem.length < 16 || (estadoNuvem === null)}>
+              <CloudUpload className="size-4" /> {sincronizando ? "Processando…" : "Enviar snapshot"}
+            </Button>
+            <Button variant="outline" onClick={() => void baixarNuvem()} disabled={!projetoId || sincronizando || senhaNuvem.length < 16 || !estadoNuvem?.existe}>
+              <CloudDownload className="size-4" /> Baixar para revisar
+            </Button>
+          </div>
+          <p className="text-xs leading-5 text-muted-foreground">A senha não é salva no navegador. Sem ela, não será possível descriptografar o snapshot remoto. O botão de baixar abre a mesma revisão de segurança usada pelos backups locais.</p>
+        </CardContent>
+      </Card>
+
+      <Dialog open={dialogRotacao} onOpenChange={setDialogRotacao}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><LockKeyhole className="size-5 text-primary" /> Trocar senha do projeto</DialogTitle>
+            <DialogDescription>
+              Use a chave de recuperação para definir uma nova senha. O snapshot local será recriptografado e reenviado automaticamente.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <label className="block space-y-2">
+              <span className="text-sm font-medium">Chave de recuperação atual</span>
+              <input
+                type="password"
+                value={chaveRecuperacaoEntrada}
+                onChange={(event) => setChaveRecuperacaoEntrada(event.target.value)}
+                placeholder="Cole a chave salva anteriormente"
+                autoComplete="off"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none transition focus-visible:ring-2 focus-visible:ring-ring"
+              />
+            </label>
+            <label className="block space-y-2">
+              <span className="text-sm font-medium">Nova senha</span>
+              <input
+                type="password"
+                value={novaSenha}
+                onChange={(event) => setNovaSenha(event.target.value)}
+                placeholder="Mínimo de 16 caracteres"
+                autoComplete="new-password"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none transition focus-visible:ring-2 focus-visible:ring-ring"
+              />
+            </label>
+            <label className="block space-y-2">
+              <span className="text-sm font-medium">Confirmar nova senha</span>
+              <input
+                type="password"
+                value={confirmacaoNovaSenha}
+                onChange={(event) => setConfirmacaoNovaSenha(event.target.value)}
+                placeholder="Repita a nova senha"
+                autoComplete="new-password"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none transition focus-visible:ring-2 focus-visible:ring-ring"
+              />
+            </label>
+            <p className="rounded-xl border border-warning/30 bg-warning/5 p-3 text-xs leading-5 text-muted-foreground">
+              A chave usada será invalidada e uma nova chave será gerada. Guarde a nova chave quando ela aparecer.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogRotacao(false)} disabled={sincronizando}>Cancelar</Button>
+            <Button onClick={() => void rotacionarSenha()} disabled={sincronizando}><LockKeyhole className="size-4" /> {sincronizando ? "Trocando…" : "Trocar senha"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={dialogRecuperacao} onOpenChange={setDialogRecuperacao}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><KeyRound className="size-5 text-primary" /> Chave de recuperação</DialogTitle>
+            <DialogDescription>
+              Guarde esta chave offline, de preferência em um gerenciador de senhas ou arquivo protegido. Ela não é armazenada em texto puro e não será exibida novamente automaticamente.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="rounded-xl border-2 border-primary/25 bg-primary/[0.04] p-4">
+              <code className="block break-all text-sm leading-6">{chaveRecuperacao}</code>
+            </div>
+            <p className="text-xs leading-5 text-muted-foreground">Esta chave permitirá recuperar o acesso e trocar a senha do projeto em uma etapa posterior. Não a envie por mensagens ou salve junto com os dados locais.</p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => void copiarChaveRecuperacao()} disabled={!chaveRecuperacao}><Copy className="size-4" /> Copiar chave</Button>
+            <Button onClick={baixarChaveRecuperacao} disabled={!chaveRecuperacao}><Download className="size-4" /> Baixar arquivo</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Card className="overflow-hidden border-border/70 shadow-sm">
         <CardHeader className="border-b bg-muted/20 p-5 sm:p-6">

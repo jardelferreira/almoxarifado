@@ -2,8 +2,8 @@ import { getDB } from "@/db/db";
 import { validarIntegridadeManutencoes } from "@/services/equipamentos/manutencao-integridade";
 
 export const BACKUP_FORMATO = "ALMOXARIFADO_BACKUP";
-export const BACKUP_VERSAO = 8;
-export const BACKUP_DB_VERSAO = 19;
+export const BACKUP_VERSAO = 9;
+export const BACKUP_DB_VERSAO = 22;
 
 export const BACKUP_TABELAS = [
   "projetos",
@@ -35,6 +35,7 @@ export const BACKUP_TABELAS = [
   "consumos_equipamentos",
   "regras_consumo_equipamentos",
   "perfis_parametros_custos",
+  "substituicoes_equipamentos",
 ] as const;
 
 export type BackupTabela = (typeof BACKUP_TABELAS)[number];
@@ -111,6 +112,7 @@ const TABELAS_PROJETO_DIRETO: readonly BackupTabela[] = [
   "consumos_equipamentos",
   "regras_consumo_equipamentos",
   "perfis_parametros_custos",
+  "substituicoes_equipamentos",
 ];
 
 export interface BackupProjetoIdentidade {
