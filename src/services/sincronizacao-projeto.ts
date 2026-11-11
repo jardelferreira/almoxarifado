@@ -2,7 +2,10 @@ import type { BackupArquivo } from "@/services/backup";
 
 const FORMATO_ENVELOPE = "ALMOXARIFADO_SYNC_ENVELOPE" as const;
 const VERSAO_ENVELOPE = 1;
-const ITERACOES_PBKDF2 = 210_000;
+// Web Crypto em navegadores e no runtime Workers rejeita valores acima de
+// 100.000 para PBKDF2. O envelope registra este valor para garantir que a
+// descriptografia use exatamente os mesmos parâmetros.
+const ITERACOES_PBKDF2 = 100_000;
 const TAMANHO_SALT = 16;
 const TAMANHO_IV = 12;
 
