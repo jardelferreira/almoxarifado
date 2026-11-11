@@ -4,7 +4,8 @@ import { env } from "cloudflare:workers";
 const PREFIXO = "projetos";
 const FORMATO_CONTROLE = "ALMOXARIFADO_PROJECT_CONTROL";
 const VERSAO_CONTROLE = 1;
-const ITERACOES_SENHA = 210_000;
+// O runtime do Cloudflare Workers limita PBKDF2 a 100.000 iterações.
+const ITERACOES_SENHA = 100_000;
 const TAMANHO_SALT = 16;
 const TAMANHO_MAX_ENVELOPE = 25 * 1024 * 1024;
 
