@@ -5,6 +5,7 @@ import {
   ClipboardSignature,
   FileDown,
   PackageCheck,
+  Search,
   UserRound,
   UserRoundMinus,
   UserRoundPlus,
@@ -47,6 +48,23 @@ type ItemPainel = {
 
 type AcaoPainel = "APROPRIAR" | "DEVOLVER";
 
+type ProprietarioConsulta = {
+  id: string;
+  nome: string;
+  matricula: string | null | undefined;
+  quantidade: number;
+  ativo: boolean;
+};
+
+type ConsultaPosse = {
+  estoque: EstoqueEquipamento;
+  equipamento: Equipamento;
+  identificacao: string;
+  disponivel: number;
+  manutencao: number;
+  proprietarios: ProprietarioConsulta[];
+};
+
 export function PainelApropriacoesPage() {
   const [projetoId] = useProjetoAtivoId();
   const [funcionarioId, setFuncionarioId] = useState<string | null>(null);
@@ -55,6 +73,7 @@ export function PainelApropriacoesPage() {
   const [estoqueId, setEstoqueId] = useState<string | null>(null);
   const [quantidade, setQuantidade] = useState("1");
   const [salvando, setSalvando] = useState(false);
+  const [buscaEquipamento, setBuscaEquipamento] = useState("");
 
   const dados = useLiveQuery(async () => {
     if (!projetoId) return null;
@@ -67,8 +86,10 @@ export function PainelApropriacoesPage() {
     ]);
 
     const equipamentoPorId = new Map(equipamentos.map((item) => [item.id, item]));
+    const funcionarioPorId = new Map(funcionarios.map((item) => [item.id, item]));
     const itens: ItemPainel[] = [];
     const disponiveis: Array<ItemPainel & { disponivel: number }> = [];
+    const consultas: ConsultaPosse[] = [];
 
     const estados = await Promise.all(
       estoques
@@ -85,6 +106,28 @@ export function PainelApropriacoesPage() {
       const identificacao =
         estoque.identificacao || estoque.patrimonio || estoque.serial || "Sem identificação";
       const apropriado = funcionarioId ? (estado.funcionarios.get(funcionarioId) ?? 0) : 0;
+      const proprietarios = [...estado.funcionarios.entries()]
+        .filter(([, quantidade]) => quantidade > 0)
+        .map(([id, quantidade]) => {
+          const funcionario = funcionarioPorId.get(id);
+          return {
+            id,
+            nome: funcionario?.nome ?? "Funcionário não localizado",
+            matricula: funcionario?.matricula,
+            quantidade,
+            ativo: funcionario?.status === "ATIVO",
+          };
+        })
+        .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+
+      consultas.push({
+        estoque,
+        equipamento,
+        identificacao,
+        disponivel: estado.disponivel,
+        manutencao: estado.manutencao,
+        proprietarios,
+      });
       if (apropriado > 0)
         itens.push({ estoque, equipamento, quantidade: apropriado, identificacao });
       if (estado.disponivel > 0)
@@ -101,9 +144,13 @@ export function PainelApropriacoesPage() {
       funcionarios: funcionarios
         .filter((item) => item.status === "ATIVO")
         .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")),
+      funcionariosTodos: funcionarios,
       equipes,
       itens: itens.sort((a, b) => a.equipamento.nome.localeCompare(b.equipamento.nome, "pt-BR")),
       disponiveis: disponiveis.sort((a, b) =>
+        a.equipamento.nome.localeCompare(b.equipamento.nome, "pt-BR"),
+      ),
+      consultas: consultas.sort((a, b) =>
         a.equipamento.nome.localeCompare(b.equipamento.nome, "pt-BR"),
       ),
     };
@@ -119,6 +166,29 @@ export function PainelApropriacoesPage() {
   );
   const estoqueSelecionado = dados?.disponiveis.find((item) => item.estoque.id === estoqueId);
   const itemDevolucao = dados?.itens.find((item) => item.estoque.id === estoqueId);
+  const consultasFiltradas = useMemo(() => {
+    if (!dados || !buscaEquipamento.trim()) return [];
+    const termos = normalizarBusca(buscaEquipamento).split(" ").filter(Boolean);
+    return dados.consultas.filter((item) => {
+      const texto = normalizarBusca(
+        [
+          item.equipamento.nome,
+          item.equipamento.marca,
+          item.equipamento.modelo,
+          item.identificacao,
+          item.estoque.patrimonio,
+          item.estoque.serial,
+          ...item.proprietarios.flatMap((proprietario) => [
+            proprietario.nome,
+            proprietario.matricula,
+          ]),
+        ]
+          .filter(Boolean)
+          .join(" "),
+      );
+      return termos.every((termo) => texto.includes(termo));
+    });
+  }, [dados, buscaEquipamento]);
 
   const abrirApropriacao = () => {
     setAcao("APROPRIAR");
@@ -290,6 +360,120 @@ export function PainelApropriacoesPage() {
                 <p className="text-xs text-muted-foreground">Equipe</p>
                 <p className="font-medium">{equipe?.nome ?? "Sem equipe definida"}</p>
               </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="border-b bg-muted/20 pb-4">
+          <div className="flex items-center gap-2">
+            <Search className="size-4 text-primary" aria-hidden="true" />
+            <div>
+              <h2 className="font-semibold">Consultar posse de equipamento</h2>
+              <p className="text-xs text-muted-foreground">
+                Pesquise por nome, marca, modelo, patrimônio, identificação, serial ou funcionário.
+              </p>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4 p-4">
+          <div className="relative">
+            <Search
+              className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+              aria-hidden="true"
+            />
+            <Input
+              value={buscaEquipamento}
+              onChange={(event) => setBuscaEquipamento(event.target.value)}
+              className="pl-9"
+              placeholder="Ex.: furadeira, patrimônio, serial ou nome do funcionário"
+              aria-label="Pesquisar equipamentos e responsáveis"
+            />
+          </div>
+          {!buscaEquipamento.trim() ? (
+            <p className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
+              Digite pelo menos uma informação para consultar quem está em posse.
+            </p>
+          ) : consultasFiltradas.length === 0 ? (
+            <p className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
+              Nenhum equipamento ou responsável corresponde à pesquisa.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-xs font-medium text-muted-foreground">
+                {consultasFiltradas.length} registro(s) encontrado(s)
+              </p>
+              {consultasFiltradas.map((item) => (
+                <div key={item.estoque.id} className="rounded-xl border p-4">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="min-w-0">
+                      <p className="break-words font-semibold">{item.equipamento.nome}</p>
+                      <p className="mt-1 break-words text-sm text-muted-foreground">
+                        {[item.equipamento.marca, item.equipamento.modelo]
+                          .filter(Boolean)
+                          .join(" · ") || "Sem marca ou modelo"}
+                      </p>
+                      <p className="mt-2 break-words text-xs text-muted-foreground">
+                        {item.identificacao}
+                        {item.estoque.patrimonio && item.identificacao !== item.estoque.patrimonio
+                          ? ` · Patrimônio: ${item.estoque.patrimonio}`
+                          : ""}
+                        {item.estoque.serial && item.identificacao !== item.estoque.serial
+                          ? ` · Serial: ${item.estoque.serial}`
+                          : ""}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2 text-xs">
+                      <Badge variant={item.proprietarios.length ? "default" : "outline"}>
+                        {item.proprietarios.length ? "Em posse" : situacaoConsulta(item)}
+                      </Badge>
+                      <Badge variant="outline">Disponível: {num(item.disponivel)}</Badge>
+                      {item.manutencao > 0 && (
+                        <Badge variant="outline">Manutenção: {num(item.manutencao)}</Badge>
+                      )}
+                    </div>
+                  </div>
+                  <div className="mt-4 border-t pt-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Responsável atual
+                    </p>
+                    {item.proprietarios.length === 0 ? (
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        Nenhum funcionário possui este equipamento no momento.
+                      </p>
+                    ) : (
+                      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                        {item.proprietarios.map((proprietario) => (
+                          <div
+                            key={proprietario.id}
+                            className="flex min-w-0 items-start justify-between gap-3 rounded-lg bg-muted/30 p-3"
+                          >
+                            <div className="min-w-0">
+                              <p className="break-words text-sm font-medium">
+                                {proprietario.nome}
+                                {!proprietario.ativo && (
+                                  <span className="ml-1 text-xs font-normal text-muted-foreground">
+                                    (inativo)
+                                  </span>
+                                )}
+                              </p>
+                              {proprietario.matricula && (
+                                <p className="mt-0.5 text-xs text-muted-foreground">
+                                  Matrícula: {proprietario.matricula}
+                                </p>
+                              )}
+                            </div>
+                            <span className="shrink-0 text-sm font-semibold">
+                              {num(proprietario.quantidade)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </CardContent>
@@ -502,6 +686,21 @@ function Resumo({ label, valor, icon }: { label: string; valor: number; icon: Re
       </CardContent>
     </Card>
   );
+}
+
+function normalizarBusca(valor: unknown): string {
+  return String(valor ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("pt-BR")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function situacaoConsulta(item: ConsultaPosse): string {
+  if (item.manutencao > 0) return "Em manutenção";
+  if (item.disponivel > 0) return "No Almoxarifado";
+  return "Sem saldo disponível";
 }
 
 function escapar(valor: unknown): string {
