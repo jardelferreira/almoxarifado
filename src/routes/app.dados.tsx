@@ -8,6 +8,7 @@ import {
   Cloud,
   CloudDownload,
   CloudUpload,
+  Copy,
   Database,
   Download,
   FileJson,
@@ -16,6 +17,7 @@ import {
   HardDriveDownload,
   Import,
   LockKeyhole,
+  KeyRound,
   RefreshCw,
   ShieldAlert,
   ShieldCheck,
@@ -126,6 +128,8 @@ function DadosPage() {
   const [senhaNuvem, setSenhaNuvem] = useState("");
   const [sincronizando, setSincronizando] = useState(false);
   const [estadoNuvem, setEstadoNuvem] = useState<{ existe: boolean; etag: string | null; atualizadoEm: string | null; tamanho: number } | null>(null);
+  const [chaveRecuperacao, setChaveRecuperacao] = useState<string | null>(null);
+  const [dialogRecuperacao, setDialogRecuperacao] = useState(false);
 
   const dados = useLiveQuery(async () => {
     const db = getDB();
@@ -291,14 +295,57 @@ function DadosPage() {
     }
     try {
       setSincronizando(true);
-      await criarProjetoNuvem({ data: { projetoId, senha: senhaNuvem } });
+      const resultado = await criarProjetoNuvem({ data: { projetoId, senha: senhaNuvem } });
       setEstadoNuvem({ existe: false, etag: null, atualizadoEm: null, tamanho: 0 });
+      setChaveRecuperacao(resultado.chaveRecuperacao);
+      setDialogRecuperacao(true);
       toast.success("Sincronização do projeto configurada na nuvem.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Não foi possível configurar a sincronização.");
     } finally {
       setSincronizando(false);
     }
+  };
+
+  const gerarRecuperacao = async () => {
+    if (!projetoId || senhaNuvem.length < 16) {
+      toast.error("Informe a senha atual do projeto para gerar a chave de recuperação.");
+      return;
+    }
+    try {
+      setSincronizando(true);
+      const resultado = await criarProjetoNuvem({ data: { projetoId, senha: senhaNuvem, operacao: "gerar_recuperacao" } });
+      setChaveRecuperacao(resultado.chaveRecuperacao);
+      setDialogRecuperacao(true);
+      toast.success("Chave de recuperação gerada. Guarde-a fora do sistema.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível gerar a chave de recuperação.");
+    } finally {
+      setSincronizando(false);
+    }
+  };
+
+  const copiarChaveRecuperacao = async () => {
+    if (!chaveRecuperacao) return;
+    try {
+      await navigator.clipboard.writeText(chaveRecuperacao);
+      toast.success("Chave de recuperação copiada.");
+    } catch {
+      toast.error("Não foi possível copiar a chave. Use o botão de download.");
+    }
+  };
+
+  const baixarChaveRecuperacao = () => {
+    if (!chaveRecuperacao || !projetoId) return;
+    const blob = new Blob([
+      `ALMOXARIFADO — CHAVE DE RECUPERAÇÃO\n\nProjeto: ${projetoId}\nChave: ${chaveRecuperacao}\n\nGuarde este arquivo offline. A chave não será exibida novamente automaticamente.\n`,
+    ], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `chave-recuperacao-${projetoId}.txt`;
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
   const consultarNuvem = async () => {
@@ -504,9 +551,14 @@ function DadosPage() {
                 disabled={!projetoId || sincronizando}
               />
             </label>
-            <Button variant="outline" onClick={() => void configurarNuvem()} disabled={!projetoId || sincronizando || senhaNuvem.length < 16}>
-              <Cloud className="size-4" /> Configurar projeto
-            </Button>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Button variant="outline" onClick={() => void configurarNuvem()} disabled={!projetoId || sincronizando || senhaNuvem.length < 16}>
+                <Cloud className="size-4" /> Configurar projeto
+              </Button>
+              <Button variant="ghost" onClick={() => void gerarRecuperacao()} disabled={!projetoId || sincronizando || senhaNuvem.length < 16}>
+                <KeyRound className="size-4" /> Gerar recuperação
+              </Button>
+            </div>
           </div>
 
           <div className="flex flex-col gap-3 rounded-xl border bg-muted/10 p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -530,6 +582,27 @@ function DadosPage() {
           <p className="text-xs leading-5 text-muted-foreground">A senha não é salva no navegador. Sem ela, não será possível descriptografar o snapshot remoto. O botão de baixar abre a mesma revisão de segurança usada pelos backups locais.</p>
         </CardContent>
       </Card>
+
+      <Dialog open={dialogRecuperacao} onOpenChange={setDialogRecuperacao}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><KeyRound className="size-5 text-primary" /> Chave de recuperação</DialogTitle>
+            <DialogDescription>
+              Guarde esta chave offline, de preferência em um gerenciador de senhas ou arquivo protegido. Ela não é armazenada em texto puro e não será exibida novamente automaticamente.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="rounded-xl border-2 border-primary/25 bg-primary/[0.04] p-4">
+              <code className="block break-all text-sm leading-6">{chaveRecuperacao}</code>
+            </div>
+            <p className="text-xs leading-5 text-muted-foreground">Esta chave permitirá recuperar o acesso e trocar a senha do projeto em uma etapa posterior. Não a envie por mensagens ou salve junto com os dados locais.</p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => void copiarChaveRecuperacao()} disabled={!chaveRecuperacao}><Copy className="size-4" /> Copiar chave</Button>
+            <Button onClick={baixarChaveRecuperacao} disabled={!chaveRecuperacao}><Download className="size-4" /> Baixar arquivo</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Card className="overflow-hidden border-border/70 shadow-sm">
         <CardHeader className="border-b bg-muted/20 p-5 sm:p-6">
