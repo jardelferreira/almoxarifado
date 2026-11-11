@@ -7,8 +7,9 @@
   "r2_buckets": [
     {
       "binding": "ALMOXARIFADO_BUCKET",
-      "bucket_name": "almoxarifado",
-      "remote": true
+      "bucket_name": "almoxarifado"
+      // Sem "remote": true, o wrangler dev usa o R2 local simulado.
+      // O deploy continua vinculando o bucket R2 de produção.
     }
   ]
 }
