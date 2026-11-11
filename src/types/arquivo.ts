@@ -10,4 +10,5 @@ export interface Arquivo {
   mime_type: string;
   tamanho: number;
   criado_em: string;
+  free?: string; 
 }
