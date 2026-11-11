@@ -130,6 +130,10 @@ function DadosPage() {
   const [estadoNuvem, setEstadoNuvem] = useState<{ existe: boolean; etag: string | null; atualizadoEm: string | null; tamanho: number } | null>(null);
   const [chaveRecuperacao, setChaveRecuperacao] = useState<string | null>(null);
   const [dialogRecuperacao, setDialogRecuperacao] = useState(false);
+  const [dialogRotacao, setDialogRotacao] = useState(false);
+  const [chaveRecuperacaoEntrada, setChaveRecuperacaoEntrada] = useState("");
+  const [novaSenha, setNovaSenha] = useState("");
+  const [confirmacaoNovaSenha, setConfirmacaoNovaSenha] = useState("");
 
   const dados = useLiveQuery(async () => {
     const db = getDB();
@@ -320,6 +324,65 @@ function DadosPage() {
       toast.success("Chave de recuperação gerada. Guarde-a fora do sistema.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Não foi possível gerar a chave de recuperação.");
+    } finally {
+      setSincronizando(false);
+    }
+  };
+
+  const rotacionarSenha = async () => {
+    if (!projetoId || chaveRecuperacaoEntrada.length < 32) {
+      toast.error("Informe a chave de recuperação completa.");
+      return;
+    }
+    if (novaSenha.length < 16) {
+      toast.error("A nova senha deve ter pelo menos 16 caracteres.");
+      return;
+    }
+    if (novaSenha !== confirmacaoNovaSenha) {
+      toast.error("A confirmação da nova senha não confere.");
+      return;
+    }
+    if (estadoNuvem === null) {
+      toast.error("Consulte o estado remoto antes de trocar a senha.");
+      return;
+    }
+    let chaveGerada: string | null = null;
+    try {
+      setSincronizando(true);
+      const backup = await criarBackupDados(projetoId);
+      const resultado = await criarProjetoNuvem({
+        data: {
+          projetoId,
+          senha: novaSenha,
+          chaveRecuperacao: chaveRecuperacaoEntrada,
+          operacao: "rotacionar_recuperacao",
+        },
+      });
+      chaveGerada = resultado.chaveRecuperacao;
+      setSenhaNuvem(novaSenha);
+      setChaveRecuperacao(chaveGerada);
+      const snapshot = await criptografarSnapshotProjeto(projetoId, backup, novaSenha);
+      const resposta = await enviarProjetoNuvem({
+        data: {
+          projetoId,
+          senha: novaSenha,
+          envelope: new TextDecoder().decode(snapshot.bytes),
+          etagAtual: estadoNuvem.etag,
+        },
+      });
+      setChaveRecuperacaoEntrada("");
+      setNovaSenha("");
+      setConfirmacaoNovaSenha("");
+      setDialogRotacao(false);
+      setEstadoNuvem({ existe: true, etag: resposta.etag, atualizadoEm: resposta.atualizadoEm, tamanho: resposta.tamanho });
+      setDialogRecuperacao(true);
+      toast.success("Senha trocada e snapshot remoto recriptografado com sucesso.");
+    } catch (error) {
+      if (chaveGerada) {
+        setDialogRotacao(false);
+        setDialogRecuperacao(true);
+      }
+      toast.error(error instanceof Error ? error.message : "Não foi possível trocar a senha do projeto.");
     } finally {
       setSincronizando(false);
     }
@@ -558,6 +621,9 @@ function DadosPage() {
               <Button variant="ghost" onClick={() => void gerarRecuperacao()} disabled={!projetoId || sincronizando || senhaNuvem.length < 16}>
                 <KeyRound className="size-4" /> Gerar recuperação
               </Button>
+              <Button variant="ghost" onClick={() => setDialogRotacao(true)} disabled={!projetoId || sincronizando}>
+                <LockKeyhole className="size-4" /> Trocar senha
+              </Button>
             </div>
           </div>
 
@@ -582,6 +648,59 @@ function DadosPage() {
           <p className="text-xs leading-5 text-muted-foreground">A senha não é salva no navegador. Sem ela, não será possível descriptografar o snapshot remoto. O botão de baixar abre a mesma revisão de segurança usada pelos backups locais.</p>
         </CardContent>
       </Card>
+
+      <Dialog open={dialogRotacao} onOpenChange={setDialogRotacao}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><LockKeyhole className="size-5 text-primary" /> Trocar senha do projeto</DialogTitle>
+            <DialogDescription>
+              Use a chave de recuperação para definir uma nova senha. O snapshot local será recriptografado e reenviado automaticamente.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <label className="block space-y-2">
+              <span className="text-sm font-medium">Chave de recuperação atual</span>
+              <input
+                type="password"
+                value={chaveRecuperacaoEntrada}
+                onChange={(event) => setChaveRecuperacaoEntrada(event.target.value)}
+                placeholder="Cole a chave salva anteriormente"
+                autoComplete="off"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none transition focus-visible:ring-2 focus-visible:ring-ring"
+              />
+            </label>
+            <label className="block space-y-2">
+              <span className="text-sm font-medium">Nova senha</span>
+              <input
+                type="password"
+                value={novaSenha}
+                onChange={(event) => setNovaSenha(event.target.value)}
+                placeholder="Mínimo de 16 caracteres"
+                autoComplete="new-password"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none transition focus-visible:ring-2 focus-visible:ring-ring"
+              />
+            </label>
+            <label className="block space-y-2">
+              <span className="text-sm font-medium">Confirmar nova senha</span>
+              <input
+                type="password"
+                value={confirmacaoNovaSenha}
+                onChange={(event) => setConfirmacaoNovaSenha(event.target.value)}
+                placeholder="Repita a nova senha"
+                autoComplete="new-password"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none transition focus-visible:ring-2 focus-visible:ring-ring"
+              />
+            </label>
+            <p className="rounded-xl border border-warning/30 bg-warning/5 p-3 text-xs leading-5 text-muted-foreground">
+              A chave usada será invalidada e uma nova chave será gerada. Guarde a nova chave quando ela aparecer.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogRotacao(false)} disabled={sincronizando}>Cancelar</Button>
+            <Button onClick={() => void rotacionarSenha()} disabled={sincronizando}><LockKeyhole className="size-4" /> {sincronizando ? "Trocando…" : "Trocar senha"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={dialogRecuperacao} onOpenChange={setDialogRecuperacao}>
         <DialogContent>
