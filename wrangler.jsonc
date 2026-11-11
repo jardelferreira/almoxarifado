@@ -11,5 +11,17 @@
       // Sem "remote": true, o wrangler dev usa o R2 local simulado.
       // O deploy continua vinculando o bucket R2 de produção.
     }
-  ]
+  ],
+  "env": {
+    "preview": {
+      "name": "almoxarifado-preview",
+      "r2_buckets": [
+        {
+          "binding": "ALMOXARIFADO_BUCKET",
+          "bucket_name": "almoxarifado-preview",
+          "remote": true
+        }
+      ]
+    }
+  }
 }
