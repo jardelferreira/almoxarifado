@@ -10,6 +10,11 @@ import {
   Users,
   UsersRound,
   Plus,
+  ArrowDownAZ,
+  ArrowUpAZ,
+  ChevronLeft,
+  ChevronRight,
+  Filter,
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -67,17 +72,33 @@ export const Route = createFileRoute("/app/cadastros")({
 type Aba =
   "produtos" | "categorias" | "unidades" | "empresas" | "funcionarios" | "locais" | "equipes";
 
+type FiltroStatus = "todos" | "ativos" | "inativos";
+type Ordem = "asc" | "desc";
+
+const TAMANHO_PAGINA = 25;
+
 function CadastrosPage() {
   const [projetoId] = useProjetoAtivoId();
   const dados = useDados(projetoId);
   const [q, setQ] = useState("");
+  const [abaAtiva, setAbaAtiva] = useState<Aba>("produtos");
+  const [filtroStatus, setFiltroStatus] = useState<FiltroStatus>("todos");
+  const [ordem, setOrdem] = useState<Ordem>("asc");
+  const [pagina, setPagina] = useState(1);
   const [editando, setEditando] = useState<{ aba: Aba; item: Record<string, unknown> } | null>(
     null,
   );
 
   if (!dados) return <p className="text-sm text-muted-foreground">Carregando…</p>;
 
-  const busca = (s?: string | null) => (s ?? "").toLowerCase().includes(q.toLowerCase());
+  const normalizarBusca = (valor: string) =>
+    valor
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLocaleLowerCase("pt-BR")
+      .trim();
+
+  const termosBusca = normalizarBusca(q).split(/\s+/).filter(Boolean);
 
   const novo = (aba: Aba) => {
     const base: Record<Aba, Record<string, unknown>> = {
@@ -139,15 +160,9 @@ function CadastrosPage() {
     if (aba === "equipes") {
       const { membro_ids, ...dadosEquipe } = item;
 
-      const equipe = await repo.equipes.save(
-        projetoId,
-        dadosEquipe as unknown as Equipe,
-      );
+      const equipe = await repo.equipes.save(projetoId, dadosEquipe as unknown as Equipe);
 
-      await repo.salvarMembrosDaEquipe(
-        equipe.id,
-        (membro_ids as string[] | undefined) ?? [],
-      );
+      await repo.salvarMembrosDaEquipe(equipe.id, (membro_ids as string[] | undefined) ?? []);
 
       toast.success("Equipe salva");
       setEditando(null);
@@ -155,18 +170,11 @@ function CadastrosPage() {
     }
 
     if (aba === "categorias") {
-      await repo.categorias.save(
-        item as unknown as Categoria,
-      );
+      await repo.categorias.save(item as unknown as Categoria);
     } else if (aba === "unidades") {
-      await repo.unidades.save(
-        item as unknown as Unidade,
-      );
+      await repo.unidades.save(item as unknown as Unidade);
     } else if (aba === "empresas") {
-      await repo.empresas.save(
-        projetoId,
-        item as unknown as Empresa,
-      );
+      await repo.empresas.save(projetoId, item as unknown as Empresa);
     } else if (aba === "funcionarios") {
       const pinNovo = String(item["pin_novo"] ?? "").trim();
       const { pin_novo: _pinNovo, ...itemFuncionario } = item;
@@ -177,26 +185,16 @@ function CadastrosPage() {
       if (pinNovo) Object.assign(dadosFuncionario, await criarHashPin(pinNovo));
       await salvarFuncionario(projetoId, dadosFuncionario);
     } else if (aba === "locais") {
-      await repo.locais.save(
-        projetoId,
-        item as unknown as Local,
-      );
+      await repo.locais.save(projetoId, item as unknown as Local);
     } else if (aba === "produtos") {
-      await repo.produtos.save(
-        projetoId,
-        item as unknown as Produto,
-      );
+      await repo.produtos.save(projetoId, item as unknown as Produto);
     }
 
     toast.success("Cadastro salvo");
     setEditando(null);
   };
 
-  const toggleAtivo = async (
-    aba: Aba,
-    row: object,
-    campo: "ativo" | "status",
-  ) => {
+  const toggleAtivo = async (aba: Aba, row: object, campo: "ativo" | "status") => {
     if (!projetoId) {
       toast.error("Nenhum projeto ativo selecionado");
       return;
@@ -205,11 +203,7 @@ function CadastrosPage() {
     const item = row as Record<string, unknown>;
 
     const novoValor =
-      campo === "ativo"
-        ? !item["ativo"]
-        : item["status"] === "ATIVO"
-          ? "INATIVO"
-          : "ATIVO";
+      campo === "ativo" ? !item["ativo"] : item["status"] === "ATIVO" ? "INATIVO" : "ATIVO";
 
     const atualizado = {
       ...item,
@@ -217,43 +211,113 @@ function CadastrosPage() {
     };
 
     if (aba === "categorias") {
-      await repo.categorias.save(
-        atualizado as unknown as Categoria,
-      );
+      await repo.categorias.save(atualizado as unknown as Categoria);
     } else if (aba === "unidades") {
-      await repo.unidades.save(
-        atualizado as unknown as Unidade,
-      );
+      await repo.unidades.save(atualizado as unknown as Unidade);
     } else if (aba === "empresas") {
-      await repo.empresas.save(
-        projetoId,
-        atualizado as unknown as Empresa,
-      );
+      await repo.empresas.save(projetoId, atualizado as unknown as Empresa);
     } else if (aba === "funcionarios") {
-      await repo.funcionarios.save(
-        projetoId,
-        atualizado as unknown as Funcionario,
-      );
+      await repo.funcionarios.save(projetoId, atualizado as unknown as Funcionario);
     } else if (aba === "locais") {
-      await repo.locais.save(
-        projetoId,
-        atualizado as unknown as Local,
-      );
+      await repo.locais.save(projetoId, atualizado as unknown as Local);
     } else if (aba === "produtos") {
-      await repo.produtos.save(
-        projetoId,
-        atualizado as unknown as Produto,
-      );
+      await repo.produtos.save(projetoId, atualizado as unknown as Produto);
     } else if (aba === "equipes") {
-      await repo.equipes.save(
-        projetoId,
-        atualizado as unknown as Equipe,
-      );
+      await repo.equipes.save(projetoId, atualizado as unknown as Equipe);
     }
   };
 
   const nomeDe = <T extends { id: string; nome: string }>(arr: T[], id?: string | null) =>
     arr.find((x) => x.id === id)?.nome ?? "—";
+
+  const prepararLista = <T,>(
+    itens: T[],
+    texto: (item: T) => string,
+    ativo?: (item: T) => boolean,
+  ) => {
+    const filtrados = itens.filter((item) => {
+      const textoNormalizado = normalizarBusca(texto(item));
+      const correspondeBusca = termosBusca.every((termo) => textoNormalizado.includes(termo));
+      const correspondeStatus =
+        !ativo ||
+        filtroStatus === "todos" ||
+        (filtroStatus === "ativos" && ativo(item)) ||
+        (filtroStatus === "inativos" && !ativo(item));
+      return correspondeBusca && correspondeStatus;
+    });
+
+    return filtrados.sort((a, b) => {
+      const comparacao = normalizarBusca(texto(a)).localeCompare(
+        normalizarBusca(texto(b)),
+        "pt-BR",
+        {
+          numeric: true,
+          sensitivity: "base",
+        },
+      );
+      return ordem === "asc" ? comparacao : -comparacao;
+    });
+  };
+
+  const listas = (() => {
+    const produtos = prepararLista(
+      dados.produtos,
+      (p) => `${p.nome} ${p.codigo ?? ""} ${nomeDe(dados.categorias, p.categoria_id)}`,
+      (p) => p.ativo,
+    );
+    const categorias = prepararLista(
+      dados.categorias,
+      (c) => c.nome,
+      (c) => c.ativo,
+    );
+    const unidades = prepararLista(
+      dados.unidades,
+      (u) => `${u.sigla} ${u.descricao}`,
+      (u) => u.ativo,
+    );
+    const empresas = prepararLista(
+      dados.empresas,
+      (e) => `${e.nome} ${e.tipo}`,
+      (e) => e.ativo,
+    );
+    const funcionarios = prepararLista(
+      dados.funcionarios,
+      (f) => `${f.nome} ${f.matricula} ${f.cpf ?? ""} ${f.funcao ?? ""}`,
+      (f) => f.status === "ATIVO",
+    );
+    const locais = prepararLista(
+      dados.locais,
+      (l) => `${l.nome} ${l.codigo ?? ""} ${nomeDe(dados.locais, l.local_pai_id)}`,
+      (l) => l.ativo,
+    );
+    const equipes = prepararLista(
+      dados.equipes,
+      (e) => `${e.nome} ${e.descricao ?? ""}`,
+      (e) => e.ativo,
+    );
+
+    return { produtos, categorias, unidades, empresas, funcionarios, locais, equipes };
+  })();
+
+  const totalVisiveis = listas[abaAtiva].length;
+  const totalPaginas = Math.max(1, Math.ceil(totalVisiveis / TAMANHO_PAGINA));
+  const paginaSegura = Math.min(pagina, totalPaginas);
+  const paginaDe = <T,>(itens: T[]) =>
+    itens.slice((paginaSegura - 1) * TAMANHO_PAGINA, paginaSegura * TAMANHO_PAGINA);
+
+  const alterarAba = (valor: string) => {
+    setAbaAtiva(valor as Aba);
+    setPagina(1);
+    setQ("");
+    setFiltroStatus("todos");
+  };
+
+  const limparFiltros = () => {
+    setQ("");
+    setFiltroStatus("todos");
+    setOrdem("asc");
+    setPagina(1);
+  };
 
   return (
     <div className="space-y-5">
@@ -270,7 +334,10 @@ function CadastrosPage() {
                 <span className="text-xs font-bold uppercase tracking-[0.18em] text-sidebar-primary">
                   Base operacional
                 </span>
-                <Badge variant="outline" className="border-sidebar-primary/25 bg-sidebar-primary/[0.05] text-sidebar-primary">
+                <Badge
+                  variant="outline"
+                  className="border-sidebar-primary/25 bg-sidebar-primary/[0.05] text-sidebar-primary"
+                >
                   Cadastros
                 </Badge>
               </div>
@@ -278,18 +345,21 @@ function CadastrosPage() {
                 Cadastros
               </h1>
               <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
-                Organize as informações que alimentam os lançamentos, o estoque e o rastreamento do projeto.
+                Organize as informações que alimentam os lançamentos, o estoque e o rastreamento do
+                projeto.
               </p>
             </div>
           </div>
           <div className="hidden rounded-xl border border-sidebar-primary/15 bg-background/80 px-4 py-3 text-right shadow-sm md:block">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Princípio</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Princípio
+            </p>
             <p className="mt-1 text-sm font-semibold">Desative em vez de excluir</p>
           </div>
         </div>
       </div>
 
-      <Tabs defaultValue="produtos" className="w-full">
+      <Tabs value={abaAtiva} onValueChange={alterarAba} className="w-full">
         <div className="rounded-2xl border border-primary bg-muted/35 p-1.5 shadow-sm">
           <TabsList className="grid h-auto w-full grid-cols-2 gap-1 bg-transparent sm:grid-cols-4 lg:grid-cols-7">
             {(
@@ -337,12 +407,64 @@ function CadastrosPage() {
                     <p className="mt-1 text-sm text-muted-foreground">{descricao}</p>
                   </div>
                   <div className="flex flex-col gap-2 sm:flex-row">
-                    <Input
-                      className="w-full sm:w-64"
-                      placeholder={`Pesquisar ${label.toLowerCase()}…`}
-                      value={q}
-                      onChange={(e) => setQ(e.target.value)}
-                    />
+                    <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+                      <Input
+                        className="w-full sm:w-64"
+                        placeholder={`Pesquisar por nome, código ou vínculo…`}
+                        value={q}
+                        onChange={(e) => {
+                          setQ(e.target.value);
+                          setPagina(1);
+                        }}
+                      />
+                      <label className="sr-only" htmlFor={`status-${aba}`}>
+                        Filtrar situação
+                      </label>
+                      <select
+                        id={`status-${aba}`}
+                        value={filtroStatus}
+                        onChange={(e) => {
+                          setFiltroStatus(e.target.value as FiltroStatus);
+                          setPagina(1);
+                        }}
+                        className="h-9 rounded-md border border-input bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                      >
+                        <option value="todos">Todas as situações</option>
+                        <option value="ativos">Somente ativos</option>
+                        <option value="inativos">Somente inativos</option>
+                      </select>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <label className="sr-only" htmlFor={`ordem-${aba}`}>
+                        Ordenação
+                      </label>
+                      <button
+                        type="button"
+                        title={ordem === "asc" ? "Ordenado de A a Z" : "Ordenado de Z a A"}
+                        aria-label={ordem === "asc" ? "Alterar para Z a A" : "Alterar para A a Z"}
+                        onClick={() => {
+                          setOrdem(ordem === "asc" ? "desc" : "asc");
+                          setPagina(1);
+                        }}
+                        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-input bg-background text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      >
+                        {ordem === "asc" ? (
+                          <ArrowDownAZ className="size-4" />
+                        ) : (
+                          <ArrowUpAZ className="size-4" />
+                        )}
+                      </button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={limparFiltros}
+                        title="Limpar filtros"
+                      >
+                        <Filter className="size-4" />
+                        <span className="hidden sm:inline">Limpar</span>
+                      </Button>
+                    </div>
                     <Button size="sm" className="shrink-0" onClick={() => novo(aba)}>
                       <Plus className="size-4" /> Novo {label.toLowerCase()}
                     </Button>
@@ -386,146 +508,179 @@ function CadastrosPage() {
                   </TableHeader>
                   <TableBody>
                     {aba === "produtos" &&
-                      dados.produtos
-                        .filter((p) => busca(p.nome))
-                        .slice(0, 300)
-                        .map((p: Produto) => (
-                          <TableRow key={p.id}>
-                            <TableCell className="font-medium">{p.nome}</TableCell>
-                            <TableCell>{nomeDe(dados.categorias, p.categoria_id)}</TableCell>
+                      paginaDe(listas.produtos).map((p: Produto) => (
+                        <TableRow key={p.id}>
+                          <TableCell className="font-medium">{p.nome}</TableCell>
+                          <TableCell>{nomeDe(dados.categorias, p.categoria_id)}</TableCell>
+                          <TableCell>
+                            {dados.unidades.find((u) => u.id === p.unidade_id)?.sigla ?? "—"}
+                          </TableCell>
+                          <TableCell className="num text-right">{num(p.estoque_minimo)}</TableCell>
+                          <TableCell>
+                            <Badge
+                              variant="outline"
+                              className={
+                                p.inteligencia_reposicao === false
+                                  ? "border-muted-foreground/20 text-muted-foreground"
+                                  : "border-sidebar-primary/30 bg-sidebar-primary/5 text-sidebar-primary"
+                              }
+                            >
+                              {p.inteligencia_reposicao === false ? "Desativada" : "Ativa"}
+                            </Badge>
+                          </TableCell>
+                          <Acoes
+                            ativo={p.ativo}
+                            onToggle={() => toggleAtivo("produtos", p, "ativo")}
+                            onEdit={() => setEditando({ aba: "produtos", item: { ...p } })}
+                          />
+                        </TableRow>
+                      ))}
+
+                    {aba === "categorias" &&
+                      paginaDe(listas.categorias).map((c: Categoria) => (
+                        <TableRow key={c.id}>
+                          <TableCell className="font-medium">{c.nome}</TableCell>
+                          <Acoes
+                            ativo={c.ativo}
+                            onToggle={() => toggleAtivo("categorias", c, "ativo")}
+                            onEdit={() => setEditando({ aba: "categorias", item: { ...c } })}
+                          />
+                        </TableRow>
+                      ))}
+
+                    {aba === "unidades" &&
+                      paginaDe(listas.unidades).map((u: Unidade) => (
+                        <TableRow key={u.id}>
+                          <TableCell className="font-medium">{u.sigla}</TableCell>
+                          <TableCell>{u.descricao}</TableCell>
+                          <Acoes
+                            ativo={u.ativo}
+                            onToggle={() => toggleAtivo("unidades", u, "ativo")}
+                            onEdit={() => setEditando({ aba: "unidades", item: { ...u } })}
+                          />
+                        </TableRow>
+                      ))}
+
+                    {aba === "empresas" &&
+                      paginaDe(listas.empresas).map((e: Empresa) => (
+                        <TableRow key={e.id}>
+                          <TableCell className="font-medium">{e.nome}</TableCell>
+                          <TableCell>
+                            <Badge variant="secondary">{e.tipo}</Badge>
+                          </TableCell>
+                          <Acoes
+                            ativo={e.ativo}
+                            onToggle={() => toggleAtivo("empresas", e, "ativo")}
+                            onEdit={() => setEditando({ aba: "empresas", item: { ...e } })}
+                          />
+                        </TableRow>
+                      ))}
+
+                    {aba === "funcionarios" &&
+                      paginaDe(listas.funcionarios).map((f: Funcionario) => (
+                        <TableRow key={f.id}>
+                          <TableCell className="font-medium">{f.nome}</TableCell>
+                          <TableCell>{formatarCpf(f.cpf) || "—"}</TableCell>
+                          <TableCell>{f.funcao ?? "—"}</TableCell>
+                          <TableCell>{nomeDe(dados.empresas, f.empresa_id)}</TableCell>
+                          <TableCell>{nomeDe(dados.funcionarios, f.encarregado_id)}</TableCell>
+                          <TableCell>{nomeDe(dados.equipes, f.equipe_raiz_id)}</TableCell>
+                          <Acoes
+                            ativo={f.status === "ATIVO"}
+                            onToggle={() => toggleAtivo("funcionarios", f, "status")}
+                            onEdit={() => setEditando({ aba: "funcionarios", item: { ...f } })}
+                          />
+                        </TableRow>
+                      ))}
+
+                    {aba === "locais" &&
+                      paginaDe(listas.locais).map((l: Local) => (
+                        <TableRow key={l.id}>
+                          <TableCell className="font-medium">{l.nome}</TableCell>
+                          <TableCell>{nomeDe(dados.locais, l.local_pai_id)}</TableCell>
+                          <Acoes
+                            ativo={l.ativo}
+                            onToggle={() => toggleAtivo("locais", l, "ativo")}
+                            onEdit={() => setEditando({ aba: "locais", item: { ...l } })}
+                          />
+                        </TableRow>
+                      ))}
+
+                    {aba === "equipes" &&
+                      paginaDe(listas.equipes).map((e: Equipe) => {
+                        const membros = dados.equipeMembros.filter((m) => m.equipe_id === e.id);
+                        return (
+                          <TableRow key={e.id}>
+                            <TableCell className="font-medium">{e.nome}</TableCell>
+                            <TableCell>{membros.length}</TableCell>
                             <TableCell>
-                              {dados.unidades.find((u) => u.id === p.unidade_id)?.sigla ?? "—"}
-                            </TableCell>
-                            <TableCell className="num text-right">
-                              {num(p.estoque_minimo)}
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="outline" className={p.inteligencia_reposicao === false ? "border-muted-foreground/20 text-muted-foreground" : "border-sidebar-primary/30 bg-sidebar-primary/5 text-sidebar-primary"}>
-                                {p.inteligencia_reposicao === false ? "Desativada" : "Ativa"}
+                              <Badge variant="secondary">
+                                {e.estoque_segregado ? "Segregado" : "Compartilhado"}
                               </Badge>
                             </TableCell>
                             <Acoes
-                              ativo={p.ativo}
-                              onToggle={() => toggleAtivo("produtos", p, "ativo")}
-                              onEdit={() => setEditando({ aba: "produtos", item: { ...p } })}
-                            />
-                          </TableRow>
-                        ))}
-
-                    {aba === "categorias" &&
-                      dados.categorias
-                        .filter((c) => busca(c.nome))
-                        .map((c: Categoria) => (
-                          <TableRow key={c.id}>
-                            <TableCell className="font-medium">{c.nome}</TableCell>
-                            <Acoes
-                              ativo={c.ativo}
-                              onToggle={() => toggleAtivo("categorias", c, "ativo")}
-                              onEdit={() => setEditando({ aba: "categorias", item: { ...c } })}
-                            />
-                          </TableRow>
-                        ))}
-
-                    {aba === "unidades" &&
-                      dados.unidades
-                        .filter((u) => busca(u.sigla) || busca(u.descricao))
-                        .map((u: Unidade) => (
-                          <TableRow key={u.id}>
-                            <TableCell className="font-medium">{u.sigla}</TableCell>
-                            <TableCell>{u.descricao}</TableCell>
-                            <Acoes
-                              ativo={u.ativo}
-                              onToggle={() => toggleAtivo("unidades", u, "ativo")}
-                              onEdit={() => setEditando({ aba: "unidades", item: { ...u } })}
-                            />
-                          </TableRow>
-                        ))}
-
-                    {aba === "empresas" &&
-                      dados.empresas
-                        .filter((e) => busca(e.nome))
-                        .map((e: Empresa) => (
-                          <TableRow key={e.id}>
-                            <TableCell className="font-medium">{e.nome}</TableCell>
-                            <TableCell>
-                              <Badge variant="secondary">{e.tipo}</Badge>
-                            </TableCell>
-                            <Acoes
                               ativo={e.ativo}
-                              onToggle={() => toggleAtivo("empresas", e, "ativo")}
-                              onEdit={() => setEditando({ aba: "empresas", item: { ...e } })}
+                              onToggle={() => toggleAtivo("equipes", e, "ativo")}
+                              onEdit={() =>
+                                setEditando({
+                                  aba: "equipes",
+                                  item: {
+                                    ...e,
+                                    membro_ids: membros.map((m) => m.funcionario_id),
+                                  },
+                                })
+                              }
                             />
                           </TableRow>
-                        ))}
-
-                    {aba === "funcionarios" &&
-                      dados.funcionarios
-                        .filter((f) => busca(f.nome) || busca(f.matricula) || busca(f.cpf) || busca(formatarCpf(f.cpf)))
-                        .slice(0, 300)
-                        .map((f: Funcionario) => (
-                          <TableRow key={f.id}>
-                            <TableCell className="font-medium">{f.nome}</TableCell>
-                            <TableCell>{formatarCpf(f.cpf) || "—"}</TableCell>
-                            <TableCell>{f.funcao ?? "—"}</TableCell>
-                            <TableCell>{nomeDe(dados.empresas, f.empresa_id)}</TableCell>
-                            <TableCell>{nomeDe(dados.funcionarios, f.encarregado_id)}</TableCell>
-                            <TableCell>{nomeDe(dados.equipes, f.equipe_raiz_id)}</TableCell>
-                            <Acoes
-                              ativo={f.status === "ATIVO"}
-                              onToggle={() => toggleAtivo("funcionarios", f, "status")}
-                              onEdit={() => setEditando({ aba: "funcionarios", item: { ...f } })}
-                            />
-                          </TableRow>
-                        ))}
-
-                    {aba === "locais" &&
-                      dados.locais
-                        .filter((l) => busca(l.nome))
-                        .map((l: Local) => (
-                          <TableRow key={l.id}>
-                            <TableCell className="font-medium">{l.nome}</TableCell>
-                            <TableCell>{nomeDe(dados.locais, l.local_pai_id)}</TableCell>
-                            <Acoes
-                              ativo={l.ativo}
-                              onToggle={() => toggleAtivo("locais", l, "ativo")}
-                              onEdit={() => setEditando({ aba: "locais", item: { ...l } })}
-                            />
-                          </TableRow>
-                        ))}
-
-                    {aba === "equipes" &&
-                      dados.equipes
-                        .filter((e) => busca(e.nome))
-                        .map((e: Equipe) => {
-                          const membros = dados.equipeMembros.filter((m) => m.equipe_id === e.id);
-                          return (
-                            <TableRow key={e.id}>
-                              <TableCell className="font-medium">{e.nome}</TableCell>
-                              <TableCell>{membros.length}</TableCell>
-                              <TableCell>
-                                <Badge variant="secondary">
-                                  {e.estoque_segregado ? "Segregado" : "Compartilhado"}
-                                </Badge>
-                              </TableCell>
-                              <Acoes
-                                ativo={e.ativo}
-                                onToggle={() => toggleAtivo("equipes", e, "ativo")}
-                                onEdit={() =>
-                                  setEditando({
-                                    aba: "equipes",
-                                    item: {
-                                      ...e,
-                                      membro_ids: membros.map((m) => m.funcionario_id),
-                                    },
-                                  })
-                                }
-                              />
-                            </TableRow>
-                          );
-                        })}
+                        );
+                      })}
+                    {totalVisiveis === 0 && (
+                      <TableRow>
+                        <TableCell
+                          colSpan={10}
+                          className="h-28 text-center text-sm text-muted-foreground"
+                        >
+                          Nenhum cadastro encontrado com os filtros atuais.
+                        </TableCell>
+                      </TableRow>
+                    )}
                   </TableBody>
                 </Table>
               </CardContent>
+              <div className="flex flex-col gap-3 border-t border-border/70 px-4 py-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+                <span>
+                  {totalVisiveis === 0
+                    ? "Nenhum resultado"
+                    : `Exibindo ${(paginaSegura - 1) * TAMANHO_PAGINA + 1}–${Math.min(paginaSegura * TAMANHO_PAGINA, totalVisiveis)} de ${totalVisiveis}`}
+                </span>
+                <div className="flex items-center justify-between gap-2 sm:justify-end">
+                  <span className="whitespace-nowrap">
+                    Página {paginaSegura} de {totalPaginas}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    aria-label="Página anterior"
+                    disabled={paginaSegura <= 1}
+                    onClick={() => setPagina((atual) => Math.max(1, atual - 1))}
+                  >
+                    <ChevronLeft className="size-4" />
+                    <span className="hidden sm:inline">Anterior</span>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    aria-label="Próxima página"
+                    disabled={paginaSegura >= totalPaginas}
+                    onClick={() => setPagina((atual) => Math.min(totalPaginas, atual + 1))}
+                  >
+                    <span className="hidden sm:inline">Próxima</span>
+                    <ChevronRight className="size-4" />
+                  </Button>
+                </div>
+              </div>
             </Card>
           </TabsContent>
         ))}
@@ -540,12 +695,19 @@ function CadastrosPage() {
               </span>
               {editando
                 ? `${editando.item["id"] ? "Editar" : "Novo"} ${
-                    editando.aba === "funcionarios" ? "funcionário" :
-                    editando.aba === "produtos" ? "produto" :
-                    editando.aba === "categorias" ? "categoria" :
-                    editando.aba === "unidades" ? "unidade" :
-                    editando.aba === "empresas" ? "empresa" :
-                    editando.aba === "locais" ? "local" : "equipe"
+                    editando.aba === "funcionarios"
+                      ? "funcionário"
+                      : editando.aba === "produtos"
+                        ? "produto"
+                        : editando.aba === "categorias"
+                          ? "categoria"
+                          : editando.aba === "unidades"
+                            ? "unidade"
+                            : editando.aba === "empresas"
+                              ? "empresa"
+                              : editando.aba === "locais"
+                                ? "local"
+                                : "equipe"
                   }`
                 : "Cadastro"}
             </DialogTitle>
@@ -627,7 +789,8 @@ function CadastrosPage() {
                     <div className="space-y-0.5">
                       <Label>Participa da inteligência de reposição</Label>
                       <p className="text-xs leading-5 text-muted-foreground">
-                        Quando ativa, o Vigia pode sugerir reposição para este produto com base no consumo e no estoque mínimo.
+                        Quando ativa, o Vigia pode sugerir reposição para este produto com base no
+                        consumo e no estoque mínimo.
                       </p>
                     </div>
                   </div>
@@ -690,7 +853,10 @@ function CadastrosPage() {
                     label="CPF"
                     value={formatarCpf(String(editando.item["cpf"] ?? ""))}
                     onChange={(v) =>
-                      setEditando({ ...editando, item: { ...editando.item, cpf: v.replace(/\D/g, "").slice(0, 11) } })
+                      setEditando({
+                        ...editando,
+                        item: { ...editando.item, cpf: v.replace(/\D/g, "").slice(0, 11) },
+                      })
                     }
                   />
                   <Campo
@@ -768,10 +934,24 @@ function CadastrosPage() {
                       autoComplete="new-password"
                       maxLength={8}
                       value={String(editando.item["pin_novo"] ?? "")}
-                      onChange={(event) => setEditando({ ...editando, item: { ...editando.item, pin_novo: event.target.value.replace(/\D/g, "").slice(0, 8) } })}
-                      placeholder={editando.item["pin_hash"] ? "Preencha para substituir o PIN atual" : "Opcional · 4 a 8 números"}
+                      onChange={(event) =>
+                        setEditando({
+                          ...editando,
+                          item: {
+                            ...editando.item,
+                            pin_novo: event.target.value.replace(/\D/g, "").slice(0, 8),
+                          },
+                        })
+                      }
+                      placeholder={
+                        editando.item["pin_hash"]
+                          ? "Preencha para substituir o PIN atual"
+                          : "Opcional · 4 a 8 números"
+                      }
                     />
-                    <p className="text-xs text-muted-foreground">O PIN é armazenado somente como hash e poderá confirmar operações futuras.</p>
+                    <p className="text-xs text-muted-foreground">
+                      O PIN é armazenado somente como hash e poderá confirmar operações futuras.
+                    </p>
                   </div>
                 </>
               )}
@@ -894,15 +1074,12 @@ function Campo({
   return (
     <div className={`space-y-1.5 ${className ?? ""}`}>
       <Label htmlFor={id}>{label}</Label>
-      <Input
-        id={id}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        list={listaId}
-      />
+      <Input id={id} value={value} onChange={(e) => onChange(e.target.value)} list={listaId} />
       {listaId ? (
         <datalist id={listaId}>
-          {sugestoes?.map((sugestao) => <option key={sugestao} value={sugestao} />)}
+          {sugestoes?.map((sugestao) => (
+            <option key={sugestao} value={sugestao} />
+          ))}
         </datalist>
       ) : null}
     </div>
