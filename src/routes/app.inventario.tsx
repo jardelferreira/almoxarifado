@@ -8,12 +8,16 @@ import {
   CheckCircle2,
   ClipboardCheck,
   ClipboardList,
+  Cloud,
   Clock3,
   History,
   ListFilter,
   Plus,
   Printer,
   Search,
+  KeyRound,
+  LockKeyhole,
+  Unlock,
   ShieldAlert,
   Sparkles,
   TrendingUp,
@@ -35,9 +39,12 @@ import { useProjetoAtivoId } from "@/hooks/useAppData";
 import { configuracoesRepo } from "@/services/configuracoes-repo";
 import { inventarioRepo } from "@/services/inventario-repo";
 import { inventarioService, type InferenciaInventario } from "@/services/inventario-service";
+import { baixarInventarioNuvem, consultarInventarioNuvem, enviarInventarioNuvem } from "@/lib/inventario-r2";
+import { criptografarInventario, descriptografarInventario } from "@/services/inventario-sync";
 import { inteligenciaRepo } from "@/services/inteligencia-repo";
 import { calcularAcuracidadeInventarios, calcularPlanoInventarioInteligente, criarPeriodoPadrao, type PlanoInventarioInteligente } from "@/services/estatisticas-materiais";
 import type { Inventario, InventarioItem } from "@/types";
+import { criarHashPin, verificarPin, validarPin } from "@/utils/seguranca";
 
 export const Route = createFileRoute("/app/inventario")({
   ssr: false,
@@ -52,6 +59,25 @@ export const Route = createFileRoute("/app/inventario")({
 
 const fmt = (n: number) => new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 4 }).format(n);
 const dataFmt = (v?: string | null) => (v ? new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(v)) : "—");
+const dispositivoId = () => {
+  const chave = "almoxarifado:dispositivo-id";
+  const atual = sessionStorage.getItem(chave);
+  if (atual) return atual;
+  const novo = crypto.randomUUID();
+  sessionStorage.setItem(chave, novo);
+  return novo;
+};
+const chaveSenhaInventario = (projetoId: string) => `almoxarifado:inventario-senha:${projetoId}`;
+function lerSenhaInventario(projetoId: string): string {
+  const bruto = sessionStorage.getItem(chaveSenhaInventario(projetoId));
+  if (!bruto) return "";
+  try {
+    const registro = JSON.parse(bruto) as { senha?: string; expiraEm?: number };
+    if (typeof registro.senha === "string" && typeof registro.expiraEm === "number" && registro.expiraEm > Date.now()) return registro.senha;
+  } catch { /* compatibilidade com sessão antiga */ }
+  sessionStorage.removeItem(chaveSenhaInventario(projetoId));
+  return "";
+}
 
 function imprimirInventario(
   inventario: Inventario,
@@ -71,7 +97,7 @@ function imprimirInventario(
     const contado = item.quantidade_contada == null ? "" : fmt(item.quantidade_contada);
     const sistema = fmt(item.quantidade_sistema);
     const diferenca = modo === "CONCLUIDO" && item.quantidade_contada != null ? fmt(item.quantidade_contada - item.quantidade_sistema) : "";
-    return `<tr><td>${produto?.codigo ?? ""}</td><td>${produto?.nome ?? "Produto"}</td><td>${equipeMap.get(item.equipe_id) ?? "—"}</td><td>${unidade}</td><td class="num">${sistema}</td><td class="num">${contado}</td><td class="num">${diferenca}</td><td></td></tr>`;
+    return `<tr><td>${produto?.codigo ?? ""}</td><td>${produto?.nome ?? "Produto"}</td><td>${equipeMap.get(item.equipe_id) ?? "—"}</td><td>${unidade}</td><td class="num">${sistema}</td><td class="num">${contado}</td><td class="num">${diferenca}</td><td>${item.observacao ?? ""}</td></tr>`;
   }).join("");
 
   janela.document.write(`<!doctype html><html><head><title>Inventário</title><style>body{font-family:Arial,sans-serif;margin:28px;color:#111}h1{font-size:22px;margin:0 0 6px}p{margin:4px 0;color:#444}.meta{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:20px 0}.box{border:1px solid #ddd;border-radius:8px;padding:10px}.label{font-size:11px;color:#666}.value{font-weight:600;margin-top:4px}table{width:100%;border-collapse:collapse;margin-top:18px;font-size:11px}th,td{border:1px solid #ddd;padding:7px;text-align:left}th{background:#f3f3f3}.num{text-align:right}.assinaturas{display:grid;grid-template-columns:1fr 1fr;gap:50px;margin-top:55px}.assinatura{border-top:1px solid #111;padding-top:6px;text-align:center;font-size:11px}@media print{body{margin:12mm}.no-print{display:none}}</style></head><body><h1>Inventário de Estoque</h1><p><strong>${escopo}</strong> · ${inventario.status === "CONCLUIDO" ? "Concluído" : "Aberto — formulário para conferência física"}</p><div class="meta"><div class="box"><div class="label">Abertura</div><div class="value">${dataFmt(inventario.data_abertura)}</div></div><div class="box"><div class="label">Encerramento</div><div class="value">${dataFmt(inventario.data_encerramento)}</div></div><div class="box"><div class="label">Responsável</div><div class="value">${escopo}</div></div><div class="box"><div class="label">Observação</div><div class="value">${inventario.observacao ?? "—"}</div></div></div><table><thead><tr><th>Código</th><th>Produto</th><th>Equipe</th><th>Un.</th><th>Sistema</th><th>Contagem</th><th>Diferença</th><th>Observação</th></tr></thead><tbody>${linhas}</tbody></table><div class="assinaturas"><div class="assinatura">Responsável pela conferência</div><div class="assinatura">Responsável pelo almoxarifado</div></div></body></html>`);
@@ -125,6 +151,16 @@ export function InventarioPage() {
   const [equipeFiltro, setEquipeFiltro] = useState("");
   const [deFiltro, setDeFiltro] = useState("");
   const [ateFiltro, setAteFiltro] = useState("");
+  const [operadorId, setOperadorId] = useState<string | null>(null);
+  const [participanteDialog, setParticipanteDialog] = useState<"adicionar" | "desbloquear" | null>(null);
+  const [participanteId, setParticipanteId] = useState<string | null>(null);
+  const [pin, setPin] = useState("");
+  const [pinConfirmacao, setPinConfirmacao] = useState("");
+  const [observacoesItem, setObservacoesItem] = useState<Record<string, string>>({});
+  const [sincronizacaoAberta, setSincronizacaoAberta] = useState(false);
+  const [senhaSincronizacao, setSenhaSincronizacao] = useState("");
+  const [sincronizandoNuvem, setSincronizandoNuvem] = useState(false);
+  const [etagNuvem, setEtagNuvem] = useState<string | null>(null);
 
   const equipeMap = useMemo(() => new Map((dados?.equipes ?? []).map((e) => [e.id, e.nome])), [dados?.equipes]);
   const funcionarioMap = useMemo(() => new Map((dados?.funcionarios ?? []).map((f) => [f.id, f.nome])), [dados?.funcionarios]);
@@ -285,6 +321,91 @@ export function InventarioPage() {
     const registros = await inventarioRepo.itens(inventario.id);
     setItens(registros);
     setContagens(Object.fromEntries(registros.filter((i) => i.quantidade_contada != null).map((i) => [i.id, String(i.quantidade_contada)])));
+    setObservacoesItem(Object.fromEntries(registros.map((i) => [i.id, i.observacao ?? ""])));
+    setOperadorId(null);
+    setParticipanteId(null);
+    setEtagNuvem(null);
+    if (projetoId) setSenhaSincronizacao(lerSenhaInventario(projetoId));
+  };
+
+  const sincronizarInventario = async (abrirSeNecessario = true) => {
+    if (!projetoId || !selecionado) return;
+    const senha = senhaSincronizacao.trim();
+    if (senha.length < 16) {
+      if (abrirSeNecessario) setSincronizacaoAberta(true);
+      return;
+    }
+    try {
+      setSincronizandoNuvem(true);
+      const estado = await consultarInventarioNuvem({ data: { projetoId, inventarioId: selecionado.id, senha } });
+      let etag = estado.etag;
+      if (estado.existe) {
+        const remoto = await baixarInventarioNuvem({ data: { projetoId, inventarioId: selecionado.id, senha } });
+        const snapshot = await descriptografarInventario(remoto.envelope, projetoId, selecionado.id, senha);
+        const mesclado = await inventarioRepo.mesclarSnapshotRemoto(snapshot);
+        setSelecionado(mesclado.inventario);
+        setItens(mesclado.itens);
+        setContagens(Object.fromEntries(mesclado.itens.filter((i) => i.quantidade_contada != null).map((i) => [i.id, String(i.quantidade_contada)])));
+        setObservacoesItem(Object.fromEntries(mesclado.itens.map((i) => [i.id, i.observacao ?? ""])));
+      }
+      const localAtual = await inventarioRepo.obter(selecionado.id);
+      const itensAtuais = await inventarioRepo.itens(selecionado.id);
+      if (!localAtual) throw new Error("Inventário local não encontrado.");
+      const envelope = await criptografarInventario({ inventario: localAtual, itens: itensAtuais, gerado_em: new Date().toISOString(), dispositivo_id: dispositivoId() }, senha);
+      const resposta = await enviarInventarioNuvem({ data: { projetoId, inventarioId: selecionado.id, senha, envelope, etagAtual: etag } });
+      setEtagNuvem(resposta.etag);
+      sessionStorage.setItem(chaveSenhaInventario(projetoId), JSON.stringify({ senha, expiraEm: Date.now() + 8 * 60 * 60 * 1000 }));
+      toast.success("Inventário sincronizado com a nuvem.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível sincronizar o inventário.");
+    } finally { setSincronizandoNuvem(false); }
+  };
+
+  const salvarSenhaESincronizar = async () => {
+    if (senhaSincronizacao.trim().length < 16) { toast.error("A senha deve ter pelo menos 16 caracteres."); return; }
+    sessionStorage.setItem(chaveSenhaInventario(projetoId), JSON.stringify({ senha: senhaSincronizacao.trim(), expiraEm: Date.now() + 8 * 60 * 60 * 1000 }));
+    setSincronizacaoAberta(false);
+    await sincronizarInventario(false);
+  };
+
+  const fecharParticipanteDialog = () => {
+    setParticipanteDialog(null);
+    setParticipanteId(null);
+    setPin("");
+    setPinConfirmacao("");
+  };
+
+  const concluirParticipante = async () => {
+    if (!selecionado || !participanteId) {
+      toast.error("Selecione o funcionário envolvido.");
+      return;
+    }
+    const funcionario = dados?.funcionarios.find((item) => item.id === participanteId);
+    if (!funcionario) return;
+    try {
+      if (participanteDialog === "adicionar") {
+        if (!funcionario.pin_hash || !funcionario.pin_salt || !funcionario.pin_iteracoes) {
+          if (!validarPin(pin) || pin !== pinConfirmacao) throw new Error("Cadastre um PIN de 4 a 8 números e confirme o mesmo valor.");
+          const hash = await criarHashPin(pin);
+          await db.funcionarios.update(funcionario.id, hash);
+        } else if (!(await verificarPin(pin, funcionario as typeof funcionario & { pin_hash: string; pin_salt: string; pin_iteracoes: number }))) {
+          throw new Error("PIN incorreto. O funcionário não foi liberado.");
+        }
+        const atualizado = await inventarioRepo.adicionarParticipante(selecionado.id, funcionario.id, selecionado.responsavel_id);
+        setSelecionado(atualizado);
+        setParticipanteDialog(null);
+        toast.success("Funcionário adicionado ao inventário.");
+      } else {
+        if (!funcionario.pin_hash || !funcionario.pin_salt || !funcionario.pin_iteracoes) throw new Error("Este funcionário ainda não possui PIN. Cadastre-o antes de liberar o acesso.");
+        if (!(await verificarPin(pin, funcionario as typeof funcionario & { pin_hash: string; pin_salt: string; pin_iteracoes: number }))) throw new Error("PIN incorreto. Acesso não liberado.");
+        await inventarioRepo.registrarAcesso(selecionado.id, funcionario.id);
+        setOperadorId(funcionario.id);
+        setParticipanteDialog(null);
+        toast.success(`Acesso liberado para ${funcionario.nome}.`);
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível validar o acesso.");
+    }
   };
 
   const criar = async (): Promise<void> => {
@@ -344,9 +465,17 @@ export function InventarioPage() {
       return;
     }
     try {
-      await inventarioRepo.registrarContagem(item.inventario_id, item.id, valor);
-      setItens((atual) => atual.map((i) => i.id === item.id ? { ...i, quantidade_contada: valor } : i));
+      if (!operadorId) {
+        toast.error("Desbloqueie o inventário com o PIN de um funcionário envolvido antes de contar.");
+        return;
+      }
+      await inventarioRepo.iniciarConferencia(item.inventario_id, item.id, operadorId, dispositivoId());
+      await inventarioRepo.registrarContagem(item.inventario_id, item.id, valor, observacoesItem[item.id], operadorId, dispositivoId());
+      const atualizado = await inventarioRepo.obter(item.inventario_id);
+      setSelecionado(atualizado ?? selecionado);
+      setItens((atual) => atual.map((i) => i.id === item.id ? { ...i, quantidade_contada: valor, observacao: observacoesItem[item.id] || null, conferido_por_id: operadorId, bloqueado_por_id: null, bloqueio_expira_em: null } : i));
       toast.success("Contagem registrada.");
+      if (senhaSincronizacao.length >= 16) void sincronizarInventario(false);
     } catch (error) { toast.error(error instanceof Error ? error.message : "Não foi possível registrar a contagem."); }
   };
 
@@ -627,10 +756,13 @@ export function InventarioPage() {
       <Dialog open={!!selecionado} onOpenChange={(open) => !open && setSelecionado(null)}>
         <DialogContent className="flex max-h-[92vh] flex-col overflow-hidden p-0 sm:max-w-5xl">
           <DialogHeader className="shrink-0 border-b px-5 py-4 sm:px-6">
-            <DialogTitle className="flex flex-wrap items-center gap-2">
-              Inventário · {equipeMap.get(selecionado?.equipe_id ?? "") ?? "Inventário geral"}
-              {selecionado ? statusBadge(selecionado.status) : null}
-            </DialogTitle>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <DialogTitle className="flex flex-wrap items-center gap-2">
+                Inventário · {equipeMap.get(selecionado?.equipe_id ?? "") ?? "Inventário geral"}
+                {selecionado ? statusBadge(selecionado.status) : null}
+              </DialogTitle>
+              {selecionado ? <Button type="button" size="sm" variant="outline" onClick={() => void sincronizarInventario()} disabled={sincronizandoNuvem}><Cloud className="mr-2 size-4" />{sincronizandoNuvem ? "Sincronizando…" : "Sincronizar"}</Button> : null}
+            </div>
           </DialogHeader>
 
           {selecionado && (
@@ -644,6 +776,36 @@ export function InventarioPage() {
                     <div><p className="text-xs text-muted-foreground">Escopo</p><p className="mt-1 text-sm font-medium">{selecionado.equipe_id ? (equipeMap.get(selecionado.equipe_id) ?? "Equipe") : "Projeto completo"}</p></div>
                     {selecionado.observacao ? <div className="sm:col-span-2 lg:col-span-4"><p className="text-xs text-muted-foreground">Observação</p><p className="mt-1 whitespace-pre-wrap text-sm">{selecionado.observacao}</p></div> : null}
                   </div>
+
+                  {selecionado.status === "ABERTO" ? (
+                    <section className="rounded-2xl border border-sidebar-primary/25 bg-sidebar-primary/[0.04] p-4">
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2"><KeyRound className="size-4 text-sidebar-primary" /><p className="font-semibold">Equipe envolvida e acesso</p></div>
+                          <p className="mt-1 text-xs leading-5 text-muted-foreground">Cada operador deve liberar o próprio acesso com o PIN cadastrado. O item fica reservado por até 10 minutos durante a conferência.</p>
+                        </div>
+                        <Button type="button" size="sm" variant="outline" onClick={() => setParticipanteDialog("adicionar")}><Plus className="mr-2 size-4" />Adicionar envolvido</Button>
+                      </div>
+                      <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                        <div className="space-y-1.5">
+                          <Label>Funcionário que está conferindo</Label>
+                          <Combobox
+                            value={operadorId}
+                            onChange={(value) => { setParticipanteId(value); setParticipanteDialog("desbloquear"); }}
+                            placeholder="Selecione e informe o PIN"
+                            opcoes={(selecionado.participantes ?? []).map((participante) => ({ value: participante.funcionario_id, label: funcionarioMap.get(participante.funcionario_id) ?? "Funcionário" }))}
+                          />
+                        </div>
+                        <div className="flex min-h-10 items-center gap-2 rounded-lg border bg-background px-3 text-xs text-muted-foreground">
+                          {operadorId ? <><Unlock className="size-4 text-emerald-600" /> Acesso liberado</> : <><LockKeyhole className="size-4" /> Acesso bloqueado</>}
+                        </div>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {(selecionado.participantes ?? []).map((participante) => <Badge key={participante.funcionario_id} variant="outline" className={participante.funcionario_id === operadorId ? "border-emerald-300 bg-emerald-50 text-emerald-700" : ""}>{funcionarioMap.get(participante.funcionario_id) ?? "Funcionário"}{participante.ultimo_acesso_em ? " · acessou" : ""}</Badge>)}
+                        {!selecionado.participantes?.length ? <span className="text-xs text-amber-700">Nenhum envolvido foi liberado ainda.</span> : null}
+                      </div>
+                    </section>
+                  ) : null}
 
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                     <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Posições</p><p className="mt-1 text-2xl font-bold">{itens.length}</p></CardContent></Card>
@@ -677,10 +839,10 @@ export function InventarioPage() {
                                 <td className="num px-4 py-3 text-right">{fmt(item.quantidade_sistema)}</td>
                                 <td className="px-4 py-3 text-left">{unidadeMap.get(produto?.unidade_id ?? "")?.sigla ?? "—"}</td>
                                 <td className="px-4 py-3 text-right">
-                                  {selecionado.status === "ABERTO" ? <Input className="ml-auto w-32 text-right" type="number" min="0" step="any" value={contagens[item.id] ?? ""} onChange={(e) => setContagens({ ...contagens, [item.id]: e.target.value })} /> : <span>{item.quantidade_contada == null ? "—" : fmt(item.quantidade_contada)}</span>}
+                                  {selecionado.status === "ABERTO" ? <Input disabled={!operadorId} className="ml-auto w-32 text-right" type="number" min="0" step="any" value={contagens[item.id] ?? ""} onChange={(e) => setContagens({ ...contagens, [item.id]: e.target.value })} /> : <span>{item.quantidade_contada == null ? "—" : fmt(item.quantidade_contada)}</span>}
                                 </td>
                                 <td className="num px-4 py-3 text-right font-semibold">{diff == null ? "—" : `${diff > 0 ? "+" : ""}${fmt(diff)}`}</td>
-                                <td className="px-4 py-3 text-right">{selecionado.status === "ABERTO" ? <Button size="sm" variant="outline" onClick={() => void salvarContagem(item)}>Salvar</Button> : null}</td>
+                                <td className="px-4 py-3 text-right">{selecionado.status === "ABERTO" ? <div className="flex flex-col items-end gap-2"><Input disabled={!operadorId} className="w-48" placeholder="Observação da contagem" value={observacoesItem[item.id] ?? ""} onChange={(e) => setObservacoesItem({ ...observacoesItem, [item.id]: e.target.value })} /><Button disabled={!operadorId} size="sm" variant="outline" onClick={() => void salvarContagem(item)}>Salvar</Button></div> : <span className="text-xs text-muted-foreground">{item.observacao ?? "—"}</span>}</td>
                               </tr>
                             );
                           })}
@@ -700,10 +862,11 @@ export function InventarioPage() {
                             </div>
                             {selecionado.status === "ABERTO" ? (
                               <>
-                                <Input type="number" min="0" step="any" value={contagens[item.id] ?? ""} onChange={(e) => setContagens({ ...contagens, [item.id]: e.target.value })} placeholder="Quantidade contada" />
-                                <Button className="w-full" variant="outline" onClick={() => void salvarContagem(item)}>Salvar contagem</Button>
+                                <Input disabled={!operadorId} type="number" min="0" step="any" value={contagens[item.id] ?? ""} onChange={(e) => setContagens({ ...contagens, [item.id]: e.target.value })} placeholder="Quantidade contada" />
+                                <Textarea disabled={!operadorId} value={observacoesItem[item.id] ?? ""} onChange={(e) => setObservacoesItem({ ...observacoesItem, [item.id]: e.target.value })} placeholder="Observação desta contagem (opcional)" />
+                                <Button disabled={!operadorId} className="w-full" variant="outline" onClick={() => void salvarContagem(item)}>Salvar contagem</Button>
                               </>
-                            ) : <p className="text-sm">Contado: {item.quantidade_contada == null ? "—" : fmt(item.quantidade_contada)}</p>}
+                            ) : <><p className="text-sm">Contado: {item.quantidade_contada == null ? "—" : fmt(item.quantidade_contada)}</p><p className="text-xs text-muted-foreground">{item.observacao ?? "Sem observação"}</p></>}
                             <p className="text-sm font-semibold">Diferença: {diff == null ? "—" : `${diff > 0 ? "+" : ""}${fmt(diff)}`}</p>
                           </div>
                         );
@@ -781,6 +944,49 @@ export function InventarioPage() {
               </DialogFooter>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={participanteDialog !== null} onOpenChange={(open) => !open && fecharParticipanteDialog()}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{participanteDialog === "adicionar" ? "Adicionar envolvido" : "Liberar acesso à conferência"}</DialogTitle>
+            <p className="text-sm text-muted-foreground">{participanteDialog === "adicionar" ? "O funcionário será registrado no inventário e passará a fazer parte da trilha de auditoria." : "Confirme a identidade do funcionário com o PIN cadastrado."}</p>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label>Funcionário</Label>
+              <Combobox
+                value={participanteId}
+                onChange={setParticipanteId}
+                placeholder="Selecione um funcionário"
+                opcoes={(dados?.funcionarios ?? []).filter((funcionario) => funcionario.status === "ATIVO" && (participanteDialog === "desbloquear" || !(selecionado?.participantes ?? []).some((item) => item.funcionario_id === funcionario.id))).map((funcionario) => ({ value: funcionario.id, label: funcionario.nome }))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>PIN</Label>
+              <Input type="password" inputMode="numeric" maxLength={8} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))} placeholder="4 a 8 números" />
+            </div>
+            {participanteDialog === "adicionar" && participanteId && (() => {
+              const funcionario = dados?.funcionarios.find((item) => item.id === participanteId);
+              return funcionario && !funcionario.pin_hash ? <div className="space-y-1.5"><Label>Confirmar PIN novo</Label><Input type="password" inputMode="numeric" maxLength={8} value={pinConfirmacao} onChange={(e) => setPinConfirmacao(e.target.value.replace(/\D/g, ""))} placeholder="Repita o PIN para cadastrar" /><p className="text-xs text-amber-700">Este funcionário ainda não possui PIN. O cadastro será gravado com hash seguro antes de liberar o acesso.</p></div> : null;
+            })()}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={fecharParticipanteDialog}>Cancelar</Button>
+            <Button onClick={() => void concluirParticipante()} disabled={!participanteId || !pin}>{participanteDialog === "adicionar" ? "Adicionar e liberar" : "Liberar acesso"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={sincronizacaoAberta} onOpenChange={setSincronizacaoAberta}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Sincronizar inventário</DialogTitle>
+            <p className="text-sm text-muted-foreground">Informe a senha do projeto. Ela ficará disponível apenas nesta sessão do navegador por 8 horas.</p>
+          </DialogHeader>
+          <div className="space-y-1.5 py-2"><Label>Senha de sincronização</Label><Input type="password" value={senhaSincronizacao} onChange={(e) => setSenhaSincronizacao(e.target.value)} placeholder="Mínimo de 16 caracteres" /></div>
+          <DialogFooter><Button variant="outline" onClick={() => setSincronizacaoAberta(false)}>Cancelar</Button><Button onClick={() => void salvarSenhaESincronizar()} disabled={sincronizandoNuvem || senhaSincronizacao.length < 16}>{sincronizandoNuvem ? "Sincronizando…" : "Salvar e sincronizar"}</Button></DialogFooter>
         </DialogContent>
       </Dialog>
 
