@@ -64,7 +64,10 @@ export function Combobox({
         <Button
           variant="outline"
           role="combobox"
-          className={cn("w-full justify-between font-normal", className)}
+          className={cn(
+            "h-11 w-full justify-between border-slate-300 bg-background px-3 text-base font-medium text-foreground shadow-sm transition-colors hover:border-primary/50 hover:bg-muted/20 focus-visible:ring-2 focus-visible:ring-primary/30 [&>span]:text-foreground [&>span]:data-[placeholder]:text-muted-foreground",
+            className,
+          )}
           disabled={disabled}
         >
           <span className={cn("truncate", !atual && "text-muted-foreground")}>
@@ -80,7 +83,12 @@ export function Combobox({
           side="bottom"
         >
           <Command shouldFilter={false}>
-            <CommandInput placeholder="Pesquisar…" value={busca} onValueChange={setBusca} />
+            <CommandInput
+              className="h-11 text-base"
+              placeholder="Pesquisar…"
+              value={busca}
+              onValueChange={setBusca}
+            />
             <CommandList className="max-h-[min(22rem,calc(100vh-10rem))]">
               {opcoesFiltradas.length === 0 && <CommandEmpty>{vazio}</CommandEmpty>}
               <CommandGroup>
@@ -100,7 +108,7 @@ export function Combobox({
                   <CommandItem
                     key={o.value}
                     value={`${o.label} ${o.hint ?? ""}`}
-                    className="min-w-0 items-start py-2"
+                    className="min-w-0 items-start py-2.5 text-base"
                     onSelect={() => {
                       onChange(o.value);
                       fechar();
