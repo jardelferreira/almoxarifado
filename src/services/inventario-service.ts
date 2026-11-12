@@ -25,6 +25,10 @@ function diferencasContadas(itens: InventarioItem[]) {
   );
 }
 
+function evento(tipo: "ENCERRADO" | "CANCELADO", detalhe: string) {
+  return { id: uid(), tipo, em: new Date().toISOString(), detalhe } as const;
+}
+
 async function obterSaldosAtuais(projetoId: string) {
   const db = getDB();
   const movimentacoes = await db.movimentacoes.where("projeto_id").equals(projetoId).toArray();
@@ -170,6 +174,8 @@ export const inventarioService = {
         status: "CONCLUIDO",
         data_encerramento: agora,
         atualizado_em: agora,
+        versao: (inventario.versao ?? 0) + 1,
+        eventos: [...(inventario.eventos ?? []), evento("ENCERRADO", "Inventário encerrado após revisão das contagens.")],
       });
     });
 
