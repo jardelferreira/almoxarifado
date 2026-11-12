@@ -37,18 +37,19 @@ export function RelatorioEquipamentosManutencao({
         linha.origem,
       ]
         .filter(Boolean)
-        .some((valor) =>
-          String(valor).toLocaleLowerCase("pt-BR").includes(termo),
-        ),
+        .some((valor) => String(valor).toLocaleLowerCase("pt-BR").includes(termo)),
     );
   }, [busca, dados.linhas]);
 
-  const relatorioFiltrado = useMemo<RelatorioEquipamentosManutencao>(() => ({
-    ...dados,
-    linhas,
-    totalRegistros: linhas.length,
-    quantidade: linhas.reduce((total, linha) => total + linha.quantidade, 0),
-  }), [dados, linhas]);
+  const relatorioFiltrado = useMemo<RelatorioEquipamentosManutencao>(
+    () => ({
+      ...dados,
+      linhas,
+      totalRegistros: linhas.length,
+      quantidade: linhas.reduce((total, linha) => total + linha.quantidade, 0),
+    }),
+    [dados, linhas],
+  );
 
   return (
     <div className="space-y-4">
@@ -73,9 +74,7 @@ export function RelatorioEquipamentosManutencao({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() =>
-                  exportarRelatorioEquipamentosManutencao(relatorioFiltrado, "xlsx")
-                }
+                onClick={() => exportarRelatorioEquipamentosManutencao(relatorioFiltrado, "xlsx")}
               >
                 <FileSpreadsheet className="mr-2 size-4" />
                 Excel
@@ -93,9 +92,7 @@ export function RelatorioEquipamentosManutencao({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() =>
-                  exportarRelatorioEquipamentosManutencao(relatorioFiltrado, "csv")
-                }
+                onClick={() => exportarRelatorioEquipamentosManutencao(relatorioFiltrado, "csv")}
               >
                 <Download className="mr-2 size-4" />
                 CSV
@@ -114,14 +111,15 @@ export function RelatorioEquipamentosManutencao({
           </div>
 
           <div className="overflow-x-auto rounded-lg border">
-            <table className="w-full min-w-[800px] text-sm">
+            <table className="w-full min-w-[980px] text-sm">
               <thead className="bg-muted/50">
                 <tr className="border-b">
                   <th className="px-4 py-3 text-left font-medium">Equipamento</th>
                   <th className="px-4 py-3 text-left font-medium">Identificação</th>
                   <th className="px-4 py-3 text-right font-medium">Quantidade</th>
                   <th className="px-4 py-3 text-left font-medium">Origem</th>
-                  <th className="px-4 py-3 text-left font-medium">Observações</th>
+                  <th className="px-4 py-3 text-left font-medium">Observação inicial</th>
+                  <th className="px-4 py-3 text-left font-medium">Sinalização para manutenção</th>
                 </tr>
               </thead>
               <tbody>
@@ -138,12 +136,17 @@ export function RelatorioEquipamentosManutencao({
                     <td className="px-4 py-3">
                       <Badge variant="secondary">{linha.origem}</Badge>
                     </td>
-                    <td className="px-4 py-3">{linha.estoque.observacoes ?? "—"}</td>
+                    <td className="max-w-xs whitespace-pre-wrap px-4 py-3 align-top">
+                      {linha.observacaoInicial ?? "—"}
+                    </td>
+                    <td className="max-w-xs whitespace-pre-wrap px-4 py-3 align-top font-medium">
+                      {linha.observacaoManutencao ?? "—"}
+                    </td>
                   </tr>
                 ))}
                 {!linhas.length && (
                   <tr>
-                    <td colSpan={5} className="px-4 py-10 text-center text-muted-foreground">
+                    <td colSpan={6} className="px-4 py-10 text-center text-muted-foreground">
                       Nenhum equipamento em manutenção.
                     </td>
                   </tr>
