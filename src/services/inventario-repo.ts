@@ -1,6 +1,7 @@
 import { getDB, uid } from "@/db/db";
 import { configuracoesRepo } from "@/services/configuracoes-repo";
-import type { Inventario, InventarioItem } from "@/types";
+import type { Inventario, InventarioEvento, InventarioItem, InventarioParticipante } from "@/types";
+import type { SnapshotInventario } from "@/services/inventario-sync";
 
 function validarQuantidade(valor: number | null | undefined, campo: string) {
   if (valor == null) return;
@@ -15,6 +16,20 @@ function efeitoMovimento(movimento: { tipo: string; quantidade: number; sinal?: 
 
 type EstoqueInventario = { produtoId: string; equipeId: string };
 
+const DURACAO_BLOQUEIO_MS = 10 * 60 * 1000;
+
+function evento(args: Omit<InventarioEvento, "id" | "em">): InventarioEvento {
+  return { id: uid(), em: new Date().toISOString(), ...args };
+}
+
+function participantesDo(inventario: Inventario): InventarioParticipante[] {
+  return inventario.participantes ? [...inventario.participantes] : [];
+}
+
+function eventosDo(inventario: Inventario): InventarioEvento[] {
+  return inventario.eventos ? [...inventario.eventos] : [];
+}
+
 export const inventarioRepo = {
   async listar(projetoId: string): Promise<Inventario[]> {
     return (await getDB().inventarios.where("projeto_id").equals(projetoId).toArray())
@@ -27,6 +42,27 @@ export const inventarioRepo = {
 
   async itens(inventarioId: string): Promise<InventarioItem[]> {
     return getDB().inventario_itens.where("inventario_id").equals(inventarioId).toArray();
+  },
+
+  async mesclarSnapshotRemoto(snapshot: SnapshotInventario): Promise<{ inventario: Inventario; itens: InventarioItem[] }> {
+    const db = getDB();
+    return db.transaction("rw", db.inventarios, db.inventario_itens, async () => {
+      const local = await db.inventarios.get(snapshot.inventario.id);
+      const itensLocais = await db.inventario_itens.where("inventario_id").equals(snapshot.inventario.id).toArray();
+      const inventarioBase = local && local.atualizado_em > snapshot.inventario.atualizado_em ? local : snapshot.inventario;
+      const participantes = [...new Map([...(local?.participantes ?? []), ...(snapshot.inventario.participantes ?? [])].map((item) => [item.funcionario_id, item])).values()];
+      const eventos = [...new Map([...(local?.eventos ?? []), ...(snapshot.inventario.eventos ?? [])].map((item) => [item.id, item])).values()].sort((a, b) => a.em.localeCompare(b.em));
+      const inventario: Inventario = { ...inventarioBase, participantes, eventos, versao: Math.max(local?.versao ?? 0, snapshot.inventario.versao ?? 0), atualizado_em: new Date().toISOString() };
+      const remotoPorId = new Map(snapshot.itens.map((item) => [item.id, item]));
+      for (const item of itensLocais) {
+        const remoto = remotoPorId.get(item.id);
+        remotoPorId.set(item.id, remoto && remoto.atualizado_em > item.atualizado_em ? remoto : item);
+      }
+      const itens = [...remotoPorId.values()];
+      await db.inventarios.put(inventario);
+      await db.inventario_itens.bulkPut(itens);
+      return { inventario, itens };
+    });
   },
 
   async abrir(args: {
@@ -112,6 +148,9 @@ export const inventarioRepo = {
       data_encerramento: null,
       responsavel_id: args.responsavelId ?? null,
       observacao: args.observacao?.trim() || null,
+      participantes: args.responsavelId ? [{ funcionario_id: args.responsavelId, adicionado_em: agora, adicionado_por_id: args.responsavelId, ultimo_acesso_em: agora }] : [],
+      eventos: [evento({ tipo: "ABERTO", funcionario_id: args.responsavelId ?? null, detalhe: "Inventário criado." })],
+      versao: 1,
       criado_em: agora,
       atualizado_em: agora,
     };
@@ -135,7 +174,58 @@ export const inventarioRepo = {
     return inventario;
   },
 
-  async registrarContagem(inventarioId: string, itemId: string, quantidade: number, observacao?: string | null) {
+  async adicionarParticipante(inventarioId: string, funcionarioId: string, adicionadoPorId?: string | null) {
+    const db = getDB();
+    const agora = new Date().toISOString();
+    return db.transaction("rw", db.inventarios, async () => {
+      const inventario = await db.inventarios.get(inventarioId);
+      if (!inventario || inventario.status !== "ABERTO") throw new Error("Somente inventários abertos podem receber participantes.");
+      const funcionario = await db.funcionarios.get(funcionarioId);
+      if (!funcionario || funcionario.projeto_id !== inventario.projeto_id || funcionario.status !== "ATIVO") throw new Error("Funcionário inválido para este projeto.");
+      const participantes = participantesDo(inventario);
+      if (participantes.some((item) => item.funcionario_id === funcionarioId)) return inventario;
+      const atualizado: Inventario = {
+        ...inventario,
+        participantes: [...participantes, { funcionario_id: funcionarioId, adicionado_em: agora, adicionado_por_id: adicionadoPorId ?? null, ultimo_acesso_em: null }],
+        eventos: [...eventosDo(inventario), evento({ tipo: "PARTICIPANTE_ADICIONADO", funcionario_id: funcionarioId, detalhe: "Participante autorizado no inventário." })],
+        versao: (inventario.versao ?? 0) + 1,
+        atualizado_em: agora,
+      };
+      await db.inventarios.put(atualizado);
+      return atualizado;
+    });
+  },
+
+  async registrarAcesso(inventarioId: string, funcionarioId: string) {
+    const db = getDB();
+    const inventario = await db.inventarios.get(inventarioId);
+    if (!inventario || inventario.status !== "ABERTO") throw new Error("Este inventário não está aberto.");
+    if (!participantesDo(inventario).some((item) => item.funcionario_id === funcionarioId)) throw new Error("Este funcionário ainda não foi adicionado ao inventário.");
+    const agora = new Date().toISOString();
+    const participantes = participantesDo(inventario).map((item) => item.funcionario_id === funcionarioId ? { ...item, ultimo_acesso_em: agora } : item);
+    await db.inventarios.update(inventarioId, { participantes, atualizado_em: agora });
+  },
+
+  async iniciarConferencia(inventarioId: string, itemId: string, funcionarioId: string, dispositivoId: string) {
+    const db = getDB();
+    const agora = new Date();
+    return db.transaction("rw", db.inventarios, db.inventario_itens, async () => {
+      const inventario = await db.inventarios.get(inventarioId);
+      if (!inventario || inventario.status !== "ABERTO") throw new Error("Este inventário não está aberto para conferência.");
+      if (!participantesDo(inventario).some((item) => item.funcionario_id === funcionarioId)) throw new Error("Acesso não autorizado para este inventário.");
+      const item = await db.inventario_itens.get(itemId);
+      if (!item || item.inventario_id !== inventarioId) throw new Error("Item de inventário inválido.");
+      const expira = item.bloqueio_expira_em ? new Date(item.bloqueio_expira_em).getTime() : 0;
+      if (item.bloqueado_por_id && expira > agora.getTime() && item.bloqueado_por_id !== funcionarioId) throw new Error("Este item está sendo conferido por outro operador. Tente novamente quando ele for liberado.");
+      const bloqueioExpira = new Date(agora.getTime() + DURACAO_BLOQUEIO_MS).toISOString();
+      const atualizado: InventarioItem = { ...item, bloqueado_por_id: funcionarioId, bloqueado_em: agora.toISOString(), bloqueio_expira_em: bloqueioExpira, atualizado_em: agora.toISOString() };
+      await db.inventario_itens.put(atualizado);
+      await db.inventarios.update(inventarioId, { atualizado_em: agora.toISOString(), versao: (inventario.versao ?? 0) + 1, eventos: [...eventosDo(inventario), evento({ tipo: "ITEM_BLOQUEADO", funcionario_id: funcionarioId, item_id: itemId, dispositivo_id: dispositivoId, detalhe: `Bloqueio válido até ${bloqueioExpira}.` })] });
+      return atualizado;
+    });
+  },
+
+  async registrarContagem(inventarioId: string, itemId: string, quantidade: number, observacao?: string | null, participanteId?: string | null, dispositivoId?: string | null) {
     validarQuantidade(quantidade, "A contagem");
     const db = getDB();
     const inventario = await db.inventarios.get(inventarioId);
@@ -143,10 +233,25 @@ export const inventarioRepo = {
     const item = await db.inventario_itens.get(itemId);
     if (!item || item.inventario_id !== inventarioId) throw new Error("Item de inventário inválido.");
     if (!item.equipe_id) throw new Error("Este item de inventário não possui equipe de estoque vinculada.");
-    const atualizado: InventarioItem = { ...item, quantidade_contada: quantidade, observacao: observacao?.trim() || null, atualizado_em: new Date().toISOString() };
-    await db.inventario_itens.put(atualizado);
-    await db.inventarios.update(inventarioId, { atualizado_em: atualizado.atualizado_em });
-    return atualizado;
+    if (participanteId) {
+      const expira = item.bloqueio_expira_em ? new Date(item.bloqueio_expira_em).getTime() : 0;
+      if (item.bloqueado_por_id !== participanteId || expira <= Date.now()) throw new Error("A conferência deste item expirou. Bloqueie o item novamente antes de salvar.");
+    }
+    const agora = new Date().toISOString();
+    await db.transaction("rw", db.inventarios, db.inventario_itens, async () => {
+      const atual = await db.inventarios.get(inventarioId);
+      if (!atual || atual.status !== "ABERTO") throw new Error("Este inventário não está aberto para contagem.");
+      const itemAtual = await db.inventario_itens.get(itemId);
+      if (!itemAtual || itemAtual.inventario_id !== inventarioId) throw new Error("Item de inventário inválido.");
+      if (participanteId) {
+        const expiraAtual = itemAtual.bloqueio_expira_em ? new Date(itemAtual.bloqueio_expira_em).getTime() : 0;
+        if (itemAtual.bloqueado_por_id !== participanteId || expiraAtual <= Date.now()) throw new Error("A conferência deste item expirou ou foi assumida por outro operador.");
+      }
+      const atualizado: InventarioItem = { ...itemAtual, quantidade_contada: quantidade, observacao: observacao?.trim() || null, conferido_por_id: participanteId ?? itemAtual.conferido_por_id ?? null, conferido_em: agora, bloqueado_por_id: null, bloqueado_em: null, bloqueio_expira_em: null, versao: (itemAtual.versao ?? 0) + 1, atualizado_em: agora };
+      await db.inventario_itens.put(atualizado);
+      await db.inventarios.update(inventarioId, { atualizado_em: agora, versao: (atual.versao ?? 0) + 1, eventos: [...eventosDo(atual), evento({ tipo: "CONTAGEM_REGISTRADA", funcionario_id: participanteId ?? null, item_id: itemId, dispositivo_id: dispositivoId ?? null, detalhe: `Quantidade registrada: ${quantidade}.` })] });
+    });
+    return (await db.inventario_itens.get(itemId)) ?? item;
   },
 
   async cancelar(inventarioId: string) {
@@ -154,6 +259,7 @@ export const inventarioRepo = {
     const inventario = await db.inventarios.get(inventarioId);
     if (!inventario) throw new Error("Inventário não encontrado.");
     if (inventario.status !== "ABERTO") throw new Error("Somente inventários abertos podem ser cancelados.");
-    await db.inventarios.update(inventarioId, { status: "CANCELADO", atualizado_em: new Date().toISOString() });
+    const agora = new Date().toISOString();
+    await db.inventarios.update(inventarioId, { status: "CANCELADO", atualizado_em: agora, versao: (inventario.versao ?? 0) + 1, eventos: [...eventosDo(inventario), evento({ tipo: "CANCELADO", detalhe: "Inventário cancelado pelo operador." })] });
   },
 };
