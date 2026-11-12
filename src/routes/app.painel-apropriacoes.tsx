@@ -585,15 +585,16 @@ export function PainelApropriacoesPage() {
                         {dados.itens.map((item) => (
                           <tr key={item.estoque.id} className="hover:bg-muted/20">
                             <td className="px-4 py-3">
-                              <p className="font-medium">{item.equipamento.nome}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {[item.equipamento.marca, item.equipamento.modelo]
-                                  .filter(Boolean)
-                                  .join(" · ") || "Sem modelo"}
+                              <p className="font-semibold">{item.equipamento.nome}</p>
+                              <p className="text-sm text-muted-foreground">
+                                {referenciasEquipamento(item)}
                               </p>
                             </td>
                             <td className="px-4 py-3 text-muted-foreground">
-                              {item.identificacao}
+                              <div>{item.identificacao}</div>
+                              <div className="mt-1 text-xs">
+                                {referenciasFisicas(item.estoque, item.identificacao)}
+                              </div>
                             </td>
                             <td className="px-4 py-3 text-right font-semibold">
                               {num(item.quantidade)}
@@ -648,17 +649,54 @@ export function PainelApropriacoesPage() {
             {acao === "APROPRIAR" ? (
               <div className="space-y-2">
                 <Label>Equipamento disponível</Label>
-                <Combobox
-                  opcoes={dados.disponiveis.map((item) => ({
-                    value: item.estoque.id,
-                    label: `${item.equipamento.nome} · disponível: ${item.disponivel}`,
-                    hint: item.identificacao,
-                  }))}
-                  value={estoqueId}
-                  onChange={setEstoqueId}
-                  placeholder="Selecionar equipamento…"
-                  vazio="Nenhum equipamento disponível."
-                />
+                <div className="rounded-xl border-2 border-primary/35 bg-primary/[0.045] p-3 shadow-sm ring-1 ring-primary/10">
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <div>
+                      <Label className="text-base font-bold text-foreground">
+                        Equipamento disponível
+                      </Label>
+                      <p className="mt-0.5 text-sm text-muted-foreground">
+                        Pesquise por nome, marca, modelo ou identificador físico.
+                      </p>
+                    </div>
+                    <Badge className="shrink-0 bg-primary text-primary-foreground">
+                      Obrigatório
+                    </Badge>
+                  </div>
+                  <Combobox
+                    className="h-12 border-primary/40 bg-background text-base font-semibold text-foreground shadow-sm data-[placeholder]:text-muted-foreground"
+                    opcoes={dados.disponiveis.map((item) => ({
+                      value: item.estoque.id,
+                      label: `${item.equipamento.nome} · disponível: ${item.disponivel}`,
+                      hint: [
+                        referenciasEquipamento(item),
+                        referenciasFisicas(item.estoque, item.identificacao),
+                      ]
+                        .filter(Boolean)
+                        .join(" · "),
+                    }))}
+                    value={estoqueId}
+                    onChange={setEstoqueId}
+                    placeholder="Selecionar equipamento…"
+                    vazio="Nenhum equipamento disponível."
+                  />
+                  {estoqueSelecionado && (
+                    <div className="mt-3 rounded-lg border border-primary/20 bg-background px-3 py-2 text-sm">
+                      <p className="font-semibold text-foreground">
+                        {estoqueSelecionado.equipamento.nome}
+                      </p>
+                      <p className="mt-1 text-muted-foreground">
+                        {referenciasEquipamento(estoqueSelecionado)}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {referenciasFisicas(
+                          estoqueSelecionado.estoque,
+                          estoqueSelecionado.identificacao,
+                        )}
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
             ) : (
               <div className="rounded-lg border bg-muted/20 p-3 text-sm">
@@ -740,6 +778,25 @@ function Resumo({
         </span>
       </CardContent>
     </Card>
+  );
+}
+
+function referenciasEquipamento(item: Pick<ItemPainel, "equipamento">): string {
+  return (
+    [item.equipamento.marca, item.equipamento.modelo].filter(Boolean).join(" · ") ||
+    "Marca/modelo não informados"
+  );
+}
+
+function referenciasFisicas(estoque: EstoqueEquipamento, identificacao: string): string {
+  return (
+    [
+      identificacao !== "Sem identificação" ? `Identificação: ${identificacao}` : null,
+      estoque.patrimonio ? `Patrimônio: ${estoque.patrimonio}` : null,
+      estoque.serial ? `Serial: ${estoque.serial}` : null,
+    ]
+      .filter(Boolean)
+      .join(" · ") || "Sem identificadores físicos"
   );
 }
 
