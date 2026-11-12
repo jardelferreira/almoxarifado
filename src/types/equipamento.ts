@@ -94,6 +94,15 @@ export interface EstoqueEquipamento {
 
   criado_em: string;
   atualizado_em: string;
+  historico_edicoes?: EstoqueEquipamentoEdicao[];
+}
+
+export interface EstoqueEquipamentoEdicao {
+  id: ID;
+  em: string;
+  campos: Array<"patrimonio" | "identificacao" | "serial" | "referencia_documento" | "observacoes">;
+  antes: Partial<Pick<EstoqueEquipamento, "patrimonio" | "identificacao" | "serial" | "referencia_documento" | "observacoes">>;
+  depois: Partial<Pick<EstoqueEquipamento, "patrimonio" | "identificacao" | "serial" | "referencia_documento" | "observacoes">>;
 }
 
 export interface Apropriacao {

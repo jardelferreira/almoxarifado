@@ -457,6 +457,29 @@ export const estoqueEquipamentosRepo = {
     return atualizado;
   },
 
+  async corrigirDados(
+    projetoId: string,
+    estoqueEquipamentoId: string,
+    dados: Pick<EstoqueEquipamento, "patrimonio" | "identificacao" | "serial" | "referencia_documento" | "observacoes">,
+  ): Promise<EstoqueEquipamento> {
+    const db = getDB();
+    const existente = await db.estoque_equipamentos.get(estoqueEquipamentoId);
+    if (!existente || existente.projeto_id !== projetoId) throw new Error("Registro de estoque não encontrado neste projeto.");
+    const normalizar = (valor: unknown) => valor == null ? null : String(valor).trim() || null;
+    const patrimonio = normalizar(dados.patrimonio);
+    const identificacao = normalizar(dados.identificacao);
+    const serial = normalizar(dados.serial);
+    await validarIdentificacao(projetoId, existente.empresa_id, identificacao, existente.id);
+    await validarIdentificadoresUnicos(projetoId, existente.empresa_id, patrimonio, serial, existente.id);
+    const campos = (["patrimonio", "identificacao", "serial", "referencia_documento", "observacoes"] as const).filter((campo) => (existente[campo] ?? null) !== (campo === "patrimonio" ? patrimonio : campo === "identificacao" ? identificacao : campo === "serial" ? serial : normalizar(dados[campo])));
+    if (!campos.length) return existente;
+    const depois = { patrimonio, identificacao, serial, referencia_documento: normalizar(dados.referencia_documento), observacoes: normalizar(dados.observacoes) };
+    const antes = { patrimonio: existente.patrimonio ?? null, identificacao: existente.identificacao ?? null, serial: existente.serial ?? null, referencia_documento: existente.referencia_documento ?? null, observacoes: existente.observacoes ?? null };
+    const atualizado: EstoqueEquipamento = { ...existente, ...depois, atualizado_em: new Date().toISOString(), historico_edicoes: [...(existente.historico_edicoes ?? []), { id: uid(), em: new Date().toISOString(), campos: [...campos], antes, depois }] };
+    await db.estoque_equipamentos.put(atualizado);
+    return atualizado;
+  },
+
   async excluir(
     projetoId: string,
     estoqueEquipamentoId: string,
