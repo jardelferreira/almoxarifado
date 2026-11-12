@@ -145,53 +145,57 @@ function CadastrosPage() {
       return;
     }
 
-    if (aba === "produtos") {
-      const p = item as unknown as Produto;
+    try {
+      if (aba === "produtos") {
+        const p = item as unknown as Produto;
 
-      if (!p.categoria_id || !p.unidade_id) {
-        toast.error("Produto precisa de categoria e unidade");
+        if (!p.categoria_id || !p.unidade_id) {
+          toast.error("Produto precisa de categoria e unidade");
+          return;
+        }
+
+        p.estoque_minimo = Number(p.estoque_minimo) || 0;
+        p.inteligencia_reposicao = p.inteligencia_reposicao !== false;
+      }
+
+      if (aba === "equipes") {
+        const { membro_ids, ...dadosEquipe } = item;
+
+        const equipe = await repo.equipes.save(projetoId, dadosEquipe as unknown as Equipe);
+
+        await repo.salvarMembrosDaEquipe(equipe.id, (membro_ids as string[] | undefined) ?? []);
+
+        toast.success("Equipe salva");
+        setEditando(null);
         return;
       }
 
-      p.estoque_minimo = Number(p.estoque_minimo) || 0;
-      p.inteligencia_reposicao = p.inteligencia_reposicao !== false;
-    }
+      if (aba === "categorias") {
+        await repo.categorias.save(item as unknown as Categoria);
+      } else if (aba === "unidades") {
+        await repo.unidades.save(item as unknown as Unidade);
+      } else if (aba === "empresas") {
+        await repo.empresas.save(projetoId, item as unknown as Empresa);
+      } else if (aba === "funcionarios") {
+        const pinNovo = String(item["pin_novo"] ?? "").trim();
+        const { pin_novo: _pinNovo, ...itemFuncionario } = item;
+        const dadosFuncionario = {
+          ...itemFuncionario,
+          cpf: normalizarCpf(String(itemFuncionario["cpf"] ?? "")),
+        } as unknown as Funcionario;
+        if (pinNovo) Object.assign(dadosFuncionario, await criarHashPin(pinNovo));
+        await salvarFuncionario(projetoId, dadosFuncionario);
+      } else if (aba === "locais") {
+        await repo.locais.save(projetoId, item as unknown as Local);
+      } else if (aba === "produtos") {
+        await repo.produtos.save(projetoId, item as unknown as Produto);
+      }
 
-    if (aba === "equipes") {
-      const { membro_ids, ...dadosEquipe } = item;
-
-      const equipe = await repo.equipes.save(projetoId, dadosEquipe as unknown as Equipe);
-
-      await repo.salvarMembrosDaEquipe(equipe.id, (membro_ids as string[] | undefined) ?? []);
-
-      toast.success("Equipe salva");
+      toast.success("Cadastro salvo");
       setEditando(null);
-      return;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível salvar o cadastro.");
     }
-
-    if (aba === "categorias") {
-      await repo.categorias.save(item as unknown as Categoria);
-    } else if (aba === "unidades") {
-      await repo.unidades.save(item as unknown as Unidade);
-    } else if (aba === "empresas") {
-      await repo.empresas.save(projetoId, item as unknown as Empresa);
-    } else if (aba === "funcionarios") {
-      const pinNovo = String(item["pin_novo"] ?? "").trim();
-      const { pin_novo: _pinNovo, ...itemFuncionario } = item;
-      const dadosFuncionario = {
-        ...itemFuncionario,
-        cpf: normalizarCpf(String(itemFuncionario["cpf"] ?? "")),
-      } as unknown as Funcionario;
-      if (pinNovo) Object.assign(dadosFuncionario, await criarHashPin(pinNovo));
-      await salvarFuncionario(projetoId, dadosFuncionario);
-    } else if (aba === "locais") {
-      await repo.locais.save(projetoId, item as unknown as Local);
-    } else if (aba === "produtos") {
-      await repo.produtos.save(projetoId, item as unknown as Produto);
-    }
-
-    toast.success("Cadastro salvo");
-    setEditando(null);
   };
 
   const toggleAtivo = async (aba: Aba, row: object, campo: "ativo" | "status") => {
@@ -427,7 +431,7 @@ function CadastrosPage() {
                           setFiltroStatus(e.target.value as FiltroStatus);
                           setPagina(1);
                         }}
-                        className="h-9 rounded-md border border-input bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                        className="h-11 rounded-md border border-slate-300 bg-background px-3 text-base font-medium text-foreground shadow-sm outline-none transition-colors hover:border-primary/50 focus:ring-2 focus:ring-primary/30"
                       >
                         <option value="todos">Todas as situações</option>
                         <option value="ativos">Somente ativos</option>
