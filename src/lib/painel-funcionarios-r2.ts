@@ -11,6 +11,10 @@ function chaveRegistro(projetoId: string, cpfHash: string): string {
   return `${PREFIXO}/${encodeURIComponent(projetoId)}/${cpfHash}.json`;
 }
 
+function chaveHistorico(projetoId: string, publicacaoId: string, cpfHash: string): string {
+  return `${PREFIXO}-historico/${encodeURIComponent(projetoId)}/${publicacaoId}/${cpfHash}.json`;
+}
+
 function validarProjetoId(projetoId: string): string {
   const valor = projetoId.trim();
   if (!/^[a-zA-Z0-9_-]{8,160}$/.test(valor)) throw new Error("Identificador de projeto inválido.");
@@ -62,29 +66,44 @@ export const publicarPainelFuncionariosNuvem = createServerFn({ method: "POST" }
     if (data.publicacao.projeto_id !== data.projetoId)
       throw new Error("A publicação não pertence ao projeto informado.");
 
+    const publicacaoId = crypto.randomUUID();
+
     await Promise.all(
       data.publicacao.funcionarios.map((registro) => {
         const corpo: RegistroPublicacaoFuncionario = registro;
-        return env.ALMOXARIFADO_BUCKET.put(
-          chaveRegistro(data.projetoId, registro.cpf_hash),
-          JSON.stringify(corpo),
-          {
-            httpMetadata: {
-              contentType: "application/json; charset=utf-8",
-              cacheControl: "no-store",
-            },
-            customMetadata: {
-              projetoId: data.projetoId,
-              atualizadoEm: data.publicacao.atualizado_em,
-            },
+        const opcoes = {
+          httpMetadata: {
+            contentType: "application/json; charset=utf-8",
+            cacheControl: "no-store",
           },
-        );
+          customMetadata: {
+            projetoId: data.projetoId,
+            atualizadoEm: data.publicacao.atualizado_em,
+            publicacaoId,
+            historicoImutavel: "true",
+          },
+        };
+        return Promise.all([
+          // Índice atual para a consulta rápida. Ele pode ser substituído.
+          env.ALMOXARIFADO_BUCKET.put(
+            chaveRegistro(data.projetoId, registro.cpf_hash),
+            JSON.stringify(corpo),
+            opcoes,
+          ),
+          // Cópia histórica append-only. Nunca é atualizada nem removida.
+          env.ALMOXARIFADO_BUCKET.put(
+            chaveHistorico(data.projetoId, publicacaoId, registro.cpf_hash),
+            JSON.stringify(corpo),
+            opcoes,
+          ),
+        ]);
       }),
     );
 
     return {
       publicadoEm: data.publicacao.atualizado_em,
       funcionariosPublicados: data.publicacao.funcionarios.length,
+      publicacaoId,
     };
   });
 
