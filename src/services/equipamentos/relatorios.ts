@@ -14,12 +14,7 @@ import type {
 } from "@/types";
 import { formatarCpf } from "@/utils/seguranca";
 
-export type SituacaoEquipamento =
-  | "DISPONIVEL"
-  | "EM_USO"
-  | "MANUTENCAO"
-  | "ENCERRADO"
-  | "MISTO";
+export type SituacaoEquipamento = "DISPONIVEL" | "EM_USO" | "MANUTENCAO" | "ENCERRADO" | "MISTO";
 
 export type RelatorioEquipamentoLinha = {
   estoque: EstoqueEquipamento;
@@ -47,8 +42,9 @@ export type RelatorioEquipamentosSituacao = {
   resumo: ResumoSituacao;
 };
 
-
-export function rotuloTipoMovimentacao(tipo: import("@/types").MovimentacaoEquipamento["tipo"]): string {
+export function rotuloTipoMovimentacao(
+  tipo: import("@/types").MovimentacaoEquipamento["tipo"],
+): string {
   const labels: Record<import("@/types").MovimentacaoEquipamento["tipo"], string> = {
     ENTRADA: "Entrada no estoque",
     SAIDA: "Saída para funcionário",
@@ -66,16 +62,12 @@ export function rotuloTipoMovimentacao(tipo: import("@/types").MovimentacaoEquip
   return labels[tipo];
 }
 
-function situacaoDaLinha(
-  estado: EstadoEstoqueEquipamento,
-): SituacaoEquipamento {
+function situacaoDaLinha(estado: EstadoEstoqueEquipamento): SituacaoEquipamento {
   if (estado.saldo <= 0) return "ENCERRADO";
 
-  const partes = [
-    estado.disponivel > 0,
-    estado.apropriado > 0,
-    estado.manutencao > 0,
-  ].filter(Boolean).length;
+  const partes = [estado.disponivel > 0, estado.apropriado > 0, estado.manutencao > 0].filter(
+    Boolean,
+  ).length;
 
   if (partes > 1) return "MISTO";
   if (estado.apropriado > 0) return "EM_USO";
@@ -88,21 +80,14 @@ export async function consultarRelatorioEquipamentosSituacao(
 ): Promise<RelatorioEquipamentosSituacao> {
   const db = getDB();
 
-  const [equipamentos, estoques, categorias, empresas, equipes, funcionarios] =
-    await Promise.all([
-      db.equipamentos.where("projeto_id").equals(projetoId).toArray(),
-      db.estoque_equipamentos
-        .where("projeto_id")
-        .equals(projetoId)
-        .toArray(),
-      db.categorias_equipamentos
-        .where("projeto_id")
-        .equals(projetoId)
-        .toArray(),
-      db.empresas.where("projeto_id").equals(projetoId).toArray(),
-      db.equipes.where("projeto_id").equals(projetoId).toArray(),
-      db.funcionarios.where("projeto_id").equals(projetoId).toArray(),
-    ]);
+  const [equipamentos, estoques, categorias, empresas, equipes, funcionarios] = await Promise.all([
+    db.equipamentos.where("projeto_id").equals(projetoId).toArray(),
+    db.estoque_equipamentos.where("projeto_id").equals(projetoId).toArray(),
+    db.categorias_equipamentos.where("projeto_id").equals(projetoId).toArray(),
+    db.empresas.where("projeto_id").equals(projetoId).toArray(),
+    db.equipes.where("projeto_id").equals(projetoId).toArray(),
+    db.funcionarios.where("projeto_id").equals(projetoId).toArray(),
+  ]);
 
   const equipamentoPorId = new Map(equipamentos.map((item) => [item.id, item]));
   const categoriaPorId = new Map(categorias.map((item) => [item.id, item]));
@@ -130,9 +115,7 @@ export async function consultarRelatorioEquipamentosSituacao(
      */
     const equipesAtuais = responsaveis
       .map((funcionario) =>
-        funcionario.equipe_raiz_id
-          ? equipePorId.get(funcionario.equipe_raiz_id)
-          : undefined,
+        funcionario.equipe_raiz_id ? equipePorId.get(funcionario.equipe_raiz_id) : undefined,
       )
       .filter((item): item is Equipe => Boolean(item));
 
@@ -193,7 +176,6 @@ export function localizacaoLinha(linha: RelatorioEquipamentoLinha): string {
   return "—";
 }
 
-
 type RelatorioFormato = "xlsx" | "csv";
 
 type RelatorioPlanilhaConfig = {
@@ -231,13 +213,8 @@ export function formatarDataHoraRelatorio(valor: string | Date | null | undefine
   return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(data);
 }
 
-function criarPlanilhaRelatorio(
-  config: RelatorioPlanilhaConfig,
-  formato: RelatorioFormato,
-): void {
-  const linhas = config.linhas.map((linha) =>
-    config.colunas.map((coluna) => linha[coluna] ?? ""),
-  );
+function criarPlanilhaRelatorio(config: RelatorioPlanilhaConfig, formato: RelatorioFormato): void {
+  const linhas = config.linhas.map((linha) => config.colunas.map((coluna) => linha[coluna] ?? ""));
   const worksheet = XLSX.utils.aoa_to_sheet([config.colunas, ...linhas]);
 
   worksheet["!autofilter"] = { ref: worksheet["!ref"] ?? "A1" };
@@ -300,46 +277,66 @@ export function exportarRelatorioEquipamentosSituacao(
   linhas: RelatorioEquipamentoLinha[],
   formato: "xlsx" | "csv",
 ) {
-  criarPlanilhaRelatorio({
-    nomeAba: "Por situação",
-    arquivo: `relatorio_equipamentos_por_situacao_${new Date().toISOString().slice(0, 10)}`,
-    colunas: [
-      "EQUIPAMENTO", "CATEGORIA", "IDENTIFICACAO", "PATRIMONIO", "SERIAL",
-      "PROPRIETARIO", "LOCALIZACAO_ATUAL", "SITUACAO", "QUANTIDADE",
-      "DISPONIVEL", "EM_USO", "MANUTENCAO", "OBSERVACOES",
-    ],
-    linhas: linhas.map((linha) => ({
-      EQUIPAMENTO: linha.equipamento.nome,
-      CATEGORIA: linha.categoria?.nome ?? "—",
-      IDENTIFICACAO: linha.estoque.identificacao ?? "—",
-      PATRIMONIO: linha.estoque.patrimonio ?? "—",
-      SERIAL: linha.estoque.serial ?? "—",
-      PROPRIETARIO: linha.empresa?.nome ?? "—",
-      LOCALIZACAO_ATUAL: localizacaoLinha(linha),
-      SITUACAO: situacaoLabel(linha.situacao),
-      QUANTIDADE: linha.estado.saldo,
-      DISPONIVEL: linha.estado.disponivel,
-      EM_USO: linha.estado.apropriado,
-      MANUTENCAO: linha.estado.manutencao,
-      OBSERVACOES: linha.estoque.observacoes ?? "",
-    })),
-    larguras: {
-      EQUIPAMENTO: 32, CATEGORIA: 22, IDENTIFICACAO: 20, PATRIMONIO: 18, SERIAL: 20,
-      PROPRIETARIO: 28, LOCALIZACAO_ATUAL: 30, SITUACAO: 16, QUANTIDADE: 12,
-      DISPONIVEL: 12, EM_USO: 12, MANUTENCAO: 14, OBSERVACOES: 42,
+  criarPlanilhaRelatorio(
+    {
+      nomeAba: "Por situação",
+      arquivo: `relatorio_equipamentos_por_situacao_${new Date().toISOString().slice(0, 10)}`,
+      colunas: [
+        "EQUIPAMENTO",
+        "CATEGORIA",
+        "IDENTIFICACAO",
+        "PATRIMONIO",
+        "SERIAL",
+        "PROPRIETARIO",
+        "LOCALIZACAO_ATUAL",
+        "SITUACAO",
+        "QUANTIDADE",
+        "DISPONIVEL",
+        "EM_USO",
+        "MANUTENCAO",
+        "OBSERVACOES",
+      ],
+      linhas: linhas.map((linha) => ({
+        EQUIPAMENTO: linha.equipamento.nome,
+        CATEGORIA: linha.categoria?.nome ?? "—",
+        IDENTIFICACAO: linha.estoque.identificacao ?? "—",
+        PATRIMONIO: linha.estoque.patrimonio ?? "—",
+        SERIAL: linha.estoque.serial ?? "—",
+        PROPRIETARIO: linha.empresa?.nome ?? "—",
+        LOCALIZACAO_ATUAL: localizacaoLinha(linha),
+        SITUACAO: situacaoLabel(linha.situacao),
+        QUANTIDADE: linha.estado.saldo,
+        DISPONIVEL: linha.estado.disponivel,
+        EM_USO: linha.estado.apropriado,
+        MANUTENCAO: linha.estado.manutencao,
+        OBSERVACOES: linha.estoque.observacoes ?? "",
+      })),
+      larguras: {
+        EQUIPAMENTO: 32,
+        CATEGORIA: 22,
+        IDENTIFICACAO: 20,
+        PATRIMONIO: 18,
+        SERIAL: 20,
+        PROPRIETARIO: 28,
+        LOCALIZACAO_ATUAL: 30,
+        SITUACAO: 16,
+        QUANTIDADE: 12,
+        DISPONIVEL: 12,
+        EM_USO: 12,
+        MANUTENCAO: 14,
+        OBSERVACOES: 42,
+      },
+      formatosNumero: ["QUANTIDADE", "DISPONIVEL", "EM_USO", "MANUTENCAO"],
     },
-    formatosNumero: ["QUANTIDADE", "DISPONIVEL", "EM_USO", "MANUTENCAO"],
-  }, formato);
+    formato,
+  );
 }
 
 /* -------------------------------------------------------------------------- */
 /* Relatório Baixados / encerrados                                           */
 /* -------------------------------------------------------------------------- */
 
-export type MotivoEncerramentoEquipamento =
-  | "BAIXA"
-  | "DEVOLUCAO_FORNECEDOR"
-  | "BAIXA_E_DEVOLUCAO";
+export type MotivoEncerramentoEquipamento = "BAIXA" | "DEVOLUCAO_FORNECEDOR" | "BAIXA_E_DEVOLUCAO";
 
 export type RelatorioEquipamentoEncerradoLinha = {
   estoqueId: string;
@@ -362,9 +359,7 @@ export type RelatorioEquipamentosEncerrados = {
   devolvidos: number;
 };
 
-export function motivoEncerramentoLabel(
-  motivo: MotivoEncerramentoEquipamento,
-): string {
+export function motivoEncerramentoLabel(motivo: MotivoEncerramentoEquipamento): string {
   switch (motivo) {
     case "BAIXA":
       return "Baixa definitiva";
@@ -387,15 +382,9 @@ export async function consultarRelatorioEquipamentosEncerrados(
     db.empresas.where("projeto_id").equals(projetoId).toArray(),
   ]);
 
-  const equipamentoPorId = new Map(
-    equipamentos.map((item) => [item.id, item]),
-  );
-  const categoriaPorId = new Map(
-    categorias.map((item) => [item.id, item]),
-  );
-  const empresaPorId = new Map(
-    empresas.map((item) => [item.id, item]),
-  );
+  const equipamentoPorId = new Map(equipamentos.map((item) => [item.id, item]));
+  const categoriaPorId = new Map(categorias.map((item) => [item.id, item]));
+  const empresaPorId = new Map(empresas.map((item) => [item.id, item]));
 
   const linhas: RelatorioEquipamentoEncerradoLinha[] = [];
 
@@ -403,10 +392,7 @@ export async function consultarRelatorioEquipamentosEncerrados(
     const equipamento = equipamentoPorId.get(estoque.equipamento_id);
     if (!equipamento) continue;
 
-    const estado = await estadoEquipamentosRepo.calcular(
-      projetoId,
-      estoque.id,
-    );
+    const estado = await estadoEquipamentosRepo.calcular(projetoId, estoque.id);
 
     if (!estado.encerrado) continue;
 
@@ -433,22 +419,13 @@ export async function consultarRelatorioEquipamentosEncerrados(
   }
 
   linhas.sort((a, b) => {
-    const equipamento = a.equipamento.nome.localeCompare(
-      b.equipamento.nome,
-      "pt-BR",
-    );
+    const equipamento = a.equipamento.nome.localeCompare(b.equipamento.nome, "pt-BR");
     if (equipamento !== 0) return equipamento;
 
     const identificacaoA =
-      a.estoque.identificacao ||
-      a.estoque.patrimonio ||
-      a.estoque.serial ||
-      "";
+      a.estoque.identificacao || a.estoque.patrimonio || a.estoque.serial || "";
     const identificacaoB =
-      b.estoque.identificacao ||
-      b.estoque.patrimonio ||
-      b.estoque.serial ||
-      "";
+      b.estoque.identificacao || b.estoque.patrimonio || b.estoque.serial || "";
 
     return identificacaoA.localeCompare(identificacaoB, "pt-BR");
   });
@@ -457,10 +434,7 @@ export async function consultarRelatorioEquipamentosEncerrados(
     projetoId,
     linhas,
     totalRegistros: linhas.length,
-    quantidadeEncerrada: linhas.reduce(
-      (total, linha) => total + linha.quantidadeOriginal,
-      0,
-    ),
+    quantidadeEncerrada: linhas.reduce((total, linha) => total + linha.quantidadeOriginal, 0),
     baixados: linhas.reduce((total, linha) => total + linha.baixado, 0),
     devolvidos: linhas.reduce((total, linha) => total + linha.devolvido, 0),
   };
@@ -513,11 +487,7 @@ export function exportarRelatorioEquipamentosEncerrados(
         DEVOLVIDO: 12,
         OBSERVACOES: 42,
       },
-      formatosNumero: [
-        "QUANTIDADE_ORIGINAL",
-        "BAIXADO",
-        "DEVOLVIDO",
-      ],
+      formatosNumero: ["QUANTIDADE_ORIGINAL", "BAIXADO", "DEVOLVIDO"],
     },
     formato,
   );
@@ -553,24 +523,18 @@ function acumularEquipe(
   if (quantidade <= 0) return;
 
   const chave = equipeId ?? `__LOCAL__:${equipeNome}`;
-  const linha =
-    mapa.get(chave) ??
-    {
-      equipeId,
-      equipeNome,
-      total: 0,
-      disponivel: 0,
-      emUso: 0,
-      manutencao: 0,
-      encerrado: 0,
-    };
+  const linha = mapa.get(chave) ?? {
+    equipeId,
+    equipeNome,
+    total: 0,
+    disponivel: 0,
+    emUso: 0,
+    manutencao: 0,
+    encerrado: 0,
+  };
 
   linha[campo] += quantidade;
-  linha.total =
-    linha.disponivel +
-    linha.emUso +
-    linha.manutencao +
-    linha.encerrado;
+  linha.total = linha.disponivel + linha.emUso + linha.manutencao + linha.encerrado;
 
   mapa.set(chave, linha);
 }
@@ -586,15 +550,10 @@ export async function consultarRelatorioEquipamentosEquipe(
     db.funcionarios.where("projeto_id").equals(projetoId).toArray(),
   ]);
 
-  const nomesEquipes = new Map(
-    equipes.map((equipe) => [equipe.id, equipe.nome]),
-  );
+  const nomesEquipes = new Map(equipes.map((equipe) => [equipe.id, equipe.nome]));
 
   const equipeDoFuncionario = new Map(
-    funcionarios.map((funcionario) => [
-      funcionario.id,
-      funcionario.equipe_raiz_id ?? null,
-    ]),
+    funcionarios.map((funcionario) => [funcionario.id, funcionario.equipe_raiz_id ?? null]),
   );
 
   const mapa = new Map<string, RelatorioEquipeLinha>();
@@ -608,10 +567,7 @@ export async function consultarRelatorioEquipamentosEquipe(
   };
 
   for (const estoque of estoques) {
-    const estado = await estadoEquipamentosRepo.calcular(
-      projetoId,
-      estoque.id,
-    );
+    const estado = await estadoEquipamentosRepo.calcular(projetoId, estoque.id);
 
     resumo.total += estado.saldo;
     resumo.disponivel += estado.disponivel;
@@ -629,9 +585,7 @@ export async function consultarRelatorioEquipamentosEquipe(
       acumularEquipe(
         mapa,
         equipeId,
-        equipeId
-          ? (nomesEquipes.get(equipeId) ?? "Equipe não encontrada")
-          : "Sem equipe",
+        equipeId ? (nomesEquipes.get(equipeId) ?? "Equipe não encontrada") : "Sem equipe",
         "emUso",
         quantidade,
       );
@@ -639,24 +593,12 @@ export async function consultarRelatorioEquipamentosEquipe(
 
     /* O disponível está fisicamente no Almoxarifado. */
     if (estado.disponivel > 0) {
-      acumularEquipe(
-        mapa,
-        null,
-        "Almoxarifado",
-        "disponivel",
-        estado.disponivel,
-      );
+      acumularEquipe(mapa, null, "Almoxarifado", "disponivel", estado.disponivel);
     }
 
     /* A manutenção é uma localização própria do controle de equipamentos. */
     if (estado.manutencao > 0) {
-      acumularEquipe(
-        mapa,
-        null,
-        "Manutenção",
-        "manutencao",
-        estado.manutencao,
-      );
+      acumularEquipe(mapa, null, "Manutenção", "manutencao", estado.manutencao);
     }
   }
 
@@ -684,23 +626,32 @@ export function exportarRelatorioEquipamentosEquipe(
   relatorio: RelatorioEquipamentosEquipe,
   formato: "xlsx" | "csv",
 ) {
-  criarPlanilhaRelatorio({
-    nomeAba: "Por equipe",
-    arquivo: `relatorio_equipamentos_por_equipe_${new Date().toISOString().slice(0, 10)}`,
-    colunas: ["EQUIPE", "TOTAL", "DISPONIVEL", "EM_USO", "MANUTENCAO", "ENCERRADO"],
-    linhas: relatorio.linhas.map((linha) => ({
-      EQUIPE: linha.equipeNome,
-      TOTAL: linha.total,
-      DISPONIVEL: linha.disponivel,
-      EM_USO: linha.emUso,
-      MANUTENCAO: linha.manutencao,
-      ENCERRADO: linha.encerrado,
-    })),
-    larguras: { EQUIPE: 34, TOTAL: 12, DISPONIVEL: 14, EM_USO: 12, MANUTENCAO: 14, ENCERRADO: 14 },
-    formatosNumero: ["TOTAL", "DISPONIVEL", "EM_USO", "MANUTENCAO", "ENCERRADO"],
-  }, formato);
+  criarPlanilhaRelatorio(
+    {
+      nomeAba: "Por equipe",
+      arquivo: `relatorio_equipamentos_por_equipe_${new Date().toISOString().slice(0, 10)}`,
+      colunas: ["EQUIPE", "TOTAL", "DISPONIVEL", "EM_USO", "MANUTENCAO", "ENCERRADO"],
+      linhas: relatorio.linhas.map((linha) => ({
+        EQUIPE: linha.equipeNome,
+        TOTAL: linha.total,
+        DISPONIVEL: linha.disponivel,
+        EM_USO: linha.emUso,
+        MANUTENCAO: linha.manutencao,
+        ENCERRADO: linha.encerrado,
+      })),
+      larguras: {
+        EQUIPE: 34,
+        TOTAL: 12,
+        DISPONIVEL: 14,
+        EM_USO: 12,
+        MANUTENCAO: 14,
+        ENCERRADO: 14,
+      },
+      formatosNumero: ["TOTAL", "DISPONIVEL", "EM_USO", "MANUTENCAO", "ENCERRADO"],
+    },
+    formato,
+  );
 }
-
 
 /* -------------------------------------------------------------------------- */
 /* Relatório Em Uso                                                           */
@@ -731,27 +682,17 @@ export async function consultarRelatorioEquipamentosEmUso(
 ): Promise<RelatorioEquipamentosEmUso> {
   const db = getDB();
 
-  const [estoques, equipamentos, categorias, funcionarios, equipes] =
-    await Promise.all([
-      db.estoque_equipamentos.where("projeto_id").equals(projetoId).toArray(),
-      db.equipamentos.where("projeto_id").equals(projetoId).toArray(),
-      db.categorias_equipamentos
-        .where("projeto_id")
-        .equals(projetoId)
-        .toArray(),
-      db.funcionarios.where("projeto_id").equals(projetoId).toArray(),
-      db.equipes.where("projeto_id").equals(projetoId).toArray(),
-    ]);
+  const [estoques, equipamentos, categorias, funcionarios, equipes] = await Promise.all([
+    db.estoque_equipamentos.where("projeto_id").equals(projetoId).toArray(),
+    db.equipamentos.where("projeto_id").equals(projetoId).toArray(),
+    db.categorias_equipamentos.where("projeto_id").equals(projetoId).toArray(),
+    db.funcionarios.where("projeto_id").equals(projetoId).toArray(),
+    db.equipes.where("projeto_id").equals(projetoId).toArray(),
+  ]);
 
-  const equipamentoPorId = new Map(
-    equipamentos.map((item) => [item.id, item]),
-  );
-  const categoriaPorId = new Map(
-    categorias.map((item) => [item.id, item]),
-  );
-  const funcionarioPorId = new Map(
-    funcionarios.map((item) => [item.id, item]),
-  );
+  const equipamentoPorId = new Map(equipamentos.map((item) => [item.id, item]));
+  const categoriaPorId = new Map(categorias.map((item) => [item.id, item]));
+  const funcionarioPorId = new Map(funcionarios.map((item) => [item.id, item]));
   const equipePorId = new Map(equipes.map((item) => [item.id, item]));
 
   const linhas: RelatorioEquipamentoEmUsoLinha[] = [];
@@ -760,10 +701,7 @@ export async function consultarRelatorioEquipamentosEmUso(
     const equipamento = equipamentoPorId.get(estoque.equipamento_id);
     if (!equipamento) continue;
 
-    const estado = await estadoEquipamentosRepo.calcular(
-      projetoId,
-      estoque.id,
-    );
+    const estado = await estadoEquipamentosRepo.calcular(projetoId, estoque.id);
 
     for (const [funcionarioId, quantidade] of estado.funcionarios) {
       if (quantidade <= 0) continue;
@@ -782,43 +720,27 @@ export async function consultarRelatorioEquipamentosEmUso(
           : undefined,
         quantidade,
         identificacao:
-          estoque.identificacao ||
-          estoque.patrimonio ||
-          estoque.serial ||
-          "Sem identificação",
+          estoque.identificacao || estoque.patrimonio || estoque.serial || "Sem identificação",
       });
     }
   }
 
   linhas.sort((a, b) => {
-    const equipamento = a.equipamento.nome.localeCompare(
-      b.equipamento.nome,
-      "pt-BR",
-    );
+    const equipamento = a.equipamento.nome.localeCompare(b.equipamento.nome, "pt-BR");
 
     if (equipamento !== 0) return equipamento;
 
-    return a.funcionario.nome.localeCompare(
-      b.funcionario.nome,
-      "pt-BR",
-    );
+    return a.funcionario.nome.localeCompare(b.funcionario.nome, "pt-BR");
   });
 
   return {
     projetoId,
     linhas,
     totalRegistros: linhas.length,
-    quantidade: linhas.reduce(
-      (total, linha) => total + linha.quantidade,
-      0,
-    ),
-    responsaveis: new Set(
-      linhas.map((linha) => linha.funcionario.id),
-    ).size,
+    quantidade: linhas.reduce((total, linha) => total + linha.quantidade, 0),
+    responsaveis: new Set(linhas.map((linha) => linha.funcionario.id)).size,
     equipes: new Set(
-      linhas
-        .map((linha) => linha.equipe?.id)
-        .filter((id): id is string => Boolean(id)),
+      linhas.map((linha) => linha.equipe?.id).filter((id): id is string => Boolean(id)),
     ).size,
   };
 }
@@ -827,24 +749,42 @@ export function exportarRelatorioEquipamentosEmUso(
   relatorio: RelatorioEquipamentosEmUso,
   formato: "xlsx" | "csv",
 ) {
-  criarPlanilhaRelatorio({
-    nomeAba: "Em uso",
-    arquivo: `relatorio_equipamentos_em_uso_${new Date().toISOString().slice(0, 10)}`,
-    colunas: ["EQUIPAMENTO", "CATEGORIA", "IDENTIFICACAO", "RESPONSAVEL", "EQUIPE", "QUANTIDADE", "OBSERVACOES"],
-    linhas: relatorio.linhas.map((linha) => ({
-      EQUIPAMENTO: linha.equipamento.nome,
-      CATEGORIA: linha.categoria?.nome ?? "—",
-      IDENTIFICACAO: linha.identificacao,
-      RESPONSAVEL: linha.funcionario.nome,
-      EQUIPE: linha.equipe?.nome ?? "Sem equipe",
-      QUANTIDADE: linha.quantidade,
-      OBSERVACOES: linha.estoque.observacoes ?? "",
-    })),
-    larguras: { EQUIPAMENTO: 32, CATEGORIA: 22, IDENTIFICACAO: 20, RESPONSAVEL: 32, EQUIPE: 28, QUANTIDADE: 12, OBSERVACOES: 42 },
-    formatosNumero: ["QUANTIDADE"],
-  }, formato);
+  criarPlanilhaRelatorio(
+    {
+      nomeAba: "Em uso",
+      arquivo: `relatorio_equipamentos_em_uso_${new Date().toISOString().slice(0, 10)}`,
+      colunas: [
+        "EQUIPAMENTO",
+        "CATEGORIA",
+        "IDENTIFICACAO",
+        "RESPONSAVEL",
+        "EQUIPE",
+        "QUANTIDADE",
+        "OBSERVACOES",
+      ],
+      linhas: relatorio.linhas.map((linha) => ({
+        EQUIPAMENTO: linha.equipamento.nome,
+        CATEGORIA: linha.categoria?.nome ?? "—",
+        IDENTIFICACAO: linha.identificacao,
+        RESPONSAVEL: linha.funcionario.nome,
+        EQUIPE: linha.equipe?.nome ?? "Sem equipe",
+        QUANTIDADE: linha.quantidade,
+        OBSERVACOES: linha.estoque.observacoes ?? "",
+      })),
+      larguras: {
+        EQUIPAMENTO: 32,
+        CATEGORIA: 22,
+        IDENTIFICACAO: 20,
+        RESPONSAVEL: 32,
+        EQUIPE: 28,
+        QUANTIDADE: 12,
+        OBSERVACOES: 42,
+      },
+      formatosNumero: ["QUANTIDADE"],
+    },
+    formato,
+  );
 }
-
 
 /* -------------------------------------------------------------------------- */
 /* Relatório Por responsável                                                  */
@@ -882,42 +822,26 @@ export async function consultarRelatorioEquipamentosPorResponsavel(
 ): Promise<RelatorioEquipamentosPorResponsavel> {
   const db = getDB();
 
-  const [estoques, equipamentos, categorias, funcionarios, equipes] =
-    await Promise.all([
-      db.estoque_equipamentos.where("projeto_id").equals(projetoId).toArray(),
-      db.equipamentos.where("projeto_id").equals(projetoId).toArray(),
-      db.categorias_equipamentos
-        .where("projeto_id")
-        .equals(projetoId)
-        .toArray(),
-      db.funcionarios.where("projeto_id").equals(projetoId).toArray(),
-      db.equipes.where("projeto_id").equals(projetoId).toArray(),
-    ]);
+  const [estoques, equipamentos, categorias, funcionarios, equipes] = await Promise.all([
+    db.estoque_equipamentos.where("projeto_id").equals(projetoId).toArray(),
+    db.equipamentos.where("projeto_id").equals(projetoId).toArray(),
+    db.categorias_equipamentos.where("projeto_id").equals(projetoId).toArray(),
+    db.funcionarios.where("projeto_id").equals(projetoId).toArray(),
+    db.equipes.where("projeto_id").equals(projetoId).toArray(),
+  ]);
 
-  const equipamentoPorId = new Map(
-    equipamentos.map((item) => [item.id, item]),
-  );
-  const categoriaPorId = new Map(
-    categorias.map((item) => [item.id, item]),
-  );
-  const funcionarioPorId = new Map(
-    funcionarios.map((item) => [item.id, item]),
-  );
+  const equipamentoPorId = new Map(equipamentos.map((item) => [item.id, item]));
+  const categoriaPorId = new Map(categorias.map((item) => [item.id, item]));
+  const funcionarioPorId = new Map(funcionarios.map((item) => [item.id, item]));
   const equipePorId = new Map(equipes.map((item) => [item.id, item]));
 
-  const porFuncionario = new Map<
-    string,
-    RelatorioResponsavelLinha
-  >();
+  const porFuncionario = new Map<string, RelatorioResponsavelLinha>();
 
   for (const estoque of estoques) {
     const equipamento = equipamentoPorId.get(estoque.equipamento_id);
     if (!equipamento) continue;
 
-    const estado = await estadoEquipamentosRepo.calcular(
-      projetoId,
-      estoque.id,
-    );
+    const estado = await estadoEquipamentosRepo.calcular(projetoId, estoque.id);
 
     for (const [funcionarioId, quantidade] of estado.funcionarios) {
       if (quantidade <= 0) continue;
@@ -936,10 +860,7 @@ export async function consultarRelatorioEquipamentosPorResponsavel(
           : undefined,
         quantidade,
         identificacao:
-          estoque.identificacao ||
-          estoque.patrimonio ||
-          estoque.serial ||
-          "Sem identificação",
+          estoque.identificacao || estoque.patrimonio || estoque.serial || "Sem identificação",
       };
 
       const existente = porFuncionario.get(funcionarioId);
@@ -966,39 +887,22 @@ export async function consultarRelatorioEquipamentosPorResponsavel(
 
   for (const linha of linhas) {
     linha.equipamentos.sort((a, b) => {
-      const equipamento = a.equipamento.nome.localeCompare(
-        b.equipamento.nome,
-        "pt-BR",
-      );
+      const equipamento = a.equipamento.nome.localeCompare(b.equipamento.nome, "pt-BR");
 
       if (equipamento !== 0) return equipamento;
 
-      return a.identificacao.localeCompare(
-        b.identificacao,
-        "pt-BR",
-      );
+      return a.identificacao.localeCompare(b.identificacao, "pt-BR");
     });
   }
 
-  linhas.sort((a, b) =>
-    a.funcionario.nome.localeCompare(
-      b.funcionario.nome,
-      "pt-BR",
-    ),
-  );
+  linhas.sort((a, b) => a.funcionario.nome.localeCompare(b.funcionario.nome, "pt-BR"));
 
   return {
     projetoId,
     linhas,
     totalResponsaveis: linhas.length,
-    totalRegistros: linhas.reduce(
-      (total, linha) => total + linha.registros,
-      0,
-    ),
-    quantidade: linhas.reduce(
-      (total, linha) => total + linha.quantidade,
-      0,
-    ),
+    totalRegistros: linhas.reduce((total, linha) => total + linha.registros, 0),
+    quantidade: linhas.reduce((total, linha) => total + linha.quantidade, 0),
   };
 }
 
@@ -1006,25 +910,47 @@ export function exportarRelatorioEquipamentosPorResponsavel(
   relatorio: RelatorioEquipamentosPorResponsavel,
   formato: "xlsx" | "csv",
 ) {
-  criarPlanilhaRelatorio({
-    nomeAba: "Por responsável",
-    arquivo: `relatorio_equipamentos_por_responsavel_${new Date().toISOString().slice(0, 10)}`,
-    colunas: ["RESPONSAVEL", "CPF", "EQUIPE", "EQUIPAMENTO", "CATEGORIA", "IDENTIFICACAO", "QUANTIDADE", "OBSERVACOES"],
-    linhas: relatorio.linhas.flatMap((responsavel) => responsavel.equipamentos.map((linha) => ({
-      RESPONSAVEL: linha.funcionario.nome,
-      CPF: formatarCpf(linha.funcionario.cpf) || "—",
-      EQUIPE: linha.equipe?.nome ?? "Sem equipe",
-      EQUIPAMENTO: linha.equipamento.nome,
-      CATEGORIA: linha.categoria?.nome ?? "—",
-      IDENTIFICACAO: linha.identificacao,
-      QUANTIDADE: linha.quantidade,
-      OBSERVACOES: linha.estoque.observacoes ?? "",
-    }))),
-    larguras: { RESPONSAVEL: 32, CPF: 18, EQUIPE: 28, EQUIPAMENTO: 32, CATEGORIA: 22, IDENTIFICACAO: 20, QUANTIDADE: 12, OBSERVACOES: 42 },
-    formatosNumero: ["QUANTIDADE"],
-  }, formato);
+  criarPlanilhaRelatorio(
+    {
+      nomeAba: "Por responsável",
+      arquivo: `relatorio_equipamentos_por_responsavel_${new Date().toISOString().slice(0, 10)}`,
+      colunas: [
+        "RESPONSAVEL",
+        "CPF",
+        "EQUIPE",
+        "EQUIPAMENTO",
+        "CATEGORIA",
+        "IDENTIFICACAO",
+        "QUANTIDADE",
+        "OBSERVACOES",
+      ],
+      linhas: relatorio.linhas.flatMap((responsavel) =>
+        responsavel.equipamentos.map((linha) => ({
+          RESPONSAVEL: linha.funcionario.nome,
+          CPF: formatarCpf(linha.funcionario.cpf) || "—",
+          EQUIPE: linha.equipe?.nome ?? "Sem equipe",
+          EQUIPAMENTO: linha.equipamento.nome,
+          CATEGORIA: linha.categoria?.nome ?? "—",
+          IDENTIFICACAO: linha.identificacao,
+          QUANTIDADE: linha.quantidade,
+          OBSERVACOES: linha.estoque.observacoes ?? "",
+        })),
+      ),
+      larguras: {
+        RESPONSAVEL: 32,
+        CPF: 18,
+        EQUIPE: 28,
+        EQUIPAMENTO: 32,
+        CATEGORIA: 22,
+        IDENTIFICACAO: 20,
+        QUANTIDADE: 12,
+        OBSERVACOES: 42,
+      },
+      formatosNumero: ["QUANTIDADE"],
+    },
+    formato,
+  );
 }
-
 
 /* -------------------------------------------------------------------------- */
 /* Relatório Disponibilidade                                                  */
@@ -1063,12 +989,8 @@ export async function consultarRelatorioEquipamentosDisponibilidade(
     db.categorias_equipamentos.where("projeto_id").equals(projetoId).toArray(),
   ]);
 
-  const equipamentoPorId = new Map(
-    equipamentos.map((item) => [item.id, item]),
-  );
-  const categoriaPorId = new Map(
-    categorias.map((item) => [item.id, item]),
-  );
+  const equipamentoPorId = new Map(equipamentos.map((item) => [item.id, item]));
+  const categoriaPorId = new Map(categorias.map((item) => [item.id, item]));
 
   const linhas: RelatorioDisponibilidadeLinha[] = [];
 
@@ -1076,10 +998,7 @@ export async function consultarRelatorioEquipamentosDisponibilidade(
     const equipamento = equipamentoPorId.get(estoque.equipamento_id);
     if (!equipamento) continue;
 
-    const estado = await estadoEquipamentosRepo.calcular(
-      projetoId,
-      estoque.id,
-    );
+    const estado = await estadoEquipamentosRepo.calcular(projetoId, estoque.id);
 
     if (estado.saldo <= 0 && estado.disponivel <= 0 && estado.apropriado <= 0) {
       continue;
@@ -1095,37 +1014,20 @@ export async function consultarRelatorioEquipamentosDisponibilidade(
       emUso: estado.apropriado,
       manutencao: estado.manutencao,
       identificacao:
-        estoque.identificacao ||
-        estoque.patrimonio ||
-        estoque.serial ||
-        "Sem identificação",
+        estoque.identificacao || estoque.patrimonio || estoque.serial || "Sem identificação",
     });
   }
 
-  linhas.sort((a, b) =>
-    a.equipamento.nome.localeCompare(b.equipamento.nome, "pt-BR"),
-  );
+  linhas.sort((a, b) => a.equipamento.nome.localeCompare(b.equipamento.nome, "pt-BR"));
 
   return {
     projetoId,
     linhas,
     totalEquipamentos: linhas.length,
-    quantidadeEstoque: linhas.reduce(
-      (total, linha) => total + linha.quantidadeEstoque,
-      0,
-    ),
-    disponivel: linhas.reduce(
-      (total, linha) => total + linha.disponivel,
-      0,
-    ),
-    emUso: linhas.reduce(
-      (total, linha) => total + linha.emUso,
-      0,
-    ),
-    manutencao: linhas.reduce(
-      (total, linha) => total + linha.manutencao,
-      0,
-    ),
+    quantidadeEstoque: linhas.reduce((total, linha) => total + linha.quantidadeEstoque, 0),
+    disponivel: linhas.reduce((total, linha) => total + linha.disponivel, 0),
+    emUso: linhas.reduce((total, linha) => total + linha.emUso, 0),
+    manutencao: linhas.reduce((total, linha) => total + linha.manutencao, 0),
   };
 }
 
@@ -1133,23 +1035,44 @@ export function exportarRelatorioEquipamentosDisponibilidade(
   relatorio: RelatorioEquipamentosDisponibilidade,
   formato: "xlsx" | "csv",
 ) {
-  criarPlanilhaRelatorio({
-    nomeAba: "Disponibilidade",
-    arquivo: `relatorio_equipamentos_disponibilidade_${new Date().toISOString().slice(0, 10)}`,
-    colunas: ["EQUIPAMENTO", "CATEGORIA", "IDENTIFICACAO", "ESTOQUE", "DISPONIVEL", "EM_USO", "MANUTENCAO", "OBSERVACOES"],
-    linhas: relatorio.linhas.map((linha) => ({
-      EQUIPAMENTO: linha.equipamento.nome,
-      CATEGORIA: linha.categoria?.nome ?? "—",
-      IDENTIFICACAO: linha.identificacao,
-      ESTOQUE: linha.quantidadeEstoque,
-      DISPONIVEL: linha.disponivel,
-      EM_USO: linha.emUso,
-      MANUTENCAO: linha.manutencao,
-      OBSERVACOES: linha.estoque.observacoes ?? "",
-    })),
-    larguras: { EQUIPAMENTO: 34, CATEGORIA: 22, IDENTIFICACAO: 20, ESTOQUE: 12, DISPONIVEL: 14, EM_USO: 12, MANUTENCAO: 14, OBSERVACOES: 42 },
-    formatosNumero: ["ESTOQUE", "DISPONIVEL", "EM_USO", "MANUTENCAO"],
-  }, formato);
+  criarPlanilhaRelatorio(
+    {
+      nomeAba: "Disponibilidade",
+      arquivo: `relatorio_equipamentos_disponibilidade_${new Date().toISOString().slice(0, 10)}`,
+      colunas: [
+        "EQUIPAMENTO",
+        "CATEGORIA",
+        "IDENTIFICACAO",
+        "ESTOQUE",
+        "DISPONIVEL",
+        "EM_USO",
+        "MANUTENCAO",
+        "OBSERVACOES",
+      ],
+      linhas: relatorio.linhas.map((linha) => ({
+        EQUIPAMENTO: linha.equipamento.nome,
+        CATEGORIA: linha.categoria?.nome ?? "—",
+        IDENTIFICACAO: linha.identificacao,
+        ESTOQUE: linha.quantidadeEstoque,
+        DISPONIVEL: linha.disponivel,
+        EM_USO: linha.emUso,
+        MANUTENCAO: linha.manutencao,
+        OBSERVACOES: linha.estoque.observacoes ?? "",
+      })),
+      larguras: {
+        EQUIPAMENTO: 34,
+        CATEGORIA: 22,
+        IDENTIFICACAO: 20,
+        ESTOQUE: 12,
+        DISPONIVEL: 14,
+        EM_USO: 12,
+        MANUTENCAO: 14,
+        OBSERVACOES: 42,
+      },
+      formatosNumero: ["ESTOQUE", "DISPONIVEL", "EM_USO", "MANUTENCAO"],
+    },
+    formato,
+  );
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1166,6 +1089,8 @@ export type RelatorioManutencaoLinha = {
   origem: "ALMOXARIFADO" | "FUNCIONARIO";
   funcionario: Funcionario | undefined;
   equipe: Equipe | undefined;
+  observacaoInicial: string | null;
+  observacaoManutencao: string | null;
 };
 
 export type RelatorioEquipamentosManutencao = {
@@ -1180,25 +1105,28 @@ export async function consultarRelatorioEquipamentosManutencao(
 ): Promise<RelatorioEquipamentosManutencao> {
   const db = getDB();
 
-  const [estoques, equipamentos, categorias, funcionarios, equipes] =
+  const [estoques, equipamentos, categorias, funcionarios, equipes, movimentacoes, manutencoes] =
     await Promise.all([
       db.estoque_equipamentos.where("projeto_id").equals(projetoId).toArray(),
       db.equipamentos.where("projeto_id").equals(projetoId).toArray(),
       db.categorias_equipamentos.where("projeto_id").equals(projetoId).toArray(),
       db.funcionarios.where("projeto_id").equals(projetoId).toArray(),
       db.equipes.where("projeto_id").equals(projetoId).toArray(),
+      db.movimentacoes_equipamentos.where("projeto_id").equals(projetoId).toArray(),
+      db.manutencoes_equipamentos.where("projeto_id").equals(projetoId).toArray(),
     ]);
 
-  const equipamentoPorId = new Map(
-    equipamentos.map((item) => [item.id, item]),
-  );
-  const categoriaPorId = new Map(
-    categorias.map((item) => [item.id, item]),
-  );
-  const funcionarioPorId = new Map(
-    funcionarios.map((item) => [item.id, item]),
-  );
+  const equipamentoPorId = new Map(equipamentos.map((item) => [item.id, item]));
+  const categoriaPorId = new Map(categorias.map((item) => [item.id, item]));
+  const funcionarioPorId = new Map(funcionarios.map((item) => [item.id, item]));
   const equipePorId = new Map(equipes.map((item) => [item.id, item]));
+  const movimentacaoPorId = new Map(movimentacoes.map((item) => [item.id, item]));
+  const manutencoesPorEstoque = new Map<string, typeof manutencoes>();
+  for (const manutencao of manutencoes) {
+    const anteriores = manutencoesPorEstoque.get(manutencao.estoque_equipamento_id) ?? [];
+    anteriores.push(manutencao);
+    manutencoesPorEstoque.set(manutencao.estoque_equipamento_id, anteriores);
+  }
 
   const linhas: RelatorioManutencaoLinha[] = [];
 
@@ -1206,12 +1134,36 @@ export async function consultarRelatorioEquipamentosManutencao(
     const equipamento = equipamentoPorId.get(estoque.equipamento_id);
     if (!equipamento) continue;
 
-    const estado = await estadoEquipamentosRepo.calcular(
-      projetoId,
-      estoque.id,
-    );
+    const estado = await estadoEquipamentosRepo.calcular(projetoId, estoque.id);
 
     if (estado.manutencao <= 0) continue;
+
+    const movimentosDoEstoque = movimentacoes
+      .filter((movimento) => movimento.estoque_equipamento_id === estoque.id)
+      .sort((a, b) =>
+        `${a.data}|${a.criado_em}|${a.id}`.localeCompare(`${b.data}|${b.criado_em}|${b.id}`),
+      );
+    const primeiraObservacao =
+      estoque.observacoes?.trim() ||
+      movimentosDoEstoque.find((movimento) => movimento.observacoes?.trim())?.observacoes?.trim() ||
+      null;
+    const ocorrenciaAberta = (manutencoesPorEstoque.get(estoque.id) ?? [])
+      .filter(
+        (item) =>
+          item.status_operacional === "AGUARDANDO_ENVIO" ||
+          item.status_operacional === "EM_MANUTENCAO",
+      )
+      .sort((a, b) => `${b.data_abertura}|${b.id}`.localeCompare(`${a.data_abertura}|${a.id}`))[0];
+    const movimentoSinalizacao = ocorrenciaAberta?.movimento_sinalizacao_id
+      ? movimentacaoPorId.get(ocorrenciaAberta.movimento_sinalizacao_id)
+      : [...movimentosDoEstoque]
+          .reverse()
+          .find(
+            (movimento) =>
+              movimento.tipo === "SINALIZAR_MANUTENCAO" || movimento.tipo === "MANUTENCAO",
+          );
+    const observacaoManutencao =
+      movimentoSinalizacao?.observacoes?.trim() || ocorrenciaAberta?.motivo?.trim() || null;
 
     linhas.push({
       estoqueId: estoque.id,
@@ -1220,31 +1172,25 @@ export async function consultarRelatorioEquipamentosManutencao(
       estoque,
       quantidade: estado.manutencao,
       identificacao:
-        estoque.identificacao ||
-        estoque.patrimonio ||
-        estoque.serial ||
-        "Sem identificação",
+        estoque.identificacao || estoque.patrimonio || estoque.serial || "Sem identificação",
       origem: estado.apropriado > 0 ? "FUNCIONARIO" : "ALMOXARIFADO",
       funcionario: undefined,
       equipe: undefined,
+      observacaoInicial: primeiraObservacao,
+      observacaoManutencao,
     });
   }
 
   // A origem física pode envolver mais de um funcionário. Para o relatório,
   // mantemos uma linha consolidada por estoque e identificamos a origem
   // predominantemente como funcionário quando há apropriação.
-  linhas.sort((a, b) =>
-    a.equipamento.nome.localeCompare(b.equipamento.nome, "pt-BR"),
-  );
+  linhas.sort((a, b) => a.equipamento.nome.localeCompare(b.equipamento.nome, "pt-BR"));
 
   return {
     projetoId,
     linhas,
     totalRegistros: linhas.length,
-    quantidade: linhas.reduce(
-      (total, linha) => total + linha.quantidade,
-      0,
-    ),
+    quantidade: linhas.reduce((total, linha) => total + linha.quantidade, 0),
   };
 }
 
@@ -1252,21 +1198,41 @@ export function exportarRelatorioEquipamentosManutencao(
   relatorio: RelatorioEquipamentosManutencao,
   formato: "xlsx" | "csv",
 ) {
-  criarPlanilhaRelatorio({
-    nomeAba: "Manutenção",
-    arquivo: `relatorio_equipamentos_manutencao_${new Date().toISOString().slice(0, 10)}`,
-    colunas: ["EQUIPAMENTO", "CATEGORIA", "IDENTIFICACAO", "QUANTIDADE", "ORIGEM", "OBSERVACOES"],
-    linhas: relatorio.linhas.map((linha) => ({
-      EQUIPAMENTO: linha.equipamento.nome,
-      CATEGORIA: linha.categoria?.nome ?? "—",
-      IDENTIFICACAO: linha.identificacao,
-      QUANTIDADE: linha.quantidade,
-      ORIGEM: linha.origem,
-      OBSERVACOES: linha.estoque.observacoes ?? "",
-    })),
-    larguras: { EQUIPAMENTO: 34, CATEGORIA: 22, IDENTIFICACAO: 20, QUANTIDADE: 12, ORIGEM: 28, OBSERVACOES: 48 },
-    formatosNumero: ["QUANTIDADE"],
-  }, formato);
+  criarPlanilhaRelatorio(
+    {
+      nomeAba: "Manutenção",
+      arquivo: `relatorio_equipamentos_manutencao_${new Date().toISOString().slice(0, 10)}`,
+      colunas: [
+        "EQUIPAMENTO",
+        "CATEGORIA",
+        "IDENTIFICACAO",
+        "QUANTIDADE",
+        "ORIGEM",
+        "OBSERVACAO_INICIAL",
+        "SINALIZACAO_MANUTENCAO",
+      ],
+      linhas: relatorio.linhas.map((linha) => ({
+        EQUIPAMENTO: linha.equipamento.nome,
+        CATEGORIA: linha.categoria?.nome ?? "—",
+        IDENTIFICACAO: linha.identificacao,
+        QUANTIDADE: linha.quantidade,
+        ORIGEM: linha.origem,
+        OBSERVACAO_INICIAL: linha.observacaoInicial ?? "",
+        SINALIZACAO_MANUTENCAO: linha.observacaoManutencao ?? "",
+      })),
+      larguras: {
+        EQUIPAMENTO: 34,
+        CATEGORIA: 22,
+        IDENTIFICACAO: 20,
+        QUANTIDADE: 12,
+        ORIGEM: 28,
+        OBSERVACAO_INICIAL: 42,
+        SINALIZACAO_MANUTENCAO: 52,
+      },
+      formatosNumero: ["QUANTIDADE"],
+    },
+    formato,
+  );
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1295,67 +1261,52 @@ export async function consultarRelatorioEquipamentosMovimentacoes(
 ): Promise<RelatorioEquipamentosMovimentacoes> {
   const db = getDB();
 
-  const [movimentacoes, estoques, equipamentos, funcionarios, equipes] =
-    await Promise.all([
-      db.movimentacoes_equipamentos
-        .where("projeto_id")
-        .equals(projetoId)
-        .toArray(),
-      db.estoque_equipamentos.where("projeto_id").equals(projetoId).toArray(),
-      db.equipamentos.where("projeto_id").equals(projetoId).toArray(),
-      db.funcionarios.where("projeto_id").equals(projetoId).toArray(),
-      db.equipes.where("projeto_id").equals(projetoId).toArray(),
-    ]);
+  const [movimentacoes, estoques, equipamentos, funcionarios, equipes] = await Promise.all([
+    db.movimentacoes_equipamentos.where("projeto_id").equals(projetoId).toArray(),
+    db.estoque_equipamentos.where("projeto_id").equals(projetoId).toArray(),
+    db.equipamentos.where("projeto_id").equals(projetoId).toArray(),
+    db.funcionarios.where("projeto_id").equals(projetoId).toArray(),
+    db.equipes.where("projeto_id").equals(projetoId).toArray(),
+  ]);
 
-  const estoquePorId = new Map(
-    estoques.map((item) => [item.id, item]),
-  );
-  const equipamentoPorId = new Map(
-    equipamentos.map((item) => [item.id, item]),
-  );
-  const funcionarioPorId = new Map(
-    funcionarios.map((item) => [item.id, item]),
-  );
+  const estoquePorId = new Map(estoques.map((item) => [item.id, item]));
+  const equipamentoPorId = new Map(equipamentos.map((item) => [item.id, item]));
+  const funcionarioPorId = new Map(funcionarios.map((item) => [item.id, item]));
   const equipePorId = new Map(equipes.map((item) => [item.id, item]));
 
-  const linhas: RelatorioMovimentacaoLinha[] = movimentacoes.map(
-    (movimentacao) => {
-      const estoque =
-        estoquePorId.get(movimentacao.estoque_equipamento_id);
+  const linhas: RelatorioMovimentacaoLinha[] = movimentacoes.map((movimentacao) => {
+    const estoque = estoquePorId.get(movimentacao.estoque_equipamento_id);
 
-      const funcionarioOrigem =
-        movimentacao.tipo_origem === "FUNCIONARIO"
-          ? funcionarioPorId.get(movimentacao.origem_id)
-          : undefined;
+    const funcionarioOrigem =
+      movimentacao.tipo_origem === "FUNCIONARIO"
+        ? funcionarioPorId.get(movimentacao.origem_id)
+        : undefined;
 
-      const funcionarioDestino =
-        movimentacao.tipo_destino === "FUNCIONARIO"
-          ? funcionarioPorId.get(movimentacao.destino_id)
-          : undefined;
+    const funcionarioDestino =
+      movimentacao.tipo_destino === "FUNCIONARIO"
+        ? funcionarioPorId.get(movimentacao.destino_id)
+        : undefined;
 
-      return {
-        movimentacao,
-        equipamento: estoque
-          ? equipamentoPorId.get(estoque.equipamento_id)
-          : undefined,
-        estoque,
-        funcionarioOrigem,
-        funcionarioDestino,
-        equipeOrigem:
-          movimentacao.tipo_origem === "EQUIPE"
-            ? equipePorId.get(movimentacao.origem_id)
-            : funcionarioOrigem?.equipe_raiz_id
-              ? equipePorId.get(funcionarioOrigem.equipe_raiz_id)
-              : undefined,
-        equipeDestino:
-          movimentacao.tipo_destino === "EQUIPE"
-            ? equipePorId.get(movimentacao.destino_id)
-            : funcionarioDestino?.equipe_raiz_id
-              ? equipePorId.get(funcionarioDestino.equipe_raiz_id)
-              : undefined,
-      };
-    },
-  );
+    return {
+      movimentacao,
+      equipamento: estoque ? equipamentoPorId.get(estoque.equipamento_id) : undefined,
+      estoque,
+      funcionarioOrigem,
+      funcionarioDestino,
+      equipeOrigem:
+        movimentacao.tipo_origem === "EQUIPE"
+          ? equipePorId.get(movimentacao.origem_id)
+          : funcionarioOrigem?.equipe_raiz_id
+            ? equipePorId.get(funcionarioOrigem.equipe_raiz_id)
+            : undefined,
+      equipeDestino:
+        movimentacao.tipo_destino === "EQUIPE"
+          ? equipePorId.get(movimentacao.destino_id)
+          : funcionarioDestino?.equipe_raiz_id
+            ? equipePorId.get(funcionarioDestino.equipe_raiz_id)
+            : undefined,
+    };
+  });
 
   linhas.sort((a, b) =>
     `${b.movimentacao.criado_em}|${b.movimentacao.id}`.localeCompare(
@@ -1367,10 +1318,7 @@ export async function consultarRelatorioEquipamentosMovimentacoes(
     projetoId,
     linhas,
     totalMovimentacoes: linhas.length,
-    quantidade: linhas.reduce(
-      (total, linha) => total + linha.movimentacao.quantidade,
-      0,
-    ),
+    quantidade: linhas.reduce((total, linha) => total + linha.movimentacao.quantidade, 0),
   };
 }
 
@@ -1378,26 +1326,58 @@ export function exportarRelatorioEquipamentosMovimentacoes(
   relatorio: RelatorioEquipamentosMovimentacoes,
   formato: "xlsx" | "csv",
 ) {
-  criarPlanilhaRelatorio({
-    nomeAba: "Movimentações",
-    arquivo: `relatorio_equipamentos_movimentacoes_${new Date().toISOString().slice(0, 10)}`,
-    colunas: ["DATA", "TIPO", "EQUIPAMENTO", "IDENTIFICACAO", "QUANTIDADE", "ORIGEM", "DESTINO", "DOCUMENTO", "OBSERVACOES"],
-    linhas: relatorio.linhas.map((linha) => ({
-      DATA: formatarDataHoraRelatorio(linha.movimentacao.criado_em),
-      TIPO: rotuloTipoMovimentacao(linha.movimentacao.tipo),
-      EQUIPAMENTO: linha.equipamento?.nome ?? "—",
-      IDENTIFICACAO: linha.estoque?.identificacao || linha.estoque?.patrimonio || linha.estoque?.serial || "Sem identificação",
-      QUANTIDADE: linha.movimentacao.quantidade,
-      ORIGEM: linha.funcionarioOrigem?.nome || linha.equipeOrigem?.nome || linha.movimentacao.tipo_origem,
-      DESTINO: linha.funcionarioDestino?.nome || linha.equipeDestino?.nome || linha.movimentacao.tipo_destino,
-      DOCUMENTO: linha.estoque?.referencia_documento ?? "",
-      OBSERVACOES: linha.movimentacao.observacoes ?? "",
-    })),
-    larguras: { DATA: 14, TIPO: 24, EQUIPAMENTO: 32, IDENTIFICACAO: 20, QUANTIDADE: 12, ORIGEM: 30, DESTINO: 30, DOCUMENTO: 22, OBSERVACOES: 48 },
-    formatosNumero: ["QUANTIDADE"],
-  }, formato);
+  criarPlanilhaRelatorio(
+    {
+      nomeAba: "Movimentações",
+      arquivo: `relatorio_equipamentos_movimentacoes_${new Date().toISOString().slice(0, 10)}`,
+      colunas: [
+        "DATA",
+        "TIPO",
+        "EQUIPAMENTO",
+        "IDENTIFICACAO",
+        "QUANTIDADE",
+        "ORIGEM",
+        "DESTINO",
+        "DOCUMENTO",
+        "OBSERVACOES",
+      ],
+      linhas: relatorio.linhas.map((linha) => ({
+        DATA: formatarDataHoraRelatorio(linha.movimentacao.criado_em),
+        TIPO: rotuloTipoMovimentacao(linha.movimentacao.tipo),
+        EQUIPAMENTO: linha.equipamento?.nome ?? "—",
+        IDENTIFICACAO:
+          linha.estoque?.identificacao ||
+          linha.estoque?.patrimonio ||
+          linha.estoque?.serial ||
+          "Sem identificação",
+        QUANTIDADE: linha.movimentacao.quantidade,
+        ORIGEM:
+          linha.funcionarioOrigem?.nome ||
+          linha.equipeOrigem?.nome ||
+          linha.movimentacao.tipo_origem,
+        DESTINO:
+          linha.funcionarioDestino?.nome ||
+          linha.equipeDestino?.nome ||
+          linha.movimentacao.tipo_destino,
+        DOCUMENTO: linha.estoque?.referencia_documento ?? "",
+        OBSERVACOES: linha.movimentacao.observacoes ?? "",
+      })),
+      larguras: {
+        DATA: 14,
+        TIPO: 24,
+        EQUIPAMENTO: 32,
+        IDENTIFICACAO: 20,
+        QUANTIDADE: 12,
+        ORIGEM: 30,
+        DESTINO: 30,
+        DOCUMENTO: 22,
+        OBSERVACOES: 48,
+      },
+      formatosNumero: ["QUANTIDADE"],
+    },
+    formato,
+  );
 }
-
 
 /* -------------------------------------------------------------------------- */
 /* Impressão / PDF                                                            */
@@ -1436,21 +1416,31 @@ function imprimirTabelaRelatorioEquipamentos(
     .join("");
 
   const linhasHtml = linhas.length
-    ? linhas.map((linha, indice) => `
+    ? linhas
+        .map(
+          (linha, indice) => `
         <tr class="${indice % 2 === 1 ? "alt" : ""}">
-          ${linha.map((valor, coluna) => {
-            const numero = typeof valor === "number";
-            return `<td class="${numero ? "num" : ""}">${escaparHtmlRelatorio(valor)}</td>`;
-          }).join("")}
-        </tr>`).join("")
+          ${linha
+            .map((valor, coluna) => {
+              const numero = typeof valor === "number";
+              return `<td class="${numero ? "num" : ""}">${escaparHtmlRelatorio(valor)}</td>`;
+            })
+            .join("")}
+        </tr>`,
+        )
+        .join("")
     : `<tr><td class="empty" colspan="${cabecalhos.length}">Nenhum registro encontrado.</td></tr>`;
 
   const cardsHtml = resumo.length
-    ? `<section class="summary">${resumo.map((item) => `
+    ? `<section class="summary">${resumo
+        .map(
+          (item) => `
         <div class="summary-card">
           <span>${escaparHtmlRelatorio(item.label)}</span>
           <strong>${escaparHtmlRelatorio(item.valor)}</strong>
-        </div>`).join("")}</section>`
+        </div>`,
+        )
+        .join("")}</section>`
     : "";
 
   janela.document.write(`<!doctype html>
@@ -1529,11 +1519,35 @@ export function imprimirRelatorioEquipamentosSituacao(
   imprimirTabelaRelatorioEquipamentos(
     "Equipamentos por situação",
     projetoNome,
-    ["Equipamento", "Categoria", "Identificação", "Localização / Responsável", "Situação", "Saldo", "Disponível", "Em uso", "Manutenção", "Observações"],
-    linhas.map((linha) => [linha.equipamento.nome, linha.categoria?.nome ?? "—", linha.estoque.identificacao || linha.estoque.patrimonio || linha.estoque.serial || "—", localizacaoLinha(linha), situacaoLabel(linha.situacao), linha.estado.saldo, linha.estado.disponivel, linha.estado.apropriado, linha.estado.manutencao, linha.estoque.observacoes ?? ""]),
     [
-      { label: "Total", valor: resumo.total }, { label: "Disponível", valor: resumo.disponivel },
-      { label: "Em uso", valor: resumo.emUso }, { label: "Manutenção", valor: resumo.manutencao },
+      "Equipamento",
+      "Categoria",
+      "Identificação",
+      "Localização / Responsável",
+      "Situação",
+      "Saldo",
+      "Disponível",
+      "Em uso",
+      "Manutenção",
+      "Observações",
+    ],
+    linhas.map((linha) => [
+      linha.equipamento.nome,
+      linha.categoria?.nome ?? "—",
+      linha.estoque.identificacao || linha.estoque.patrimonio || linha.estoque.serial || "—",
+      localizacaoLinha(linha),
+      situacaoLabel(linha.situacao),
+      linha.estado.saldo,
+      linha.estado.disponivel,
+      linha.estado.apropriado,
+      linha.estado.manutencao,
+      linha.estoque.observacoes ?? "",
+    ]),
+    [
+      { label: "Total", valor: resumo.total },
+      { label: "Disponível", valor: resumo.disponivel },
+      { label: "Em uso", valor: resumo.emUso },
+      { label: "Manutenção", valor: resumo.manutencao },
       { label: "Encerrado", valor: resumo.encerrado },
     ],
   );
@@ -1547,10 +1561,19 @@ export function imprimirRelatorioEquipamentosEquipe(
     "Equipamentos por equipe",
     projetoNome,
     ["Equipe", "Total", "Disponível", "Em uso", "Manutenção", "Encerrado"],
-    relatorio.linhas.map((linha) => [linha.equipeNome, linha.total, linha.disponivel, linha.emUso, linha.manutencao, linha.encerrado]),
+    relatorio.linhas.map((linha) => [
+      linha.equipeNome,
+      linha.total,
+      linha.disponivel,
+      linha.emUso,
+      linha.manutencao,
+      linha.encerrado,
+    ]),
     [
-      { label: "Total", valor: relatorio.resumo.total }, { label: "Disponível", valor: relatorio.resumo.disponivel },
-      { label: "Em uso", valor: relatorio.resumo.emUso }, { label: "Manutenção", valor: relatorio.resumo.manutencao },
+      { label: "Total", valor: relatorio.resumo.total },
+      { label: "Disponível", valor: relatorio.resumo.disponivel },
+      { label: "Em uso", valor: relatorio.resumo.emUso },
+      { label: "Manutenção", valor: relatorio.resumo.manutencao },
       { label: "Encerrado", valor: relatorio.resumo.encerrado },
     ],
   );
@@ -1563,11 +1586,29 @@ export function imprimirRelatorioEquipamentosEmUso(
   imprimirTabelaRelatorioEquipamentos(
     "Equipamentos em uso",
     projetoNome,
-    ["Equipamento", "Categoria", "Identificação", "Responsável", "Equipe", "Quantidade", "Observações"],
-    relatorio.linhas.map((linha) => [linha.equipamento.nome, linha.categoria?.nome ?? "—", linha.identificacao, linha.funcionario.nome, linha.equipe?.nome ?? "Sem equipe", linha.quantidade, linha.estoque.observacoes ?? ""]),
     [
-      { label: "Registros", valor: relatorio.totalRegistros }, { label: "Quantidade", valor: relatorio.quantidade },
-      { label: "Responsáveis", valor: relatorio.responsaveis }, { label: "Equipes", valor: relatorio.equipes },
+      "Equipamento",
+      "Categoria",
+      "Identificação",
+      "Responsável",
+      "Equipe",
+      "Quantidade",
+      "Observações",
+    ],
+    relatorio.linhas.map((linha) => [
+      linha.equipamento.nome,
+      linha.categoria?.nome ?? "—",
+      linha.identificacao,
+      linha.funcionario.nome,
+      linha.equipe?.nome ?? "Sem equipe",
+      linha.quantidade,
+      linha.estoque.observacoes ?? "",
+    ]),
+    [
+      { label: "Registros", valor: relatorio.totalRegistros },
+      { label: "Quantidade", valor: relatorio.quantidade },
+      { label: "Responsáveis", valor: relatorio.responsaveis },
+      { label: "Equipes", valor: relatorio.equipes },
     ],
   );
 }
@@ -1579,10 +1620,31 @@ export function imprimirRelatorioEquipamentosPorResponsavel(
   imprimirTabelaRelatorioEquipamentos(
     "Equipamentos por responsável",
     projetoNome,
-    ["Responsável", "CPF", "Equipe", "Equipamento", "Categoria", "Identificação", "Quantidade", "Observações"],
-    relatorio.linhas.flatMap((responsavel) => responsavel.equipamentos.map((linha) => [responsavel.funcionario.nome, formatarCpf(responsavel.funcionario.cpf) || "—", responsavel.equipe?.nome ?? "Sem equipe", linha.equipamento.nome, linha.categoria?.nome ?? "—", linha.identificacao, linha.quantidade, linha.estoque.observacoes ?? ""])),
     [
-      { label: "Responsáveis", valor: relatorio.totalResponsaveis }, { label: "Registros", valor: relatorio.totalRegistros },
+      "Responsável",
+      "CPF",
+      "Equipe",
+      "Equipamento",
+      "Categoria",
+      "Identificação",
+      "Quantidade",
+      "Observações",
+    ],
+    relatorio.linhas.flatMap((responsavel) =>
+      responsavel.equipamentos.map((linha) => [
+        responsavel.funcionario.nome,
+        formatarCpf(responsavel.funcionario.cpf) || "—",
+        responsavel.equipe?.nome ?? "Sem equipe",
+        linha.equipamento.nome,
+        linha.categoria?.nome ?? "—",
+        linha.identificacao,
+        linha.quantidade,
+        linha.estoque.observacoes ?? "",
+      ]),
+    ),
+    [
+      { label: "Responsáveis", valor: relatorio.totalResponsaveis },
+      { label: "Registros", valor: relatorio.totalRegistros },
       { label: "Quantidade", valor: relatorio.quantidade },
     ],
   );
@@ -1595,11 +1657,31 @@ export function imprimirRelatorioEquipamentosDisponibilidade(
   imprimirTabelaRelatorioEquipamentos(
     "Disponibilidade de equipamentos",
     projetoNome,
-    ["Equipamento", "Categoria", "Identificação", "Estoque", "Disponível", "Em uso", "Manutenção", "Observações"],
-    relatorio.linhas.map((linha) => [linha.equipamento.nome, linha.categoria?.nome ?? "—", linha.identificacao, linha.quantidadeEstoque, linha.disponivel, linha.emUso, linha.manutencao, linha.estoque.observacoes ?? ""]),
     [
-      { label: "Equipamentos", valor: relatorio.totalEquipamentos }, { label: "Estoque", valor: relatorio.quantidadeEstoque },
-      { label: "Disponível", valor: relatorio.disponivel }, { label: "Em uso", valor: relatorio.emUso },
+      "Equipamento",
+      "Categoria",
+      "Identificação",
+      "Estoque",
+      "Disponível",
+      "Em uso",
+      "Manutenção",
+      "Observações",
+    ],
+    relatorio.linhas.map((linha) => [
+      linha.equipamento.nome,
+      linha.categoria?.nome ?? "—",
+      linha.identificacao,
+      linha.quantidadeEstoque,
+      linha.disponivel,
+      linha.emUso,
+      linha.manutencao,
+      linha.estoque.observacoes ?? "",
+    ]),
+    [
+      { label: "Equipamentos", valor: relatorio.totalEquipamentos },
+      { label: "Estoque", valor: relatorio.quantidadeEstoque },
+      { label: "Disponível", valor: relatorio.disponivel },
+      { label: "Em uso", valor: relatorio.emUso },
       { label: "Manutenção", valor: relatorio.manutencao },
     ],
   );
@@ -1613,9 +1695,17 @@ export function imprimirRelatorioEquipamentosManutencao(
     "Equipamentos em manutenção",
     projetoNome,
     ["Equipamento", "Categoria", "Identificação", "Quantidade", "Origem", "Observações"],
-    relatorio.linhas.map((linha) => [linha.equipamento.nome, linha.categoria?.nome ?? "—", linha.identificacao, linha.quantidade, linha.origem, linha.estoque.observacoes ?? ""]),
+    relatorio.linhas.map((linha) => [
+      linha.equipamento.nome,
+      linha.categoria?.nome ?? "—",
+      linha.identificacao,
+      linha.quantidade,
+      linha.origem,
+      linha.estoque.observacoes ?? "",
+    ]),
     [
-      { label: "Registros", valor: relatorio.totalRegistros }, { label: "Quantidade", valor: relatorio.quantidade },
+      { label: "Registros", valor: relatorio.totalRegistros },
+      { label: "Quantidade", valor: relatorio.quantidade },
     ],
   );
 }
@@ -1627,16 +1717,36 @@ export function imprimirRelatorioEquipamentosMovimentacoes(
   imprimirTabelaRelatorioEquipamentos(
     "Movimentações de equipamentos",
     projetoNome,
-    ["Data", "Tipo", "Equipamento", "Identificação", "Origem", "Destino", "Quantidade", "Documento", "Observações"],
+    [
+      "Data",
+      "Tipo",
+      "Equipamento",
+      "Identificação",
+      "Origem",
+      "Destino",
+      "Quantidade",
+      "Documento",
+      "Observações",
+    ],
     relatorio.linhas.map((linha) => [
-      formatarDataHoraRelatorio(linha.movimentacao.criado_em), rotuloTipoMovimentacao(linha.movimentacao.tipo), linha.equipamento?.nome ?? "—",
-      linha.estoque?.identificacao || linha.estoque?.patrimonio || linha.estoque?.serial || "Sem identificação",
+      formatarDataHoraRelatorio(linha.movimentacao.criado_em),
+      rotuloTipoMovimentacao(linha.movimentacao.tipo),
+      linha.equipamento?.nome ?? "—",
+      linha.estoque?.identificacao ||
+        linha.estoque?.patrimonio ||
+        linha.estoque?.serial ||
+        "Sem identificação",
       linha.funcionarioOrigem?.nome || linha.equipeOrigem?.nome || linha.movimentacao.tipo_origem,
-      linha.funcionarioDestino?.nome || linha.equipeDestino?.nome || linha.movimentacao.tipo_destino,
-      linha.movimentacao.quantidade, linha.estoque?.referencia_documento ?? "", linha.movimentacao.observacoes ?? "",
+      linha.funcionarioDestino?.nome ||
+        linha.equipeDestino?.nome ||
+        linha.movimentacao.tipo_destino,
+      linha.movimentacao.quantidade,
+      linha.estoque?.referencia_documento ?? "",
+      linha.movimentacao.observacoes ?? "",
     ]),
     [
-      { label: "Movimentações", valor: relatorio.totalMovimentacoes }, { label: "Quantidade", valor: relatorio.quantidade },
+      { label: "Movimentações", valor: relatorio.totalMovimentacoes },
+      { label: "Quantidade", valor: relatorio.quantidade },
     ],
   );
 }
@@ -1662,10 +1772,7 @@ export function imprimirRelatorioEquipamentosEncerrados(
     linhas.map((linha) => [
       linha.equipamento.nome,
       linha.categoria?.nome ?? "—",
-      linha.estoque.identificacao ||
-        linha.estoque.patrimonio ||
-        linha.estoque.serial ||
-        "—",
+      linha.estoque.identificacao || linha.estoque.patrimonio || linha.estoque.serial || "—",
       linha.empresa?.nome ?? "—",
       motivoEncerramentoLabel(linha.motivo),
       linha.quantidadeOriginal,
@@ -1677,26 +1784,16 @@ export function imprimirRelatorioEquipamentosEncerrados(
       { label: "Registros", valor: linhas.length },
       {
         label: "Quantidade encerrada",
-        valor: linhas.reduce(
-          (total, linha) => total + linha.quantidadeOriginal,
-          0,
-        ),
+        valor: linhas.reduce((total, linha) => total + linha.quantidadeOriginal, 0),
       },
       {
         label: "Baixado",
-        valor: linhas.reduce(
-          (total, linha) => total + linha.baixado,
-          0,
-        ),
+        valor: linhas.reduce((total, linha) => total + linha.baixado, 0),
       },
       {
         label: "Devolvido",
-        valor: linhas.reduce(
-          (total, linha) => total + linha.devolvido,
-          0,
-        ),
+        valor: linhas.reduce((total, linha) => total + linha.devolvido, 0),
       },
     ],
   );
 }
-
