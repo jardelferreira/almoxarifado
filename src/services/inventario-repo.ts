@@ -177,7 +177,7 @@ export const inventarioRepo = {
   async adicionarParticipante(inventarioId: string, funcionarioId: string, adicionadoPorId?: string | null) {
     const db = getDB();
     const agora = new Date().toISOString();
-    return db.transaction("rw", db.inventarios, async () => {
+    return db.transaction("rw", db.inventarios, db.funcionarios, async () => {
       const inventario = await db.inventarios.get(inventarioId);
       if (!inventario || inventario.status !== "ABERTO") throw new Error("Somente inventários abertos podem receber participantes.");
       const funcionario = await db.funcionarios.get(funcionarioId);
