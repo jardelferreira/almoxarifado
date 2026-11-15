@@ -182,6 +182,17 @@ export class AlmoxarifadoDB extends Dexie {
       funcionarios:
         "id, projeto_id, nome, matricula, cpf, empresa_id, encarregado_id, equipe_raiz_id, status, [projeto_id+cpf]",
     });
+
+    // Reforça a migração das stores do inventário para bancos legados que
+    // foram abertos antes da cadeia histórica de versões. A alteração é
+    // aditiva: preserva os registros e apenas garante as stores/índices
+    // necessários ao módulo colaborativo.
+    this.version(23).stores({
+      inventarios:
+        "id, projeto_id, equipe_id, status, data_abertura, data_encerramento, responsavel_id",
+      inventario_itens:
+        "id, inventario_id, produto_id, equipe_id, quantidade_sistema, quantidade_contada, [inventario_id+produto_id+equipe_id]",
+    });
   }
 }
 
