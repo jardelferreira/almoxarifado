@@ -11,6 +11,7 @@ import {
   Cloud,
   Clock3,
   Copy,
+  Download,
   History,
   ListFilter,
   Link2,
