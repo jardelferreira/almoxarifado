@@ -38,6 +38,8 @@ export interface PainelFuncionarioDados {
 
 export interface RegistroPublicacaoFuncionario {
   cpf_hash: string;
+  /** Assinatura estável dos equipamentos e materiais da ficha, sem o timestamp da publicação. */
+  conteudo_hash?: string;
   pin_hash?: string | null;
   pin_salt?: string | null;
   pin_iteracoes?: number | null;

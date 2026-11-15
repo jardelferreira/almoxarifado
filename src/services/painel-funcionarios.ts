@@ -166,8 +166,12 @@ export async function montarPublicacaoPainelFuncionarios(
       credencialHash,
       dados,
     );
+    const conteudoHash = await sha256(
+      JSON.stringify({ ...dados, atualizado_em: null }),
+    );
     registros.push({
       cpf_hash: cpfDigest.hexadecimal,
+      conteudo_hash: conteudoHash.hexadecimal,
       pin_hash: pinExiste ? (funcionario.pin_hash ?? null) : null,
       pin_salt: pinExiste ? (funcionario.pin_salt ?? null) : null,
       pin_iteracoes: pinExiste ? (funcionario.pin_iteracoes ?? null) : null,

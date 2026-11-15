@@ -43,6 +43,8 @@ function validarPublicacao(publicacao: PublicacaoPainelFuncionarios): Publicacao
       (registro.protecao !== "PIN" && registro.protecao !== "CPF") ||
       typeof registro.iv !== "string" ||
       typeof registro.dados !== "string" ||
+      typeof registro.conteudo_hash !== "string" ||
+      !/^[a-f0-9]{64}$/.test(registro.conteudo_hash) ||
       (registro.protecao === "PIN" &&
         (typeof registro.pin_hash !== "string" ||
           typeof registro.pin_salt !== "string" ||
@@ -68,6 +70,20 @@ export const publicarPainelFuncionariosNuvem = createServerFn({ method: "POST" }
       throw new Error("A publicação não pertence ao projeto informado.");
 
     const publicacaoId = crypto.randomUUID();
+    const anteriores = await Promise.all(
+      data.publicacao.funcionarios.map(async (registro) => {
+        const objeto = await env.ALMOXARIFADO_BUCKET.get(
+          chaveRegistro(data.projetoId, registro.cpf_hash),
+        );
+        if (!objeto) return [registro.cpf_hash, null] as const;
+        const anterior = (await objeto.json()) as Partial<RegistroPublicacaoFuncionario>;
+        return [registro.cpf_hash, anterior.conteudo_hash ?? null] as const;
+      }),
+    );
+    const hashAnterior = new Map(anteriores);
+    const cpfHashesAlterados = data.publicacao.funcionarios
+      .filter((registro) => hashAnterior.get(registro.cpf_hash) !== registro.conteudo_hash)
+      .map((registro) => registro.cpf_hash);
 
     await Promise.all(
       data.publicacao.funcionarios.map((registro) => {
@@ -113,7 +129,7 @@ export const publicarPainelFuncionariosNuvem = createServerFn({ method: "POST" }
           url: `/consulta-funcionario?projeto=${encodeURIComponent(data.projetoId)}`,
           tag: `ficha-${data.projetoId}`,
         },
-        data.publicacao.funcionarios.map((registro) => registro.cpf_hash),
+        cpfHashesAlterados,
       );
       return {
         publicadoEm: data.publicacao.atualizado_em,
