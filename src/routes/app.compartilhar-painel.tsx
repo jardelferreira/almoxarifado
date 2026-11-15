@@ -50,6 +50,10 @@ function chaveSessao(projetoId: string): string {
   return `almox.painel.senha.${projetoId}`;
 }
 
+function chaveCompartilhamentos(projetoId: string): string {
+  return `almox.painel.compartilhamentos.${projetoId}`;
+}
+
 export function CompartilharPainelPage() {
   const [projetoId] = useProjetoAtivoId();
   const [senha, setSenha] = useState("");
@@ -57,6 +61,8 @@ export function CompartilharPainelPage() {
   const [compartilhamento, setCompartilhamento] = useState<Compartilhamento | null>(null);
   const [compartilhamentoEstoque, setCompartilhamentoEstoque] =
     useState<CompartilhamentoEstoque | null>(null);
+  const [mostrarAutorizacao, setMostrarAutorizacao] = useState(false);
+  const [sessaoExpiraEm, setSessaoExpiraEm] = useState<number | null>(null);
 
   useEffect(() => {
     if (!projetoId) return;
@@ -66,6 +72,7 @@ export function CompartilharPainelPage() {
       const sessao = JSON.parse(salvo) as { senha?: string; expiraEm?: number };
       if (sessao.senha && sessao.expiraEm && sessao.expiraEm > Date.now()) {
         setSenha(sessao.senha);
+        setSessaoExpiraEm(sessao.expiraEm);
       } else {
         sessionStorage.removeItem(chaveSessao(projetoId));
       }
@@ -74,26 +81,94 @@ export function CompartilharPainelPage() {
     }
   }, [projetoId]);
 
+  useEffect(() => {
+    if (!projetoId) return;
+    const carregar = async () => {
+      try {
+        const salvo = localStorage.getItem(chaveCompartilhamentos(projetoId));
+        if (!salvo) return;
+        const armazenado = JSON.parse(salvo) as {
+          funcionario?: Omit<Compartilhamento, "qrDataUrl">;
+          estoque?: Omit<CompartilhamentoEstoque, "qrDataUrl">;
+        };
+        if (armazenado.funcionario?.url) {
+          const qrDataUrl = await gerarQr(armazenado.funcionario.url);
+          setCompartilhamento({ ...armazenado.funcionario, qrDataUrl });
+        }
+        if (armazenado.estoque?.url) {
+          const qrDataUrl = await gerarQr(armazenado.estoque.url);
+          setCompartilhamentoEstoque({ ...armazenado.estoque, qrDataUrl });
+        }
+      } catch {
+        localStorage.removeItem(chaveCompartilhamentos(projetoId));
+      }
+    };
+    void carregar();
+  }, [projetoId]);
+
   const guardarSessao = (senhaAtual: string) => {
     if (!projetoId) return;
     sessionStorage.setItem(
       chaveSessao(projetoId),
       JSON.stringify({ senha: senhaAtual, expiraEm: Date.now() + DURACAO_SESSAO_MS }),
     );
+    setSessaoExpiraEm(Date.now() + DURACAO_SESSAO_MS);
+    setMostrarAutorizacao(false);
+  };
+
+  const obterSenhaAutorizada = (): string | null => {
+    if (!projetoId) return null;
+    try {
+      const salvo = sessionStorage.getItem(chaveSessao(projetoId));
+      if (salvo) {
+        const sessao = JSON.parse(salvo) as { senha?: string; expiraEm?: number };
+        if (sessao.senha && sessao.expiraEm && sessao.expiraEm > Date.now()) {
+          setSenha(sessao.senha);
+          setSessaoExpiraEm(sessao.expiraEm);
+          return sessao.senha;
+        }
+      }
+    } catch {
+      // O formulário abaixo permite renovar a sessão sem bloquear a tela.
+    }
+    setMostrarAutorizacao(true);
+    toast.info("Informe a senha somente para sincronizar os dados.");
+    return null;
+  };
+
+  const salvarCompartilhamentos = (dados: {
+    funcionario?: Compartilhamento;
+    estoque?: CompartilhamentoEstoque;
+  }) => {
+    if (!projetoId) return;
+    const atual = localStorage.getItem(chaveCompartilhamentos(projetoId));
+    const anterior = atual ? (JSON.parse(atual) as Record<string, unknown>) : {};
+    localStorage.setItem(
+      chaveCompartilhamentos(projetoId),
+      JSON.stringify({
+        ...anterior,
+        ...(dados.funcionario
+          ? { funcionario: (({ qrDataUrl: _qr, ...rest }) => rest)(dados.funcionario) }
+          : {}),
+        ...(dados.estoque
+          ? { estoque: (({ qrDataUrl: _qr, ...rest }) => rest)(dados.estoque) }
+          : {}),
+      }),
+    );
   };
 
   const publicar = async () => {
-    if (!projetoId || senha.length < 16) {
-      toast.error("Informe a senha do projeto com pelo menos 16 caracteres.");
+    const senhaAutorizada = obterSenhaAutorizada();
+    if (!projetoId || !senhaAutorizada) {
       return;
     }
     try {
       setPublicando(true);
       const publicacao = await montarPublicacaoPainelFuncionarios(projetoId);
       const resultado = await publicarPainelFuncionariosNuvem({
-        data: { projetoId, senha, publicacao },
+        data: { projetoId, senha: senhaAutorizada, publicacao },
       });
-      guardarSessao(senha);
+      guardarSessao(senhaAutorizada);
       const url = `${window.location.origin}/consulta-funcionario?projeto=${encodeURIComponent(projetoId)}`;
       const qrDataUrl = await QRCode.toDataURL(url, {
         width: 900,
@@ -107,6 +182,14 @@ export function CompartilharPainelPage() {
         publicadoEm: resultado.publicadoEm,
         funcionarios: resultado.funcionariosPublicados,
       });
+      salvarCompartilhamentos({
+        funcionario: {
+          url,
+          qrDataUrl,
+          publicadoEm: resultado.publicadoEm,
+          funcionarios: resultado.funcionariosPublicados,
+        },
+      });
       toast.success(`${resultado.funcionariosPublicados} ficha(s) publicada(s) na Cloudflare.`);
     } catch (error) {
       toast.error(
@@ -118,17 +201,17 @@ export function CompartilharPainelPage() {
   };
 
   const publicarEstoque = async () => {
-    if (!projetoId || senha.length < 16) {
-      toast.error("Informe a senha do projeto com pelo menos 16 caracteres.");
+    const senhaAutorizada = obterSenhaAutorizada();
+    if (!projetoId || !senhaAutorizada) {
       return;
     }
     try {
       setPublicando(true);
       const publicacao = await montarPublicacaoPainelEstoque(projetoId);
       const resultado = await publicarPainelEstoqueNuvem({
-        data: { projetoId, senha, publicacao },
+        data: { projetoId, senha: senhaAutorizada, publicacao },
       });
-      guardarSessao(senha);
+      guardarSessao(senhaAutorizada);
       const url = `${window.location.origin}/consulta-estoque?projeto=${encodeURIComponent(projetoId)}&acesso=${resultado.token}`;
       const qrDataUrl = await QRCode.toDataURL(url, {
         width: 900,
@@ -141,6 +224,14 @@ export function CompartilharPainelPage() {
         qrDataUrl,
         publicadoEm: resultado.publicadoEm,
         itens: resultado.itensPublicados,
+      });
+      salvarCompartilhamentos({
+        estoque: {
+          url,
+          qrDataUrl,
+          publicadoEm: resultado.publicadoEm,
+          itens: resultado.itensPublicados,
+        },
       });
       toast.success(`${resultado.itensPublicados} posição(ões) de estoque publicada(s).`);
     } catch (error) {
@@ -258,33 +349,64 @@ export function CompartilharPainelPage() {
           </div>
         </CardHeader>
         <CardContent className="space-y-4 p-4">
-          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
-            <label className="space-y-2">
-              <span className="flex items-center gap-2 text-sm font-medium">
-                <LockKeyhole className="size-4 text-primary" /> Senha do projeto
-              </span>
-              <Input
-                type="password"
-                value={senha}
-                onChange={(event) => setSenha(event.target.value)}
-                placeholder="Mínimo de 16 caracteres"
-                autoComplete="new-password"
-                className="h-11"
-              />
-            </label>
+          <div className="flex flex-col gap-3 rounded-xl border bg-muted/10 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="flex items-center gap-2 font-medium">
+                <Share2 className="size-4 text-primary" /> Links e QR Codes disponíveis
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                A senha só será solicitada ao atualizar a publicação. Os links gerados permanecem
+                disponíveis neste projeto.
+              </p>
+            </div>
             <Button
-              onClick={() => void publicar()}
-              disabled={publicando || senha.length < 16}
-              className="h-11"
+              variant="outline"
+              onClick={() => setMostrarAutorizacao((valor) => !valor)}
+              disabled={publicando}
+              className="shrink-0"
             >
-              {publicando ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Share2 className="size-4" />
-              )}{" "}
-              {publicando ? "Atualizando…" : "Atualizar painel"}
+              <LockKeyhole className="size-4" />{" "}
+              {mostrarAutorizacao ? "Ocultar autorização" : "Sincronizar agora"}
             </Button>
           </div>
+          {mostrarAutorizacao && (
+            <div className="grid gap-3 rounded-xl border border-primary/25 bg-primary/[0.03] p-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+              <label className="space-y-2">
+                <span className="flex items-center gap-2 text-sm font-medium">
+                  <LockKeyhole className="size-4 text-primary" /> Senha do projeto
+                </span>
+                <Input
+                  type="password"
+                  value={senha}
+                  onChange={(event) => setSenha(event.target.value)}
+                  placeholder="Mínimo de 16 caracteres"
+                  autoComplete="current-password"
+                  className="h-11"
+                />
+                <span className="block text-xs text-muted-foreground">
+                  A sessão válida dura 8 horas neste navegador.
+                </span>
+              </label>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Button onClick={() => void publicar()} disabled={publicando} className="h-11">
+                  <Share2 className="size-4" /> Atualizar ficha
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => void publicarEstoque()}
+                  disabled={publicando}
+                  className="h-11"
+                >
+                  <PackageSearch className="size-4" /> Atualizar estoque
+                </Button>
+              </div>
+            </div>
+          )}
+          {sessaoExpiraEm && sessaoExpiraEm > Date.now() && !mostrarAutorizacao && (
+            <p className="text-xs text-emerald-700 dark:text-emerald-400">
+              Sessão de sincronização ativa até {new Date(sessaoExpiraEm).toLocaleString("pt-BR")}.
+            </p>
+          )}
           <p className="text-xs leading-5 text-muted-foreground">
             São publicados somente funcionários ativos com CPF cadastrado. O banco local completo
             nunca é enviado.
@@ -349,11 +471,7 @@ export function CompartilharPainelPage() {
           </div>
         </CardHeader>
         <CardContent className="space-y-4 p-4">
-          <Button
-            onClick={() => void publicarEstoque()}
-            disabled={publicando || senha.length < 16}
-            className="h-11"
-          >
+          <Button onClick={() => void publicarEstoque()} disabled={publicando} className="h-11">
             <PackageSearch className="size-4" /> Atualizar painel de estoque
           </Button>
           <p className="text-xs leading-5 text-muted-foreground">
@@ -431,4 +549,13 @@ function escapar(valor: unknown): string {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+async function gerarQr(url: string): Promise<string> {
+  return QRCode.toDataURL(url, {
+    width: 900,
+    margin: 2,
+    errorCorrectionLevel: "H",
+    color: { dark: "#17324d", light: "#ffffff" },
+  });
 }
