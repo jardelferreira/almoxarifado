@@ -1,4 +1,6 @@
-const CACHE = "almoxarifado-shell-v2";
+// Incrementar esta versão invalida bundles antigos após cada mudança de contrato
+// entre o navegador e as server functions do Worker.
+const CACHE = "almoxarifado-shell-v3";
 const APP_SHELL = ["/", "/manifest.webmanifest", "/app-icon.svg", "/favicon.ico"];
 
 self.addEventListener("install", (event) => {
@@ -86,6 +88,29 @@ self.addEventListener("fetch", (event) => {
           const cached = await caches.match(event.request, { ignoreSearch: true });
           return cached ?? (await caches.match("/"));
         }),
+    );
+    return;
+  }
+
+  const recursoExecutavel =
+    requestUrl.pathname.startsWith("/assets/") ||
+    event.request.destination === "script" ||
+    event.request.destination === "style" ||
+    event.request.destination === "manifest";
+
+  if (recursoExecutavel) {
+    // Online: sempre busca o bundle atual. Offline: reaproveita o último bundle
+    // conhecido para preservar o funcionamento local-first.
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          if (response.ok) {
+            const copy = response.clone();
+            void caches.open(CACHE).then((cache) => cache.put(event.request, copy));
+          }
+          return response;
+        })
+        .catch(() => caches.match(event.request)),
     );
     return;
   }
