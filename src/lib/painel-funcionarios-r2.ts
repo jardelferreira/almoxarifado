@@ -77,12 +77,17 @@ export const publicarPainelFuncionariosNuvem = createServerFn({ method: "POST" }
         );
         if (!objeto) return [registro.cpf_hash, null] as const;
         const anterior = (await objeto.json()) as Partial<RegistroPublicacaoFuncionario>;
-        return [registro.cpf_hash, anterior.conteudo_hash ?? null] as const;
+        // undefined identifica uma ficha antiga, publicada antes da assinatura
+        // de conteúdo existir. Ela vira linha de base sem gerar aviso coletivo.
+        return [registro.cpf_hash, anterior.conteudo_hash] as const;
       }),
     );
     const hashAnterior = new Map(anteriores);
     const cpfHashesAlterados = data.publicacao.funcionarios
-      .filter((registro) => hashAnterior.get(registro.cpf_hash) !== registro.conteudo_hash)
+      .filter((registro) => {
+        const anterior = hashAnterior.get(registro.cpf_hash);
+        return anterior === null || (anterior !== undefined && anterior !== registro.conteudo_hash);
+      })
       .map((registro) => registro.cpf_hash);
 
     await Promise.all(
