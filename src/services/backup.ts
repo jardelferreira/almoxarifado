@@ -1162,3 +1162,47 @@ export function contarRegistrosBackup(backup: BackupArquivo): Record<string, num
     BACKUP_TABELAS.map((nome) => [nome, Array.isArray(backup.tabelas[nome]) ? backup.tabelas[nome].length : 0]),
   );
 }
+
+/** Importa um projeto compartilhado sem substituir nenhum projeto já existente. */
+export async function importarBackupComoNovoProjeto(json: string): Promise<RestaurarBackupResultado> {
+  let entrada: unknown;
+  try {
+    entrada = JSON.parse(json);
+  } catch {
+    throw new Error("O projeto compartilhado não contém dados válidos.");
+  }
+
+  const backup = normalizarEntrada(entrada);
+  const identidade = backup.projeto;
+  if (backup.escopo !== "PROJETO" || !identidade?.id || !identidade.codigo || !identidade.nome) {
+    throw new Error("O compartilhamento não contém um projeto integral válido.");
+  }
+
+  const db = getDB();
+  if (await db.projetos.get(identidade.id)) {
+    throw new Error("Este projeto já existe neste dispositivo. Nenhum dado foi alterado.");
+  }
+
+  await db.projetos.put({
+    id: identidade.id,
+    codigo: identidade.codigo,
+    nome: identidade.nome,
+    status: identidade.status === "PAUSADO" || identidade.status === "ENCERRADO" ? identidade.status : "ATIVO",
+    data_inicio: identidade.data_inicio ?? null,
+    data_fim: identidade.data_fim ?? null,
+  });
+
+  try {
+    const analise = await analisarBackupDados(json, identidade.id);
+    if (!analise.valido || !analise.projeto_igual) {
+      throw new Error(analise.erros[0] ?? "O projeto compartilhado falhou na validação de integridade.");
+    }
+    return await restaurarBackupDados(json, {
+      projetoAtualId: identidade.id,
+      confirmarSubstituicao: true,
+    });
+  } catch (error) {
+    await db.projetos.delete(identidade.id);
+    throw error;
+  }
+}
