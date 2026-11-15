@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { env } from "cloudflare:workers";
 import type { PublicacaoPainelFuncionarios, RegistroPublicacaoFuncionario } from "@/types";
 import { autorizarProjetoNuvem } from "@/lib/projeto-auth-r2";
+import { notificarInscricoesPush } from "@/lib/push-notifications-r2";
 
 const PREFIXO = "painel-funcionarios";
 
@@ -99,6 +100,24 @@ export const publicarPainelFuncionariosNuvem = createServerFn({ method: "POST" }
         ]);
       }),
     );
+
+    // A publicação continua válida mesmo sem VAPID configurado. Quando o envio
+    // estiver habilitado, cada funcionário com inscrição ativa recebe apenas um
+    // aviso genérico para abrir sua ficha, sem dados pessoais no payload.
+    try {
+      await notificarInscricoesPush(
+        data.projetoId,
+        {
+          titulo: "Ficha atualizada",
+          corpo: "Há uma nova atualização disponível na sua ficha do almoxarifado.",
+          url: `/consulta-funcionario?projeto=${encodeURIComponent(data.projetoId)}`,
+          tag: `ficha-${data.projetoId}`,
+        },
+        data.publicacao.funcionarios.map((registro) => registro.cpf_hash),
+      );
+    } catch (error) {
+      console.warn("A publicação da ficha foi concluída, mas o envio push falhou.", error);
+    }
 
     return {
       publicadoEm: data.publicacao.atualizado_em,

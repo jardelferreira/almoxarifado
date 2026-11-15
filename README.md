@@ -181,11 +181,11 @@ disponíveis no dispositivo.
 O conceito é:
 
 Usuário
-   ↓
+↓
 Aplicação Web / PWA
-   ↓
+↓
 IndexedDB
-   ↓
+↓
 Dados locais do projeto
 
 A internet não deve ser um requisito permanente para as operações
@@ -229,7 +229,7 @@ PROJETO
 ├── Locais
 ├── Produtos
 ├── Equipes
-│   └── Membros
+│ └── Membros
 └── Movimentações
 
 Dados compartilhados
@@ -276,21 +276,21 @@ Depois, acesse o endereço informado pelo Vite no terminal.
 📋 Fluxo de utilização
 
 Criar projeto
-      ↓
+↓
 Cadastrar empresas
-      ↓
+↓
 Cadastrar funcionários
-      ↓
+↓
 Criar equipes
-      ↓
+↓
 Cadastrar locais
-      ↓
+↓
 Cadastrar produtos
-      ↓
+↓
 Registrar movimentações
-      ↓
+↓
 Consultar estoque
-      ↓
+↓
 Exportar / realizar backup
 
 ☁️ Sincronização em nuvem
@@ -305,6 +305,31 @@ para a operação local atual.
 
 A ideia é preservar o conceito local-first, utilizando a nuvem como
 mecanismo complementar de sincronização e backup.
+
+🔔 Notificações push
+
+O PWA possui suporte a notificações push vinculadas ao projeto e ao CPF
+hash do funcionário. O funcionário ativa os avisos na própria tela de
+consulta, depois de validar o CPF e o PIN quando houver.
+
+Para ativar o envio no Worker de produção, configure as chaves VAPID como
+segredos — nunca as coloque no código ou no repositório:
+
+```bash
+npx wrangler secret put VAPID_SUBJECT
+npx wrangler secret put VAPID_PUBLIC_KEY
+npx wrangler secret put VAPID_PRIVATE_KEY
+```
+
+A chave pública é usada pelo navegador para criar a inscrição; a chave
+privada permanece somente como segredo do Worker. Após a configuração, a
+tela de Configurações exibirá o status e os funcionários poderão ativar
+ou desativar os avisos em seus dispositivos.
+
+As inscrições são armazenadas por projeto no R2, sem CPF em texto claro.
+O conteúdo das notificações não deve conter PIN, CPF ou informações
+confidenciais; a notificação deve apenas orientar o usuário a abrir o
+painel.
 
 🗺️ Roadmap
 

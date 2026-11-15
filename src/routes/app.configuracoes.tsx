@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
     Archive,
+    BellRing,
     Boxes,
     Check,
     FileText,
@@ -26,6 +27,7 @@ import { configuracoesRepo } from "@/services/configuracoes-repo";
 import { criarConfiguracaoPadrao } from "@/types/configuracao";
 import type { Configuracao, DocumentoTipo } from "@/types";
 import { useProjetoAtivoId } from "@/hooks/useAppData";
+import { consultarConfiguracaoPush } from "@/lib/push-notifications-r2";
 
 export const Route = createFileRoute("/app/configuracoes")({
     ssr: false,
@@ -228,6 +230,7 @@ function ConfiguracoesPage() {
                     </div>
                 </div>
             </header>
+            <PushNotificationsSettings />
             <section aria-labelledby="modulos-titulo">
                 <Card className="overflow-hidden">
                     <CardHeader className="border-b bg-muted/20 p-5 sm:p-6">
@@ -396,6 +399,43 @@ function ConfiguracoesPage() {
                 <p>As configurações pertencem ao projeto ativo e são armazenadas localmente neste dispositivo. Alterações só passam a valer depois de clicar em <strong className="font-semibold text-foreground">Salvar</strong>.</p>
             </div>
         </div>
+    );
+}
+
+function PushNotificationsSettings() {
+    const [status, setStatus] = useState<"carregando" | "configurado" | "pendente" | "erro">("carregando");
+
+    useEffect(() => {
+        void consultarConfiguracaoPush()
+            .then((resultado) => setStatus(resultado.configurado ? "configurado" : "pendente"))
+            .catch(() => setStatus("erro"));
+    }, []);
+
+    const statusTexto = {
+        carregando: "Verificando configuração…",
+        configurado: "Configurado no Worker",
+        pendente: "Aguardando chaves VAPID",
+        erro: "Não foi possível verificar agora",
+    }[status];
+
+    return (
+        <Card className="overflow-hidden border-l-4 border-l-sky-500">
+            <CardHeader className="border-b bg-sky-500/[0.04] p-5 sm:p-6">
+                <SectionHeading
+                    icon={<BellRing className="size-5" />}
+                    title="Notificações push"
+                    description="Permita que funcionários recebam avisos da própria ficha e dos inventários neste dispositivo."
+                />
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+                <div className="text-sm leading-6 text-muted-foreground">
+                    A ativação é feita pelo funcionário na tela de consulta, depois da validação do CPF e do PIN quando exigido. O vínculo é mantido por projeto e CPF hash.
+                </div>
+                <span className={`inline-flex w-fit shrink-0 items-center rounded-full px-3 py-1.5 text-xs font-semibold ${status === "configurado" ? "bg-emerald-100 text-emerald-800" : status === "erro" ? "bg-rose-100 text-rose-800" : "bg-amber-100 text-amber-800"}`}>
+                    {statusTexto}
+                </span>
+            </CardContent>
+        </Card>
     );
 }
 

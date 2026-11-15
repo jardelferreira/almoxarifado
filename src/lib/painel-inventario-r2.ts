@@ -7,6 +7,7 @@ import type {
   RegistroPublicacaoInventario,
 } from "@/types";
 import { autorizarProjetoNuvem } from "@/lib/projeto-auth-r2";
+import { notificarInscricoesPush } from "@/lib/push-notifications-r2";
 
 const PREFIXO = "painel-inventarios";
 const FORMATO = "ALMOXARIFADO_PAINEL_INVENTARIO";
@@ -116,6 +117,20 @@ export const publicarPainelInventarioNuvem = createServerFn({ method: "POST" })
         env.ALMOXARIFADO_BUCKET.put(nome, JSON.stringify(indice), opcoes),
       ),
     );
+    try {
+      await notificarInscricoesPush(
+        data.projetoId,
+        {
+          titulo: "Inventário disponível",
+          corpo: "Você foi incluído em um inventário e já pode acessar a conferência.",
+          url: `/consulta-inventario?projeto=${encodeURIComponent(data.projetoId)}`,
+          tag: `inventario-${data.publicacao.inventario_id}`,
+        },
+        data.publicacao.registros.map((registro) => registro.cpf_hash),
+      );
+    } catch (error) {
+      console.warn("A publicação do inventário foi concluída, mas o envio push falhou.", error);
+    }
     return {
       publicados: data.publicacao.registros.length,
       atualizadoEm: data.publicacao.atualizado_em,

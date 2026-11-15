@@ -2,6 +2,8 @@ import { createFileRoute, useSearch } from "@tanstack/react-router";
 import { useState } from "react";
 import {
   AlertTriangle,
+  Bell,
+  BellOff,
   ClipboardList,
   Loader2,
   LockKeyhole,
@@ -22,6 +24,8 @@ import {
   consultarPainelFuncionario,
   atualizarPinPainelFuncionario,
 } from "@/lib/painel-funcionarios-r2";
+import { consultarConfiguracaoPush } from "@/lib/push-notifications-r2";
+import { ativarPush, desativarPush, verificarSuportePush } from "@/lib/push-client";
 import {
   criptografarPainelFuncionario,
   descriptografarPainelFuncionario,
@@ -64,6 +68,9 @@ function ConsultaFuncionarioPage() {
   const [novoPin, setNovoPin] = useState("");
   const [confirmacaoPin, setConfirmacaoPin] = useState("");
   const [salvandoPin, setSalvandoPin] = useState(false);
+  const [pushConfigurado, setPushConfigurado] = useState(false);
+  const [pushAtivo, setPushAtivo] = useState(false);
+  const [gerenciandoPush, setGerenciandoPush] = useState(false);
 
   const consultar = async () => {
     const cpfNormalizado = normalizarCpf(cpf);
@@ -102,12 +109,40 @@ function ConsultaFuncionarioPage() {
       );
       setDados(protegido);
       setPin("");
+      const push = await consultarConfiguracaoPush();
+      setPushConfigurado(push.configurado);
+      setPushAtivo(
+        verificarSuportePush().suportado &&
+          (await navigator.serviceWorker.ready).pushManager.getSubscription() !== null,
+      );
       toast.success("Ficha carregada com segurança.");
     } catch (error) {
       setDados(null);
       toast.error(error instanceof Error ? error.message : "Não foi possível consultar a ficha.");
     } finally {
       setCarregando(false);
+    }
+  };
+
+  const alternarPush = async () => {
+    if (!projeto || !cpfHash || !pushConfigurado) return;
+    try {
+      setGerenciandoPush(true);
+      if (pushAtivo) {
+        await desativarPush(projeto);
+        setPushAtivo(false);
+        toast.success("Notificações desativadas neste dispositivo.");
+      } else {
+        const configuracao = await consultarConfiguracaoPush();
+        if (!configuracao.chavePublica) throw new Error("A chave pública de notificações não está configurada.");
+        await ativarPush({ projetoId: projeto, cpfHash, chavePublica: configuracao.chavePublica });
+        setPushAtivo(true);
+        toast.success("Notificações ativadas para esta ficha.");
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível atualizar as notificações.");
+    } finally {
+      setGerenciandoPush(false);
     }
   };
 
@@ -142,7 +177,15 @@ function ConsultaFuncionarioPage() {
         dados,
       );
       await atualizarPinPainelFuncionario({
-        data: { projetoId: projeto, cpfHash, pinAtualHash, ...novoHash, ...protegido },
+        data: {
+          projetoId: projeto,
+          cpfHash,
+          pinAtualHash,
+          pinHash: novoHash.pin_hash,
+          pinSalt: novoHash.pin_salt,
+          pinIteracoes: novoHash.pin_iteracoes,
+          ...protegido,
+        },
       });
       setStatusPin("COM_PIN");
       setPinAtualGerenciamento("");
@@ -253,6 +296,10 @@ function ConsultaFuncionarioPage() {
             setNovoPin={setNovoPin}
             setConfirmacaoPin={setConfirmacaoPin}
             onGerenciarPin={() => void gerenciarPin()}
+            pushConfigurado={pushConfigurado}
+            pushAtivo={pushAtivo}
+            gerenciandoPush={gerenciandoPush}
+            onAlternarPush={() => void alternarPush()}
           />
         )}
       </div>
@@ -274,6 +321,10 @@ function FichaResultado({
   setNovoPin,
   setConfirmacaoPin,
   onGerenciarPin,
+  pushConfigurado,
+  pushAtivo,
+  gerenciandoPush,
+  onAlternarPush,
 }: {
   dados: PainelFuncionarioDados;
   modo: ModoConsulta;
@@ -288,6 +339,10 @@ function FichaResultado({
   setNovoPin: (valor: string) => void;
   setConfirmacaoPin: (valor: string) => void;
   onGerenciarPin: () => void;
+  pushConfigurado: boolean;
+  pushAtivo: boolean;
+  gerenciandoPush: boolean;
+  onAlternarPush: () => void;
 }) {
   return (
     <div className="space-y-5">
@@ -403,6 +458,32 @@ function FichaResultado({
           </CardContent>
         </Card>
       )}
+      <Card className="border-l-4 border-l-sky-500 shadow-sm">
+        <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+          <div className="flex items-start gap-3">
+            <div className="rounded-xl bg-sky-500/10 p-2.5 text-sky-700">
+              {pushAtivo ? <Bell className="size-5" /> : <BellOff className="size-5" />}
+            </div>
+            <div>
+              <h2 className="font-semibold">Avisos da sua ficha</h2>
+              <p className="mt-1 text-sm leading-5 text-muted-foreground">
+                {pushConfigurado
+                  ? "Receba avisos importantes deste projeto neste dispositivo."
+                  : "As notificações ainda não foram configuradas pelo almoxarifado."}
+              </p>
+            </div>
+          </div>
+          <Button
+            variant={pushAtivo ? "outline" : "default"}
+            onClick={onAlternarPush}
+            disabled={!pushConfigurado || gerenciandoPush}
+            className="shrink-0"
+          >
+            {gerenciandoPush ? <Loader2 className="size-4 animate-spin" /> : pushAtivo ? <BellOff className="size-4" /> : <Bell className="size-4" />}
+            {pushAtivo ? "Desativar avisos" : "Ativar avisos"}
+          </Button>
+        </CardContent>
+      </Card>
       {painelDesatualizado(dados.atualizado_em) && (
         <div className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
           <AlertTriangle className="mt-0.5 size-5 shrink-0" />
