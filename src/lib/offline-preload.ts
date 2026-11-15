@@ -4,6 +4,7 @@ const ROTAS_OFFLINE = [
   "/",
   "/consulta-estoque",
   "/consulta-funcionario",
+  "/compartilhar-projeto",
   "/app",
   "/app/",
   "/app/apropriacoes",

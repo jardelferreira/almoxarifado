@@ -47,7 +47,7 @@ function rotuloMovimentacao(tipo: string): "SAIDA" | "DEVOLUCAO" | "OUTRA" {
   return "OUTRA";
 }
 
-async function protegerDados(
+export async function criptografarPainelFuncionario(
   projetoId: string,
   cpfHash: string,
   credencialHash: string,
@@ -160,7 +160,12 @@ export async function montarPublicacaoPainelFuncionarios(
       funcionario.pin_hash && funcionario.pin_salt && funcionario.pin_iteracoes,
     );
     const credencialHash = pinExiste ? funcionario.pin_hash! : base64(cpfDigest.bytes);
-    const protegido = await protegerDados(projetoId, cpfDigest.hexadecimal, credencialHash, dados);
+    const protegido = await criptografarPainelFuncionario(
+      projetoId,
+      cpfDigest.hexadecimal,
+      credencialHash,
+      dados,
+    );
     registros.push({
       cpf_hash: cpfDigest.hexadecimal,
       pin_hash: pinExiste ? (funcionario.pin_hash ?? null) : null,

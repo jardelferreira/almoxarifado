@@ -16,11 +16,16 @@ import {
   Fingerprint,
   HardDriveDownload,
   Import,
+  Link2,
   LockKeyhole,
   KeyRound,
+  MessageCircle,
   RefreshCw,
+  Share2,
   ShieldAlert,
   ShieldCheck,
+  Timer,
+  XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -40,6 +45,7 @@ import {
 } from "@/services/backup";
 import { criptografarSnapshotProjeto, descriptografarSnapshotProjeto, lerEnvelopeSincronizacao } from "@/services/sincronizacao-projeto";
 import { baixarProjetoNuvem, consultarProjetoNuvem, criarProjetoNuvem, enviarProjetoNuvem } from "@/lib/sincronizacao-r2";
+import { criarCompartilhamentoProjeto, revogarCompartilhamentoProjeto } from "@/lib/compartilhamento-projeto-r2";
 import { exportarProjetoParaExcel } from "@/services/exportacao-projeto";
 import { lerArquivo, salvarDataset, type DatasetImportado } from "@/services/excel";
 import { num } from "@/utils/format";
@@ -134,6 +140,9 @@ function DadosPage() {
   const [chaveRecuperacaoEntrada, setChaveRecuperacaoEntrada] = useState("");
   const [novaSenha, setNovaSenha] = useState("");
   const [confirmacaoNovaSenha, setConfirmacaoNovaSenha] = useState("");
+  const [validadeCompartilhamento, setValidadeCompartilhamento] = useState("7");
+  const [compartilhandoProjeto, setCompartilhandoProjeto] = useState(false);
+  const [linkCompartilhado, setLinkCompartilhado] = useState<{ url: string; expiraEm: string; token: string } | null>(null);
 
   const dados = useLiveQuery(async () => {
     const db = getDB();
@@ -489,6 +498,66 @@ function DadosPage() {
     }
   };
 
+  const gerarSegredoCompartilhamento = (): string => {
+    const bytes = crypto.getRandomValues(new Uint8Array(32));
+    let binario = "";
+    for (const byte of bytes) binario += String.fromCharCode(byte);
+    return btoa(binario).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/g, "");
+  };
+
+  const compartilharProjeto = async () => {
+    if (!projetoId || senhaNuvem.length < 16) {
+      toast.error("Informe a senha do projeto com pelo menos 16 caracteres.");
+      return;
+    }
+    try {
+      setCompartilhandoProjeto(true);
+      const backup = await criarBackupDados(projetoId);
+      const segredo = gerarSegredoCompartilhamento();
+      const snapshot = await criptografarSnapshotProjeto(projetoId, backup, segredo);
+      const expiraEm = new Date(Date.now() + Number(validadeCompartilhamento) * 86_400_000).toISOString();
+      const resultado = await criarCompartilhamentoProjeto({
+        data: { projetoId, senha: senhaNuvem, envelope: new TextDecoder().decode(snapshot.bytes), expiraEm },
+      });
+      const url = `${window.location.origin}/compartilhar-projeto?projeto=${encodeURIComponent(projetoId)}&token=${resultado.token}#chave=${segredo}`;
+      setLinkCompartilhado({ url, expiraEm: resultado.expiraEm, token: resultado.token });
+      toast.success("Link seguro do projeto criado.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível criar o link do projeto.");
+    } finally {
+      setCompartilhandoProjeto(false);
+    }
+  };
+
+  const copiarLinkCompartilhado = async () => {
+    if (!linkCompartilhado) return;
+    try {
+      await navigator.clipboard.writeText(linkCompartilhado.url);
+      toast.success("Link seguro copiado.");
+    } catch {
+      toast.error("Não foi possível copiar o link.");
+    }
+  };
+
+  const compartilharLinkWhatsApp = () => {
+    if (!linkCompartilhado) return;
+    window.open(`https://wa.me/?text=${encodeURIComponent(`Acesse o projeto compartilhado do almoxarifado: ${linkCompartilhado.url}`)}`, "_blank", "noopener,noreferrer");
+  };
+
+  const revogarLinkCompartilhado = async () => {
+    if (!projetoId || !senhaNuvem || !linkCompartilhado) return;
+    try {
+      setCompartilhandoProjeto(true);
+      await revogarCompartilhamentoProjeto({ data: { projetoId, senha: senhaNuvem, token: linkCompartilhado.token } });
+      setLinkCompartilhado(null);
+      toast.success("Link revogado. Ele não poderá mais ser utilizado.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível revogar o link.");
+    } finally {
+      setCompartilhandoProjeto(false);
+    }
+  };
+
   const podeRestaurar = !!backupPreview && backupPreview.analise.valido && backupPreview.analise.projeto_igual && backupAceite && !restaurando;
 
   return (
@@ -516,6 +585,51 @@ function DadosPage() {
           </div>
         </div>
       </header>
+
+      <Card className="overflow-hidden border-l-4 border-l-sky-500 shadow-sm">
+        <CardHeader className="border-b bg-sky-500/[0.04] p-5 sm:p-6">
+          <div className="flex items-start gap-3">
+            <div className="rounded-xl bg-sky-500/10 p-2.5 text-sky-700"><Share2 className="size-5" /></div>
+            <div>
+              <h2 className="font-semibold">Compartilhar projeto com outro usuário</h2>
+              <p className="mt-1 text-sm leading-5 text-muted-foreground">Crie um link temporário para adicionar uma cópia integral e validada deste projeto em outro dispositivo.</p>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4 p-5 sm:p-6">
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+            <label className="space-y-2">
+              <span className="flex items-center gap-2 text-sm font-medium"><Timer className="size-4 text-primary" /> Validade do link</span>
+              <select value={validadeCompartilhamento} onChange={(event) => setValidadeCompartilhamento(event.target.value)} className="flex h-11 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring" disabled={compartilhandoProjeto}>
+                <option value="1">24 horas</option>
+                <option value="7">7 dias</option>
+                <option value="30">30 dias</option>
+              </select>
+            </label>
+            <Button onClick={() => void compartilharProjeto()} disabled={compartilhandoProjeto || !projetoId || senhaNuvem.length < 16} className="h-11">
+              {compartilhandoProjeto ? <RefreshCw className="size-4 animate-spin" /> : <Link2 className="size-4" />} Criar link seguro
+            </Button>
+          </div>
+          <div className="rounded-xl border border-sky-200/70 bg-sky-50/50 p-4 text-sm dark:bg-sky-950/20">
+            <p className="flex items-center gap-2 font-semibold"><ShieldCheck className="size-4 text-sky-700" /> Criptografia e validação</p>
+            <p className="mt-1 leading-5 text-muted-foreground">Os dados são criptografados no seu navegador. A chave fica protegida no fragmento do link e a senha do projeto nunca é compartilhada. O link expira automaticamente e pode ser revogado.</p>
+          </div>
+          {linkCompartilhado && (
+            <div className="space-y-3 rounded-xl border border-emerald-300/70 bg-emerald-50/50 p-4 dark:bg-emerald-950/20">
+              <div className="flex items-center justify-between gap-3">
+                <p className="flex items-center gap-2 font-semibold"><CheckCircle2 className="size-4 text-emerald-700" /> Link criado</p>
+                <Badge variant="outline">Expira em {new Date(linkCompartilhado.expiraEm).toLocaleString("pt-BR")}</Badge>
+              </div>
+              <div className="break-all rounded-lg border bg-background p-3 font-mono text-xs leading-5">{linkCompartilhado.url}</div>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Button variant="outline" onClick={() => void copiarLinkCompartilhado()} disabled={compartilhandoProjeto}><Copy className="size-4" /> Copiar link</Button>
+                <Button variant="outline" onClick={compartilharLinkWhatsApp} disabled={compartilhandoProjeto}><MessageCircle className="size-4" /> WhatsApp</Button>
+                <Button variant="outline" className="text-destructive hover:text-destructive" onClick={() => void revogarLinkCompartilhado()} disabled={compartilhandoProjeto}><XCircle className="size-4" /> Revogar link</Button>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <div className="grid gap-5 xl:grid-cols-2">
         <Card className="overflow-hidden border-border/70 shadow-sm">

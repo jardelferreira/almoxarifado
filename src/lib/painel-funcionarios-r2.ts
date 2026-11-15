@@ -146,3 +146,77 @@ export const consultarPainelFuncionario = createServerFn({ method: "POST" })
       atualizadoEm: objeto.uploaded.toISOString(),
     };
   });
+
+export const atualizarPinPainelFuncionario = createServerFn({ method: "POST" })
+  .validator(
+    (data: {
+      projetoId: string;
+      cpfHash: string;
+      pinAtualHash?: string | null;
+      pinHash: string;
+      pinSalt: string;
+      pinIteracoes: number;
+      iv: string;
+      dados: string;
+    }) => {
+      const projetoId = validarProjetoId(data.projetoId);
+      const cpfHash = validarCpfHash(data.cpfHash);
+      if (
+        !/^[A-Za-z0-9+/=]{40,60}$/.test(data.pinHash) ||
+        !/^[A-Za-z0-9+/=]{20,40}$/.test(data.pinSalt)
+      ) {
+        throw new Error("O novo PIN não possui um hash válido.");
+      }
+      if (
+        !Number.isInteger(data.pinIteracoes) ||
+        data.pinIteracoes < 100_000 ||
+        data.pinIteracoes > 200_000
+      ) {
+        throw new Error("Os parâmetros de segurança do PIN são inválidos.");
+      }
+      if (!data.iv || !data.dados || data.dados.length > 15 * 1024 * 1024) {
+        throw new Error("Os dados protegidos do funcionário são inválidos.");
+      }
+      return {
+        projetoId,
+        cpfHash,
+        pinAtualHash: data.pinAtualHash ?? null,
+        pinHash: data.pinHash,
+        pinSalt: data.pinSalt,
+        pinIteracoes: data.pinIteracoes,
+        iv: data.iv,
+        dados: data.dados,
+      };
+    },
+  )
+  .handler(async ({ data }) => {
+    const nome = chaveRegistro(data.projetoId, data.cpfHash);
+    const objeto = await env.ALMOXARIFADO_BUCKET.get(nome);
+    if (!objeto) throw new Error("Funcionário não localizado ou painel ainda não atualizado.");
+    const atual = (await objeto.json()) as RegistroPublicacaoFuncionario;
+    if (atual.protecao === "PIN") {
+      if (!data.pinAtualHash || data.pinAtualHash !== atual.pin_hash) {
+        throw new Error("O PIN atual não confere.");
+      }
+    } else if (data.pinAtualHash) {
+      throw new Error("Este funcionário ainda não possui PIN. Não informe um PIN atual.");
+    }
+    const atualizado: RegistroPublicacaoFuncionario = {
+      cpf_hash: data.cpfHash,
+      protecao: "PIN",
+      pin_hash: data.pinHash,
+      pin_salt: data.pinSalt,
+      pin_iteracoes: data.pinIteracoes,
+      iv: data.iv,
+      dados: data.dados,
+    };
+    await env.ALMOXARIFADO_BUCKET.put(nome, JSON.stringify(atualizado), {
+      httpMetadata: { contentType: "application/json; charset=utf-8", cacheControl: "no-store" },
+      customMetadata: {
+        projetoId: data.projetoId,
+        atualizadoEm: new Date().toISOString(),
+        origem: "consulta-funcionario",
+      },
+    });
+    return { atualizado: true };
+  });
