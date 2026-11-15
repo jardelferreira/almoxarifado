@@ -36,6 +36,12 @@ function vazio(projetoId: string): IndiceInscricoesPush {
   };
 }
 
+function normalizarEtag(etag: string | null | undefined): string | null {
+  if (!etag) return null;
+  const valor = etag.trim().replace(/^W\//, "");
+  return valor.startsWith('"') && valor.endsWith('"') ? valor.slice(1, -1) : valor;
+}
+
 async function ler(projetoId: string): Promise<{
   indice: IndiceInscricoesPush;
   etag: string | null;
@@ -53,7 +59,7 @@ async function ler(projetoId: string): Promise<{
   }
   return {
     indice: { ...valor, registros: valor.registros } as IndiceInscricoesPush,
-    etag: objeto.httpEtag,
+    etag: normalizarEtag(objeto.httpEtag),
   };
 }
 
