@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteImport } from './routes/app'
+import { Route as CompartilharProjetoRouteImport } from './routes/compartilhar-projeto'
 import { Route as ConsultaEstoqueRouteImport } from './routes/consulta-estoque'
 import { Route as ConsultaFuncionarioRouteImport } from './routes/consulta-funcionario'
 import { Route as AppIndexRouteImport } from './routes/app.index'
@@ -51,6 +52,11 @@ const IndexRoute = IndexRouteImport.update({
 const AppRoute = AppRouteImport.update({
   id: '/app',
   path: '/app',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CompartilharProjetoRoute = CompartilharProjetoRouteImport.update({
+  id: '/compartilhar-projeto',
+  path: '/compartilhar-projeto',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ConsultaEstoqueRoute = ConsultaEstoqueRouteImport.update({
@@ -220,6 +226,7 @@ const AppEstatisticasRelatorioRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
+  '/compartilhar-projeto': typeof CompartilharProjetoRoute
   '/consulta-estoque': typeof ConsultaEstoqueRoute
   '/consulta-funcionario': typeof ConsultaFuncionarioRoute
   '/app/apropriacoes': typeof AppApropriacoesRoute
@@ -254,6 +261,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/compartilhar-projeto': typeof CompartilharProjetoRoute
   '/consulta-estoque': typeof ConsultaEstoqueRoute
   '/consulta-funcionario': typeof ConsultaFuncionarioRoute
   '/app/apropriacoes': typeof AppApropriacoesRoute
@@ -290,6 +298,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
+  '/compartilhar-projeto': typeof CompartilharProjetoRoute
   '/consulta-estoque': typeof ConsultaEstoqueRoute
   '/consulta-funcionario': typeof ConsultaFuncionarioRoute
   '/app/apropriacoes': typeof AppApropriacoesRoute
@@ -327,6 +336,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/app'
+    | '/compartilhar-projeto'
     | '/consulta-estoque'
     | '/consulta-funcionario'
     | '/app/apropriacoes'
@@ -361,6 +371,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/compartilhar-projeto'
     | '/consulta-estoque'
     | '/consulta-funcionario'
     | '/app/apropriacoes'
@@ -396,6 +407,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/app'
+    | '/compartilhar-projeto'
     | '/consulta-estoque'
     | '/consulta-funcionario'
     | '/app/apropriacoes'
@@ -432,6 +444,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRoute: typeof AppRouteWithChildren
+  CompartilharProjetoRoute: typeof CompartilharProjetoRoute
   ConsultaEstoqueRoute: typeof ConsultaEstoqueRoute
   ConsultaFuncionarioRoute: typeof ConsultaFuncionarioRoute
 }
@@ -450,6 +463,13 @@ declare module '@tanstack/react-router' {
       path: '/app'
       fullPath: '/app'
       preLoaderRoute: typeof AppRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/compartilhar-projeto': {
+      id: '/compartilhar-projeto'
+      path: '/compartilhar-projeto'
+      fullPath: '/compartilhar-projeto'
+      preLoaderRoute: typeof CompartilharProjetoRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/consulta-estoque': {
@@ -751,6 +771,7 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRoute: AppRouteWithChildren,
+  CompartilharProjetoRoute: CompartilharProjetoRoute,
   ConsultaEstoqueRoute: ConsultaEstoqueRoute,
   ConsultaFuncionarioRoute: ConsultaFuncionarioRoute,
 }
