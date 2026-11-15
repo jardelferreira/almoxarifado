@@ -105,7 +105,7 @@ export const publicarPainelFuncionariosNuvem = createServerFn({ method: "POST" }
     // estiver habilitado, cada funcionário com inscrição ativa recebe apenas um
     // aviso genérico para abrir sua ficha, sem dados pessoais no payload.
     try {
-      await notificarInscricoesPush(
+      const push = await notificarInscricoesPush(
         data.projetoId,
         {
           titulo: "Ficha atualizada",
@@ -115,15 +115,21 @@ export const publicarPainelFuncionariosNuvem = createServerFn({ method: "POST" }
         },
         data.publicacao.funcionarios.map((registro) => registro.cpf_hash),
       );
+      return {
+        publicadoEm: data.publicacao.atualizado_em,
+        funcionariosPublicados: data.publicacao.funcionarios.length,
+        publicacaoId,
+        push,
+      };
     } catch (error) {
       console.warn("A publicação da ficha foi concluída, mas o envio push falhou.", error);
+      return {
+        publicadoEm: data.publicacao.atualizado_em,
+        funcionariosPublicados: data.publicacao.funcionarios.length,
+        publicacaoId,
+        push: { configurado: false, selecionadas: 0, enviadas: 0, falhas: 1, removidas: 0 },
+      };
     }
-
-    return {
-      publicadoEm: data.publicacao.atualizado_em,
-      funcionariosPublicados: data.publicacao.funcionarios.length,
-      publicacaoId,
-    };
   });
 
 export const consultarDesafioPainelFuncionario = createServerFn({ method: "POST" })

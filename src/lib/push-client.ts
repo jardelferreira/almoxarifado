@@ -28,6 +28,20 @@ export function verificarSuportePush(): SuportePush {
   return { suportado: true };
 }
 
+async function aguardarComPrazo<T>(promessa: Promise<T>, mensagem: string, prazoMs = 12000): Promise<T> {
+  let temporizador: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promessa,
+      new Promise<T>((_, rejeitar) => {
+        temporizador = setTimeout(() => rejeitar(new Error(mensagem)), prazoMs);
+      }),
+    ]);
+  } finally {
+    if (temporizador) clearTimeout(temporizador);
+  }
+}
+
 export async function ativarPush(params: {
   projetoId: string;
   cpfHash: string;
@@ -35,16 +49,33 @@ export async function ativarPush(params: {
 }): Promise<PushSubscriptionJSON> {
   const suporte = verificarSuportePush();
   if (!suporte.suportado) throw new Error(suporte.motivo);
-  const permissao = await Notification.requestPermission();
+  if (Notification.permission === "denied") {
+    throw new Error(
+      "As notificações estão bloqueadas neste navegador. Autorize-as nas configurações do site e tente novamente.",
+    );
+  }
+  const permissao = await aguardarComPrazo(
+    Notification.requestPermission(),
+    "O navegador não respondeu à solicitação de permissão. Verifique as permissões do site e tente novamente.",
+  );
   if (permissao !== "granted") throw new Error("A permissão para notificações não foi concedida.");
 
-  const registration = await navigator.serviceWorker.ready;
-  let subscription = await registration.pushManager.getSubscription();
+  const registration = await aguardarComPrazo(
+    navigator.serviceWorker.ready,
+    "O aplicativo ainda não terminou de preparar as notificações neste dispositivo.",
+  );
+  let subscription = await aguardarComPrazo(
+    registration.pushManager.getSubscription(),
+    "O navegador não respondeu ao serviço de notificações.",
+  );
   if (!subscription) {
-    subscription = await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: base64UrlToBytes(params.chavePublica).buffer as ArrayBuffer,
-    });
+    subscription = await aguardarComPrazo(
+      registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: base64UrlToBytes(params.chavePublica),
+      }),
+      "Não foi possível registrar este dispositivo para notificações. Se estiver no iPhone ou iPad, instale o site na tela inicial e abra o aplicativo instalado.",
+    );
   }
   const json = subscription.toJSON();
   if (!json.endpoint || !json.keys?.["p256dh"] || !json.keys["auth"])
@@ -66,8 +97,14 @@ export async function ativarPush(params: {
 export async function desativarPush(projetoId: string): Promise<void> {
   const suporte = verificarSuportePush();
   if (!suporte.suportado) throw new Error(suporte.motivo);
-  const registration = await navigator.serviceWorker.ready;
-  const subscription = await registration.pushManager.getSubscription();
+  const registration = await aguardarComPrazo(
+    navigator.serviceWorker.ready,
+    "O aplicativo ainda não terminou de preparar as notificações neste dispositivo.",
+  );
+  const subscription = await aguardarComPrazo(
+    registration.pushManager.getSubscription(),
+    "O navegador não respondeu ao serviço de notificações.",
+  );
   if (!subscription) return;
   await removerInscricaoPush({ data: { projetoId, endpoint: subscription.endpoint } });
   await subscription.unsubscribe();

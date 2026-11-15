@@ -86,9 +86,15 @@ export async function notificarInscricoesPush(
   projetoId: string,
   payloadData: PushNotificationPayload,
   cpfHashes?: string[],
-): Promise<{ configurado: boolean; selecionadas: number; enviadas: number; removidas: number }> {
+): Promise<{
+  configurado: boolean;
+  selecionadas: number;
+  enviadas: number;
+  falhas: number;
+  removidas: number;
+}> {
   if (!pushEnv.VAPID_PUBLIC_KEY || !pushEnv.VAPID_PRIVATE_KEY || !pushEnv.VAPID_SUBJECT) {
-    return { configurado: false, selecionadas: 0, enviadas: 0, removidas: 0 };
+    return { configurado: false, selecionadas: 0, enviadas: 0, falhas: 0, removidas: 0 };
   }
   const { indice } = await ler(projetoId);
   const permitidos = cpfHashes ? new Set(cpfHashes) : null;
@@ -98,18 +104,24 @@ export async function notificarInscricoesPush(
   const payload = { data: payloadData, options: { ttl: 300, urgency: "normal" as const } };
   const removidos = new Set<string>();
   let enviadas = 0;
+  let falhas = 0;
   for (const registro of selecionados) {
     const subscription: WebPushSubscription = registro.subscription;
-    const resposta = await fetch(
-      subscription.endpoint,
-      await buildPushPayload(payload, subscription, {
-        subject: pushEnv.VAPID_SUBJECT,
-        publicKey: pushEnv.VAPID_PUBLIC_KEY,
-        privateKey: pushEnv.VAPID_PRIVATE_KEY,
-      }),
-    );
-    if (resposta.status === 404 || resposta.status === 410) removidos.add(subscription.endpoint);
-    else if (resposta.ok) enviadas += 1;
+    try {
+      const resposta = await fetch(
+        subscription.endpoint,
+        await buildPushPayload(payload, subscription, {
+          subject: pushEnv.VAPID_SUBJECT,
+          publicKey: pushEnv.VAPID_PUBLIC_KEY,
+          privateKey: pushEnv.VAPID_PRIVATE_KEY,
+        }),
+      );
+      if (resposta.status === 404 || resposta.status === 410) removidos.add(subscription.endpoint);
+      else if (resposta.ok) enviadas += 1;
+      else falhas += 1;
+    } catch {
+      falhas += 1;
+    }
   }
   if (removidos.size > 0) {
     await salvarComConflito(projetoId, (registros) =>
@@ -120,6 +132,7 @@ export async function notificarInscricoesPush(
     configurado: true,
     selecionadas: selecionados.length,
     enviadas,
+    falhas,
     removidas: removidos.size,
   };
 }

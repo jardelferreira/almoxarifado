@@ -199,7 +199,15 @@ export function CompartilharPainelPage() {
           funcionarios: resultado.funcionariosPublicados,
         },
       });
-      toast.success(`${resultado.funcionariosPublicados} ficha(s) publicada(s) na Cloudflare.`);
+      const resumoPush = resultado.push.configurado
+        ? ` Avisos: ${resultado.push.enviadas}/${resultado.push.selecionadas} enviados.`
+        : " Notificações push ainda não configuradas.";
+      toast.success(`${resultado.funcionariosPublicados} ficha(s) publicada(s) na Cloudflare.${resumoPush}`);
+      if (resultado.push.configurado && resultado.push.falhas > 0) {
+        toast.warning(`${resultado.push.falhas} dispositivo(s) não aceitaram o aviso.`, {
+          duration: 7000,
+        });
+      }
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Não foi possível atualizar o painel público.",
