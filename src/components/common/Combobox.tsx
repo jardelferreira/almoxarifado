@@ -126,7 +126,7 @@ export function Combobox({
                       </span>
                       {o.hint && (
                         <span
-                          className="mt-0.5 block whitespace-normal break-words text-xs leading-4 text-muted-foreground"
+                          className="mt-0.5 block whitespace-normal break-words text-sm leading-5 text-slate-600 dark:text-slate-300"
                           title={o.hint}
                         >
                           {o.hint}

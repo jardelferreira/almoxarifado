@@ -559,7 +559,12 @@ export function PainelApropriacoesPage() {
                     <FileDown className="mr-2 size-4" />
                     Imprimir / PDF
                   </Button>
-                  <Button type="button" size="sm" onClick={abrirApropriacao}>
+                  <Button
+                    type="button"
+                    size="lg"
+                    className="bg-primary px-5 text-base font-bold shadow-md shadow-primary/25 hover:bg-primary/90"
+                    onClick={abrirApropriacao}
+                  >
                     <UserRoundPlus className="mr-2 size-4" />
                     Apropriar
                   </Button>
@@ -635,7 +640,7 @@ export function PainelApropriacoesPage() {
         ))}
 
       <Dialog open={dialogAcao} onOpenChange={(open) => !salvando && setDialogAcao(open)}>
-        <DialogContent>
+        <DialogContent className="w-[calc(100vw-1rem)] max-w-3xl sm:max-w-4xl lg:max-w-5xl xl:max-w-6xl">
           <DialogHeader>
             <DialogTitle>
               {acao === "APROPRIAR" ? "Apropriar equipamento" : "Desapropriar equipamento"}
