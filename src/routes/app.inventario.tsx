@@ -44,7 +44,7 @@ import { criptografarInventario, descriptografarInventario } from "@/services/in
 import { inteligenciaRepo } from "@/services/inteligencia-repo";
 import { calcularAcuracidadeInventarios, calcularPlanoInventarioInteligente, criarPeriodoPadrao, type PlanoInventarioInteligente } from "@/services/estatisticas-materiais";
 import type { Inventario, InventarioItem } from "@/types";
-import { criarHashPin, verificarPin, validarPin } from "@/utils/seguranca";
+import { verificarPin } from "@/utils/seguranca";
 
 export const Route = createFileRoute("/app/inventario")({
   ssr: false,
@@ -155,7 +155,6 @@ export function InventarioPage() {
   const [participanteDialog, setParticipanteDialog] = useState<"adicionar" | "desbloquear" | null>(null);
   const [participanteId, setParticipanteId] = useState<string | null>(null);
   const [pin, setPin] = useState("");
-  const [pinConfirmacao, setPinConfirmacao] = useState("");
   const [observacoesItem, setObservacoesItem] = useState<Record<string, string>>({});
   const [sincronizacaoAberta, setSincronizacaoAberta] = useState(false);
   const [senhaSincronizacao, setSenhaSincronizacao] = useState("");
@@ -372,7 +371,6 @@ export function InventarioPage() {
     setParticipanteDialog(null);
     setParticipanteId(null);
     setPin("");
-    setPinConfirmacao("");
   };
 
   const concluirParticipante = async () => {
@@ -384,23 +382,16 @@ export function InventarioPage() {
     if (!funcionario) return;
     try {
       if (participanteDialog === "adicionar") {
-        if (!funcionario.pin_hash || !funcionario.pin_salt || !funcionario.pin_iteracoes) {
-          if (!validarPin(pin) || pin !== pinConfirmacao) throw new Error("Cadastre um PIN de 4 a 8 números e confirme o mesmo valor.");
-          const hash = await criarHashPin(pin);
-          await db.funcionarios.update(funcionario.id, hash);
-        } else if (!(await verificarPin(pin, funcionario as typeof funcionario & { pin_hash: string; pin_salt: string; pin_iteracoes: number }))) {
-          throw new Error("PIN incorreto. O funcionário não foi liberado.");
-        }
         const atualizado = await inventarioRepo.adicionarParticipante(selecionado.id, funcionario.id, selecionado.responsavel_id);
         setSelecionado(atualizado);
-        setParticipanteDialog(null);
+        fecharParticipanteDialog();
         toast.success("Funcionário adicionado ao inventário.");
       } else {
         if (!funcionario.pin_hash || !funcionario.pin_salt || !funcionario.pin_iteracoes) throw new Error("Este funcionário ainda não possui PIN. Cadastre-o antes de liberar o acesso.");
         if (!(await verificarPin(pin, funcionario as typeof funcionario & { pin_hash: string; pin_salt: string; pin_iteracoes: number }))) throw new Error("PIN incorreto. Acesso não liberado.");
         await inventarioRepo.registrarAcesso(selecionado.id, funcionario.id);
         setOperadorId(funcionario.id);
-        setParticipanteDialog(null);
+        fecharParticipanteDialog();
         toast.success(`Acesso liberado para ${funcionario.nome}.`);
       }
     } catch (error) {
@@ -963,18 +954,19 @@ export function InventarioPage() {
                 opcoes={(dados?.funcionarios ?? []).filter((funcionario) => funcionario.status === "ATIVO" && (participanteDialog === "desbloquear" || !(selecionado?.participantes ?? []).some((item) => item.funcionario_id === funcionario.id))).map((funcionario) => ({ value: funcionario.id, label: funcionario.nome }))}
               />
             </div>
-            <div className="space-y-1.5">
-              <Label>PIN</Label>
-              <Input type="password" inputMode="numeric" maxLength={8} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))} placeholder="4 a 8 números" />
-            </div>
-            {participanteDialog === "adicionar" && participanteId && (() => {
-              const funcionario = dados?.funcionarios.find((item) => item.id === participanteId);
-              return funcionario && !funcionario.pin_hash ? <div className="space-y-1.5"><Label>Confirmar PIN novo</Label><Input type="password" inputMode="numeric" maxLength={8} value={pinConfirmacao} onChange={(e) => setPinConfirmacao(e.target.value.replace(/\D/g, ""))} placeholder="Repita o PIN para cadastrar" /><p className="text-xs text-amber-700">Este funcionário ainda não possui PIN. O cadastro será gravado com hash seguro antes de liberar o acesso.</p></div> : null;
-            })()}
+            {participanteDialog === "desbloquear" ? (
+              <div className="space-y-1.5">
+                <Label>PIN</Label>
+                <Input type="password" inputMode="numeric" maxLength={8} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))} placeholder="4 a 8 números" />
+                <p className="text-xs text-muted-foreground">O PIN será solicitado somente para liberar a conferência deste funcionário.</p>
+              </div>
+            ) : (
+              <p className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">O funcionário será apenas incluído na equipe do inventário. A validação por PIN acontecerá quando ele iniciar a conferência.</p>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={fecharParticipanteDialog}>Cancelar</Button>
-            <Button onClick={() => void concluirParticipante()} disabled={!participanteId || !pin}>{participanteDialog === "adicionar" ? "Adicionar e liberar" : "Liberar acesso"}</Button>
+            <Button onClick={() => void concluirParticipante()} disabled={!participanteId || (participanteDialog === "desbloquear" && !pin)}>{participanteDialog === "adicionar" ? "Adicionar envolvido" : "Liberar acesso"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
