@@ -131,8 +131,17 @@ export function CompartilharPainelPage() {
     } catch {
       // O formulário abaixo permite renovar a sessão sem bloquear a tela.
     }
+
+    // Na primeira sincronização ainda não existe sessão salva. Nesse caso,
+    // aproveita a senha informada no formulário e só cria a sessão depois que
+    // o Worker confirmar a publicação com sucesso.
+    const senhaDigitada = senha.trim();
+    if (senhaDigitada.length >= 16) {
+      return senhaDigitada;
+    }
+
     setMostrarAutorizacao(true);
-    toast.info("Informe a senha somente para sincronizar os dados.");
+    toast.info("Informe a senha do projeto para sincronizar os dados.");
     return null;
   };
 
