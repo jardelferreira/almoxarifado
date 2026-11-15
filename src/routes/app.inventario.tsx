@@ -13,6 +13,7 @@ import {
   Copy,
   History,
   ListFilter,
+  Link2,
   MessageCircle,
   Plus,
   Printer,
