@@ -10,10 +10,13 @@ import {
   ClipboardList,
   Cloud,
   Clock3,
+  Copy,
   History,
   ListFilter,
+  MessageCircle,
   Plus,
   Printer,
+  QrCode,
   Search,
   KeyRound,
   LockKeyhole,
@@ -23,6 +26,7 @@ import {
   TrendingUp,
   XCircle,
 } from "lucide-react";
+import QRCode from "qrcode";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -40,11 +44,13 @@ import { configuracoesRepo } from "@/services/configuracoes-repo";
 import { inventarioRepo } from "@/services/inventario-repo";
 import { inventarioService, type InferenciaInventario } from "@/services/inventario-service";
 import { baixarInventarioNuvem, consultarInventarioNuvem, enviarInventarioNuvem } from "@/lib/inventario-r2";
+import { publicarPainelInventarioNuvem } from "@/lib/painel-inventario-r2";
 import { criptografarInventario, descriptografarInventario } from "@/services/inventario-sync";
 import { inteligenciaRepo } from "@/services/inteligencia-repo";
 import { calcularAcuracidadeInventarios, calcularPlanoInventarioInteligente, criarPeriodoPadrao, type PlanoInventarioInteligente } from "@/services/estatisticas-materiais";
 import type { Inventario, InventarioItem } from "@/types";
 import { verificarPin } from "@/utils/seguranca";
+import { montarPublicacaoPainelInventario } from "@/services/painel-inventario";
 
 export const Route = createFileRoute("/app/inventario")({
   ssr: false,
@@ -78,6 +84,8 @@ function lerSenhaInventario(projetoId: string): string {
   sessionStorage.removeItem(chaveSenhaInventario(projetoId));
   return "";
 }
+
+type CompartilhamentoInventario = { url: string; qrDataUrl: string; publicadoEm: string; publicados: number };
 
 function imprimirInventario(
   inventario: Inventario,
@@ -160,6 +168,10 @@ export function InventarioPage() {
   const [senhaSincronizacao, setSenhaSincronizacao] = useState("");
   const [sincronizandoNuvem, setSincronizandoNuvem] = useState(false);
   const [etagNuvem, setEtagNuvem] = useState<string | null>(null);
+  const [painelInventario, setPainelInventario] = useState<CompartilhamentoInventario | null>(null);
+  const [compartilhamentoAberto, setCompartilhamentoAberto] = useState(false);
+  const [publicandoPainel, setPublicandoPainel] = useState(false);
+  const [compartilharAposSenha, setCompartilharAposSenha] = useState(false);
 
   const equipeMap = useMemo(() => new Map((dados?.equipes ?? []).map((e) => [e.id, e.nome])), [dados?.equipes]);
   const funcionarioMap = useMemo(() => new Map((dados?.funcionarios ?? []).map((f) => [f.id, f.nome])), [dados?.funcionarios]);
@@ -362,9 +374,43 @@ export function InventarioPage() {
 
   const salvarSenhaESincronizar = async () => {
     if (senhaSincronizacao.trim().length < 16) { toast.error("A senha deve ter pelo menos 16 caracteres."); return; }
+    if (!projetoId) { toast.error("Nenhum projeto ativo foi selecionado."); return; }
     sessionStorage.setItem(chaveSenhaInventario(projetoId), JSON.stringify({ senha: senhaSincronizacao.trim(), expiraEm: Date.now() + 8 * 60 * 60 * 1000 }));
     setSincronizacaoAberta(false);
     await sincronizarInventario(false);
+    if (compartilharAposSenha) {
+      setCompartilharAposSenha(false);
+      await publicarPainelSelecionado();
+    }
+  };
+
+  const publicarPainelSelecionado = async () => {
+    if (!projetoId || !selecionado) return;
+    const senha = lerSenhaInventario(projetoId) || senhaSincronizacao.trim();
+    if (senha.length < 16) {
+      setCompartilharAposSenha(true);
+      setSincronizacaoAberta(true);
+      toast.info("Informe a senha do projeto para publicar este painel.");
+      return;
+    }
+    try {
+      setPublicandoPainel(true);
+      const publicacao = await montarPublicacaoPainelInventario(projetoId, selecionado.id);
+      const resultado = await publicarPainelInventarioNuvem({ data: { projetoId, senha, publicacao } });
+      const url = `${window.location.origin}/consulta-inventario?projeto=${encodeURIComponent(projetoId)}`;
+      const qrDataUrl = await QRCode.toDataURL(url, { width: 900, margin: 2, errorCorrectionLevel: "H", color: { dark: "#17324d", light: "#ffffff" } });
+      setPainelInventario({ url, qrDataUrl, publicadoEm: resultado.atualizadoEm, publicados: resultado.publicados });
+      setCompartilhamentoAberto(true);
+      toast.success(`${resultado.publicados} funcionário(s) autorizado(s) no painel.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível publicar o painel do inventário.");
+    } finally { setPublicandoPainel(false); }
+  };
+
+  const copiarPainelInventario = async () => {
+    if (!painelInventario) return;
+    await navigator.clipboard.writeText(painelInventario.url);
+    toast.success("Link do inventário copiado.");
   };
 
   const fecharParticipanteDialog = () => {
@@ -752,7 +798,7 @@ export function InventarioPage() {
                 Inventário · {equipeMap.get(selecionado?.equipe_id ?? "") ?? "Inventário geral"}
                 {selecionado ? statusBadge(selecionado.status) : null}
               </DialogTitle>
-              {selecionado ? <Button type="button" size="sm" variant="outline" onClick={() => void sincronizarInventario()} disabled={sincronizandoNuvem}><Cloud className="mr-2 size-4" />{sincronizandoNuvem ? "Sincronizando…" : "Sincronizar"}</Button> : null}
+              {selecionado ? <div className="flex flex-wrap gap-2"><Button type="button" size="sm" variant="outline" onClick={() => void publicarPainelSelecionado()} disabled={publicandoPainel}><QrCode className="mr-2 size-4" />{publicandoPainel ? "Publicando…" : "Compartilhar painel"}</Button><Button type="button" size="sm" variant="outline" onClick={() => void sincronizarInventario()} disabled={sincronizandoNuvem}><Cloud className="mr-2 size-4" />{sincronizandoNuvem ? "Sincronizando…" : "Sincronizar"}</Button></div> : null}
             </div>
           </DialogHeader>
 
@@ -935,6 +981,17 @@ export function InventarioPage() {
               </DialogFooter>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={compartilhamentoAberto} onOpenChange={setCompartilhamentoAberto}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><QrCode className="size-5 text-primary" />Compartilhar painel do inventário</DialogTitle>
+            <p className="text-sm text-muted-foreground">Envie este acesso aos funcionários vinculados ao inventário. Cada funcionário deverá informar CPF e PIN.</p>
+          </DialogHeader>
+          {painelInventario ? <div className="space-y-4 py-2"><div className="rounded-xl border bg-muted/20 p-3 text-center"><img src={painelInventario.qrDataUrl} alt="QR Code do painel de inventário" className="mx-auto aspect-square w-64 rounded-xl border bg-white p-2" /><p className="mt-3 text-xs text-muted-foreground">{painelInventario.publicados} funcionário(s) com PIN foram publicados em {new Date(painelInventario.publicadoEm).toLocaleString("pt-BR")}.</p></div><div className="flex items-center gap-2 rounded-lg border bg-background p-2"><Link2 className="size-4 shrink-0 text-primary" /><span className="min-w-0 flex-1 truncate text-sm">{painelInventario.url}</span><Button size="icon" variant="ghost" onClick={() => void copiarPainelInventario()} aria-label="Copiar link"><Copy className="size-4" /></Button></div><div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => { const link = document.createElement("a"); link.href = painelInventario.qrDataUrl; link.download = `qrcode-inventario-${selecionado?.id ?? "painel"}.png`; link.click(); }}><Download className="mr-2 size-4" />Baixar QR</Button><Button variant="outline" onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(`Acesse o painel de conferência do inventário: ${painelInventario.url}`)}`, "_blank", "noopener,noreferrer")}><MessageCircle className="mr-2 size-4" />WhatsApp</Button></div></div> : null}
+          <DialogFooter><Button variant="outline" onClick={() => setCompartilhamentoAberto(false)}>Fechar</Button></DialogFooter>
         </DialogContent>
       </Dialog>
 
