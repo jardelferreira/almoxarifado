@@ -14,6 +14,7 @@ import { Route as AppRouteImport } from './routes/app'
 import { Route as CompartilharProjetoRouteImport } from './routes/compartilhar-projeto'
 import { Route as ConsultaEstoqueRouteImport } from './routes/consulta-estoque'
 import { Route as ConsultaFuncionarioRouteImport } from './routes/consulta-funcionario'
+import { Route as ConsultaInventarioRouteImport } from './routes/consulta-inventario'
 import { Route as AppIndexRouteImport } from './routes/app.index'
 import { Route as AppApropriacoesRouteImport } from './routes/app.apropriacoes'
 import { Route as AppCadastrosRouteImport } from './routes/app.cadastros'
@@ -67,6 +68,11 @@ const ConsultaEstoqueRoute = ConsultaEstoqueRouteImport.update({
 const ConsultaFuncionarioRoute = ConsultaFuncionarioRouteImport.update({
   id: '/consulta-funcionario',
   path: '/consulta-funcionario',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConsultaInventarioRoute = ConsultaInventarioRouteImport.update({
+  id: '/consulta-inventario',
+  path: '/consulta-inventario',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppIndexRoute = AppIndexRouteImport.update({
@@ -229,6 +235,7 @@ export interface FileRoutesByFullPath {
   '/compartilhar-projeto': typeof CompartilharProjetoRoute
   '/consulta-estoque': typeof ConsultaEstoqueRoute
   '/consulta-funcionario': typeof ConsultaFuncionarioRoute
+  '/consulta-inventario': typeof ConsultaInventarioRoute
   '/app/apropriacoes': typeof AppApropriacoesRoute
   '/app/cadastros': typeof AppCadastrosRoute
   '/app/compartilhar-painel': typeof AppCompartilharPainelRoute
@@ -264,6 +271,7 @@ export interface FileRoutesByTo {
   '/compartilhar-projeto': typeof CompartilharProjetoRoute
   '/consulta-estoque': typeof ConsultaEstoqueRoute
   '/consulta-funcionario': typeof ConsultaFuncionarioRoute
+  '/consulta-inventario': typeof ConsultaInventarioRoute
   '/app/apropriacoes': typeof AppApropriacoesRoute
   '/app/cadastros': typeof AppCadastrosRoute
   '/app/compartilhar-painel': typeof AppCompartilharPainelRoute
@@ -301,6 +309,7 @@ export interface FileRoutesById {
   '/compartilhar-projeto': typeof CompartilharProjetoRoute
   '/consulta-estoque': typeof ConsultaEstoqueRoute
   '/consulta-funcionario': typeof ConsultaFuncionarioRoute
+  '/consulta-inventario': typeof ConsultaInventarioRoute
   '/app/apropriacoes': typeof AppApropriacoesRoute
   '/app/cadastros': typeof AppCadastrosRoute
   '/app/compartilhar-painel': typeof AppCompartilharPainelRoute
@@ -339,6 +348,7 @@ export interface FileRouteTypes {
     | '/compartilhar-projeto'
     | '/consulta-estoque'
     | '/consulta-funcionario'
+    | '/consulta-inventario'
     | '/app/apropriacoes'
     | '/app/cadastros'
     | '/app/compartilhar-painel'
@@ -374,6 +384,7 @@ export interface FileRouteTypes {
     | '/compartilhar-projeto'
     | '/consulta-estoque'
     | '/consulta-funcionario'
+    | '/consulta-inventario'
     | '/app/apropriacoes'
     | '/app/cadastros'
     | '/app/compartilhar-painel'
@@ -410,6 +421,7 @@ export interface FileRouteTypes {
     | '/compartilhar-projeto'
     | '/consulta-estoque'
     | '/consulta-funcionario'
+    | '/consulta-inventario'
     | '/app/apropriacoes'
     | '/app/cadastros'
     | '/app/compartilhar-painel'
@@ -447,6 +459,7 @@ export interface RootRouteChildren {
   CompartilharProjetoRoute: typeof CompartilharProjetoRoute
   ConsultaEstoqueRoute: typeof ConsultaEstoqueRoute
   ConsultaFuncionarioRoute: typeof ConsultaFuncionarioRoute
+  ConsultaInventarioRoute: typeof ConsultaInventarioRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -484,6 +497,13 @@ declare module '@tanstack/react-router' {
       path: '/consulta-funcionario'
       fullPath: '/consulta-funcionario'
       preLoaderRoute: typeof ConsultaFuncionarioRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/consulta-inventario': {
+      id: '/consulta-inventario'
+      path: '/consulta-inventario'
+      fullPath: '/consulta-inventario'
+      preLoaderRoute: typeof ConsultaInventarioRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/app/': {
@@ -774,6 +794,7 @@ const rootRouteChildren: RootRouteChildren = {
   CompartilharProjetoRoute: CompartilharProjetoRoute,
   ConsultaEstoqueRoute: ConsultaEstoqueRoute,
   ConsultaFuncionarioRoute: ConsultaFuncionarioRoute,
+  ConsultaInventarioRoute: ConsultaInventarioRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
