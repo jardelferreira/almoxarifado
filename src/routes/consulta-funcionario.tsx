@@ -20,13 +20,22 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   consultarDesafioPainelFuncionario,
   consultarPainelFuncionario,
+  atualizarPinPainelFuncionario,
 } from "@/lib/painel-funcionarios-r2";
 import {
+  criptografarPainelFuncionario,
   descriptografarPainelFuncionario,
   hashCpf,
   hashCpfParaCredencial,
 } from "@/services/painel-funcionarios";
-import { derivarHashPin, formatarCpf, normalizarCpf, validarCpf } from "@/utils/seguranca";
+import {
+  criarHashPin,
+  derivarHashPin,
+  formatarCpf,
+  normalizarCpf,
+  validarCpf,
+  validarPin,
+} from "@/utils/seguranca";
 import type { PainelFuncionarioDados } from "@/types";
 
 export const Route = createFileRoute("/consulta-funcionario")({
@@ -39,6 +48,7 @@ export const Route = createFileRoute("/consulta-funcionario")({
 });
 
 type ModoConsulta = "EQUIPAMENTOS" | "MATERIAIS";
+type StatusPin = "SEM_PIN" | "COM_PIN";
 
 function ConsultaFuncionarioPage() {
   const { projeto } = useSearch({ from: "/consulta-funcionario" });
@@ -47,6 +57,13 @@ function ConsultaFuncionarioPage() {
   const [dados, setDados] = useState<PainelFuncionarioDados | null>(null);
   const [modo, setModo] = useState<ModoConsulta>("EQUIPAMENTOS");
   const [carregando, setCarregando] = useState(false);
+  const [statusPin, setStatusPin] = useState<StatusPin | null>(null);
+  const [cpfHash, setCpfHash] = useState("");
+  const [desafioPin, setDesafioPin] = useState<{ salt: string; iteracoes: number } | null>(null);
+  const [pinAtualGerenciamento, setPinAtualGerenciamento] = useState("");
+  const [novoPin, setNovoPin] = useState("");
+  const [confirmacaoPin, setConfirmacaoPin] = useState("");
+  const [salvandoPin, setSalvandoPin] = useState(false);
 
   const consultar = async () => {
     const cpfNormalizado = normalizarCpf(cpf);
@@ -64,6 +81,9 @@ function ConsultaFuncionarioPage() {
       const desafio = await consultarDesafioPainelFuncionario({
         data: { projetoId: projeto, cpfHash },
       });
+      setCpfHash(cpfHash);
+      setStatusPin(desafio.pinObrigatorio ? "COM_PIN" : "SEM_PIN");
+      setDesafioPin({ salt: desafio.pinSalt ?? "", iteracoes: desafio.pinIteracoes ?? 0 });
       if (desafio.pinObrigatorio && !pin) {
         toast.error("Este cadastro exige o PIN de segurança.");
         return;
@@ -88,6 +108,55 @@ function ConsultaFuncionarioPage() {
       toast.error(error instanceof Error ? error.message : "Não foi possível consultar a ficha.");
     } finally {
       setCarregando(false);
+    }
+  };
+
+  const gerenciarPin = async () => {
+    if (!projeto || !dados || !statusPin || !cpfHash) return;
+    if (!validarPin(novoPin) || novoPin !== confirmacaoPin) {
+      toast.error("Informe um PIN de 4 a 8 números e confirme o mesmo valor.");
+      return;
+    }
+    if (statusPin === "COM_PIN" && (!pinAtualGerenciamento || !desafioPin?.salt)) {
+      toast.error("Informe o PIN atual para confirmar a alteração.");
+      return;
+    }
+    if (statusPin === "COM_PIN" && !window.confirm("Confirma a alteração do PIN de segurança deste funcionário?")) {
+      return;
+    }
+    try {
+      setSalvandoPin(true);
+      const novoHash = await criarHashPin(novoPin);
+      const pinAtualHash =
+        statusPin === "COM_PIN"
+          ? await derivarHashPin(
+              pinAtualGerenciamento,
+              desafioPin?.salt ?? "",
+              desafioPin?.iteracoes ?? 0,
+            )
+          : null;
+      const protegido = await criptografarPainelFuncionario(
+        projeto,
+        cpfHash,
+        novoHash.pin_hash,
+        dados,
+      );
+      await atualizarPinPainelFuncionario({
+        data: { projetoId: projeto, cpfHash, pinAtualHash, ...novoHash, ...protegido },
+      });
+      setStatusPin("COM_PIN");
+      setPinAtualGerenciamento("");
+      setNovoPin("");
+      setConfirmacaoPin("");
+      toast.success(
+        statusPin === "SEM_PIN"
+          ? "PIN criado e sincronizado automaticamente."
+          : "PIN alterado e sincronizado automaticamente.",
+      );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível atualizar o PIN.");
+    } finally {
+      setSalvandoPin(false);
     }
   };
 
@@ -175,6 +244,15 @@ function ConsultaFuncionarioPage() {
             modo={modo}
             setModo={setModo}
             onNovaConsulta={() => setDados(null)}
+            statusPin={statusPin}
+            pinAtual={pinAtualGerenciamento}
+            novoPin={novoPin}
+            confirmacaoPin={confirmacaoPin}
+            salvandoPin={salvandoPin}
+            setPinAtual={setPinAtualGerenciamento}
+            setNovoPin={setNovoPin}
+            setConfirmacaoPin={setConfirmacaoPin}
+            onGerenciarPin={() => void gerenciarPin()}
           />
         )}
       </div>
@@ -187,11 +265,29 @@ function FichaResultado({
   modo,
   setModo,
   onNovaConsulta,
+  statusPin,
+  pinAtual,
+  novoPin,
+  confirmacaoPin,
+  salvandoPin,
+  setPinAtual,
+  setNovoPin,
+  setConfirmacaoPin,
+  onGerenciarPin,
 }: {
   dados: PainelFuncionarioDados;
   modo: ModoConsulta;
   setModo: (modo: ModoConsulta) => void;
   onNovaConsulta: () => void;
+  statusPin: StatusPin | null;
+  pinAtual: string;
+  novoPin: string;
+  confirmacaoPin: string;
+  salvandoPin: boolean;
+  setPinAtual: (valor: string) => void;
+  setNovoPin: (valor: string) => void;
+  setConfirmacaoPin: (valor: string) => void;
+  onGerenciarPin: () => void;
 }) {
   return (
     <div className="space-y-5">
@@ -217,6 +313,96 @@ function FichaResultado({
           </div>
         </CardContent>
       </Card>
+      {statusPin && (
+        <Card className="border-l-4 border-l-violet-500 shadow-sm">
+          <CardHeader className="border-b bg-violet-500/[0.04]">
+            <div className="flex items-start gap-3">
+              <div className="rounded-xl bg-violet-500/10 p-2.5 text-violet-700">
+                <LockKeyhole className="size-5" />
+              </div>
+              <div>
+                <h2 className="font-semibold">Gerenciar PIN de segurança</h2>
+                <p className="mt-1 text-sm leading-5 text-muted-foreground">
+                  {statusPin === "SEM_PIN"
+                    ? "Seu cadastro ainda não possui PIN. Crie um para proteger consultas futuras."
+                    : "Para alterar o PIN, confirme o PIN atual e informe o novo código duas vezes."}
+                </p>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4 p-5 sm:p-6">
+            {statusPin === "COM_PIN" && (
+              <label className="block space-y-2">
+                <span className="text-sm font-medium">PIN atual</span>
+                <Input
+                  type="password"
+                  inputMode="numeric"
+                  autoComplete="current-password"
+                  maxLength={8}
+                  value={pinAtual}
+                  onChange={(event) =>
+                    setPinAtual(event.target.value.replace(/\D/g, "").slice(0, 8))
+                  }
+                  placeholder="Informe o PIN atual"
+                  className="h-11"
+                />
+              </label>
+            )}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="block space-y-2">
+                <span className="text-sm font-medium">
+                  {statusPin === "SEM_PIN" ? "Criar PIN" : "Novo PIN"}
+                </span>
+                <Input
+                  type="password"
+                  inputMode="numeric"
+                  autoComplete="new-password"
+                  maxLength={8}
+                  value={novoPin}
+                  onChange={(event) =>
+                    setNovoPin(event.target.value.replace(/\D/g, "").slice(0, 8))
+                  }
+                  placeholder="4 a 8 números"
+                  className="h-11"
+                />
+              </label>
+              <label className="block space-y-2">
+                <span className="text-sm font-medium">Confirmar PIN</span>
+                <Input
+                  type="password"
+                  inputMode="numeric"
+                  autoComplete="new-password"
+                  maxLength={8}
+                  value={confirmacaoPin}
+                  onChange={(event) =>
+                    setConfirmacaoPin(event.target.value.replace(/\D/g, "").slice(0, 8))
+                  }
+                  placeholder="Repita o PIN"
+                  className="h-11"
+                />
+              </label>
+            </div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs leading-5 text-muted-foreground">
+                O PIN é armazenado somente como hash seguro. A atualização é sincronizada
+                automaticamente com o painel publicado.
+              </p>
+              <Button
+                onClick={onGerenciarPin}
+                disabled={salvandoPin || !novoPin || !confirmacaoPin}
+                className="shrink-0"
+              >
+                {salvandoPin ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <ShieldCheck className="size-4" />
+                )}
+                {statusPin === "SEM_PIN" ? "Criar PIN" : "Confirmar alteração"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
       {painelDesatualizado(dados.atualizado_em) && (
         <div className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
           <AlertTriangle className="mt-0.5 size-5 shrink-0" />
