@@ -27,7 +27,7 @@ import { configuracoesRepo } from "@/services/configuracoes-repo";
 import { criarConfiguracaoPadrao } from "@/types/configuracao";
 import type { Configuracao, DocumentoTipo } from "@/types";
 import { useProjetoAtivoId } from "@/hooks/useAppData";
-import { consultarConfiguracaoPush } from "@/lib/push-notifications-r2";
+import { consultarConfiguracaoPush } from "@/lib/push-notifications-client";
 
 export const Route = createFileRoute("/app/configuracoes")({
     ssr: false,
