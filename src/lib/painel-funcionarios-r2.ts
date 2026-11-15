@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { env } from "cloudflare:workers";
 import type { PublicacaoPainelFuncionarios, RegistroPublicacaoFuncionario } from "@/types";
 import { autorizarProjetoNuvem } from "@/lib/projeto-auth-r2";
-import { notificarInscricoesPush } from "@/lib/push-notifications-r2";
+import { notificarInscricoesPush } from "@/lib/push-notifications-server";
 
 const PREFIXO = "painel-funcionarios";
 

@@ -1,4 +1,4 @@
-import { registrarInscricaoPush, removerInscricaoPush } from "@/lib/push-notifications-client";
+import { registrarInscricaoPush, removerInscricaoPush } from "@/lib/push-notifications-r2";
 
 export type SuportePush = {
   suportado: boolean;

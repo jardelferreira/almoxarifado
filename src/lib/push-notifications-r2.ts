@@ -1,7 +1,3 @@
-import {
-  buildPushPayload,
-  type PushSubscription as WebPushSubscription,
-} from "@block65/webcrypto-web-push";
 import { createServerFn } from "@tanstack/react-start";
 import { env } from "cloudflare:workers";
 import { autorizarProjetoNuvem } from "@/lib/projeto-auth-r2";
@@ -163,48 +159,6 @@ export const removerInscricaoPush = createServerFn({ method: "POST" })
     return { removido: true };
   });
 
-export async function notificarInscricoesPush(
-  projetoId: string,
-  payloadData: PushNotificationPayload,
-  cpfHashes?: string[],
-): Promise<{ configurado: boolean; selecionadas: number; enviadas: number; removidas: number }> {
-  if (!pushEnv.VAPID_PUBLIC_KEY || !pushEnv.VAPID_PRIVATE_KEY || !pushEnv.VAPID_SUBJECT) {
-    return { configurado: false, selecionadas: 0, enviadas: 0, removidas: 0 };
-  }
-  const { indice } = await ler(projetoId);
-  const permitidos = cpfHashes ? new Set(cpfHashes) : null;
-  const selecionados = indice.registros.filter(
-    (registro) => !permitidos || permitidos.has(registro.cpf_hash),
-  );
-  const payload = { data: payloadData, options: { ttl: 300, urgency: "normal" as const } };
-  const removidos = new Set<string>();
-  let enviadas = 0;
-  for (const registro of selecionados) {
-    const subscription: WebPushSubscription = registro.subscription;
-    const resposta = await fetch(
-      subscription.endpoint,
-      await buildPushPayload(payload, subscription, {
-        subject: pushEnv.VAPID_SUBJECT,
-        publicKey: pushEnv.VAPID_PUBLIC_KEY,
-        privateKey: pushEnv.VAPID_PRIVATE_KEY,
-      }),
-    );
-    if (resposta.status === 404 || resposta.status === 410) removidos.add(subscription.endpoint);
-    else if (resposta.ok) enviadas += 1;
-  }
-  if (removidos.size > 0) {
-    await salvarComConflito(projetoId, (registros) =>
-      registros.filter((item) => !removidos.has(item.subscription.endpoint)),
-    );
-  }
-  return {
-    configurado: true,
-    selecionadas: selecionados.length,
-    enviadas,
-    removidas: removidos.size,
-  };
-}
-
 export const enviarNotificacaoPush = createServerFn({ method: "POST" })
   .validator(
     (data: {
@@ -229,6 +183,7 @@ export const enviarNotificacaoPush = createServerFn({ method: "POST" })
     },
   )
   .handler(async ({ data }) => {
+    const { notificarInscricoesPush } = await import("@/lib/push-notifications-server");
     await autorizarProjetoNuvem(data.projetoId, data.senha);
     const resultado = await notificarInscricoesPush(
       data.projetoId,

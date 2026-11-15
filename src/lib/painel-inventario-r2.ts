@@ -7,7 +7,7 @@ import type {
   RegistroPublicacaoInventario,
 } from "@/types";
 import { autorizarProjetoNuvem } from "@/lib/projeto-auth-r2";
-import { notificarInscricoesPush } from "@/lib/push-notifications-r2";
+import { notificarInscricoesPush } from "@/lib/push-notifications-server";
 
 const PREFIXO = "painel-inventarios";
 const FORMATO = "ALMOXARIFADO_PAINEL_INVENTARIO";

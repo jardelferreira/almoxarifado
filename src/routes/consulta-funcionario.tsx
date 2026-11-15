@@ -24,7 +24,7 @@ import {
   consultarPainelFuncionario,
   atualizarPinPainelFuncionario,
 } from "@/lib/painel-funcionarios-r2";
-import { consultarConfiguracaoPush } from "@/lib/push-notifications-client";
+import { consultarConfiguracaoPush } from "@/lib/push-notifications-r2";
 import { ativarPush, desativarPush, verificarSuportePush } from "@/lib/push-client";
 import {
   criptografarPainelFuncionario,
