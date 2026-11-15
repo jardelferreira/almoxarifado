@@ -69,6 +69,8 @@ function ConsultaFuncionarioPage() {
   const [confirmacaoPin, setConfirmacaoPin] = useState("");
   const [salvandoPin, setSalvandoPin] = useState(false);
   const [pushConfigurado, setPushConfigurado] = useState(false);
+  const [pushChavePublica, setPushChavePublica] = useState<string | null>(null);
+  const [pushPermissao, setPushPermissao] = useState<NotificationPermission | "indisponivel">("indisponivel");
   const [pushAtivo, setPushAtivo] = useState(false);
   const [gerenciandoPush, setGerenciandoPush] = useState(false);
 
@@ -111,10 +113,14 @@ function ConsultaFuncionarioPage() {
       setPin("");
       const push = await consultarConfiguracaoPush();
       setPushConfigurado(push.configurado);
-      setPushAtivo(
-        verificarSuportePush().suportado &&
-          (await navigator.serviceWorker.ready).pushManager.getSubscription() !== null,
-      );
+      setPushChavePublica(push.chavePublica);
+      const suportePush = verificarSuportePush();
+      const permissao = suportePush.suportado ? Notification.permission : "indisponivel";
+      setPushPermissao(permissao);
+      const inscricao = suportePush.suportado
+        ? await navigator.serviceWorker.ready.then((registro) => registro.pushManager.getSubscription())
+        : null;
+      setPushAtivo(permissao === "granted" && inscricao !== null);
       toast.success("Ficha carregada com segurança.");
     } catch (error) {
       setDados(null);
@@ -133,10 +139,12 @@ function ConsultaFuncionarioPage() {
         setPushAtivo(false);
         toast.success("Notificações desativadas neste dispositivo.");
       } else {
-        const configuracao = await consultarConfiguracaoPush();
-        if (!configuracao.chavePublica) throw new Error("A chave pública de notificações não está configurada.");
-        await ativarPush({ projetoId: projeto, cpfHash, chavePublica: configuracao.chavePublica });
+        if (!pushChavePublica) throw new Error("A chave pública de notificações não está configurada.");
+        // Não faça uma chamada assíncrona antes daqui: em navegadores móveis,
+        // isso pode invalidar o gesto que autoriza Notification.requestPermission().
+        await ativarPush({ projetoId: projeto, cpfHash, chavePublica: pushChavePublica });
         setPushAtivo(true);
+        setPushPermissao("granted");
         toast.success("Notificações ativadas para esta ficha.");
       }
     } catch (error) {
@@ -297,6 +305,7 @@ function ConsultaFuncionarioPage() {
             setConfirmacaoPin={setConfirmacaoPin}
             onGerenciarPin={() => void gerenciarPin()}
             pushConfigurado={pushConfigurado}
+            pushPermissao={pushPermissao}
             pushAtivo={pushAtivo}
             gerenciandoPush={gerenciandoPush}
             onAlternarPush={() => void alternarPush()}
@@ -322,6 +331,7 @@ function FichaResultado({
   setConfirmacaoPin,
   onGerenciarPin,
   pushConfigurado,
+  pushPermissao,
   pushAtivo,
   gerenciandoPush,
   onAlternarPush,
@@ -340,6 +350,7 @@ function FichaResultado({
   setConfirmacaoPin: (valor: string) => void;
   onGerenciarPin: () => void;
   pushConfigurado: boolean;
+  pushPermissao: NotificationPermission | "indisponivel";
   pushAtivo: boolean;
   gerenciandoPush: boolean;
   onAlternarPush: () => void;
@@ -467,16 +478,25 @@ function FichaResultado({
             <div>
               <h2 className="font-semibold">Avisos da sua ficha</h2>
               <p className="mt-1 text-sm leading-5 text-muted-foreground">
-                {pushConfigurado
-                  ? "Receba avisos importantes deste projeto neste dispositivo."
-                  : "As notificações ainda não foram configuradas pelo almoxarifado."}
+                {!pushConfigurado
+                  ? "As notificações ainda não foram configuradas pelo almoxarifado."
+                  : pushPermissao === "denied"
+                    ? "A permissão está bloqueada neste navegador. Autorize as notificações nas configurações do site."
+                    : pushPermissao === "indisponivel"
+                      ? "Este navegador ou modo de acesso não oferece suporte a notificações push."
+                      : "Receba avisos importantes deste projeto neste dispositivo."}
               </p>
             </div>
           </div>
           <Button
             variant={pushAtivo ? "outline" : "default"}
             onClick={onAlternarPush}
-            disabled={!pushConfigurado || gerenciandoPush}
+            disabled={
+              !pushConfigurado ||
+              gerenciandoPush ||
+              pushPermissao === "denied" ||
+              pushPermissao === "indisponivel"
+            }
             className="shrink-0"
           >
             {gerenciandoPush ? <Loader2 className="size-4 animate-spin" /> : pushAtivo ? <BellOff className="size-4" /> : <Bell className="size-4" />}
