@@ -9,6 +9,7 @@ import {
   LockKeyhole,
   PackageCheck,
   Search,
+  Settings2,
   ShieldCheck,
   UserRound,
 } from "lucide-react";
@@ -17,6 +18,13 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -222,10 +230,6 @@ function ConsultaFuncionarioPage() {
             <h1 className="mt-2 font-display text-2xl font-bold tracking-tight sm:text-3xl">
               Minha ficha de almoxarifado
             </h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">
-              Consulte os equipamentos em seu nome e o histórico de materiais movimentados para
-              você.
-            </p>
           </div>
         </header>
 
@@ -355,11 +359,13 @@ function FichaResultado({
   gerenciandoPush: boolean;
   onAlternarPush: () => void;
 }) {
+  const [configuracoesAbertas, setConfiguracoesAbertas] = useState(false);
+
   return (
     <div className="space-y-5">
       <Card className="border-l-4 border-l-emerald-500 shadow-sm">
-        <CardContent className="grid gap-4 p-5 sm:grid-cols-3 sm:p-6">
-          <div className="sm:col-span-2">
+        <CardContent className="grid gap-4 p-5 sm:grid-cols-[1fr_auto] sm:items-center sm:p-6">
+          <div>
             <p className="text-xs uppercase tracking-wide text-muted-foreground">Funcionário</p>
             <p className="text-xl font-bold sm:text-2xl">{dados.funcionario.nome}</p>
             <p className="mt-1 text-sm text-muted-foreground">
@@ -372,138 +378,138 @@ function FichaResultado({
                 .join(" · ") || "Dados cadastrais"}
             </p>
           </div>
-          <div className="flex items-end justify-start sm:justify-end">
-            <Button variant="outline" onClick={onNovaConsulta}>
+          <div className="flex flex-col gap-2 sm:items-end">
+            <Button variant="outline" onClick={() => setConfiguracoesAbertas(true)}>
+              <Settings2 className="size-4" /> Configurações
+            </Button>
+            <Button variant="ghost" onClick={onNovaConsulta}>
               Nova consulta
             </Button>
           </div>
         </CardContent>
       </Card>
       {statusPin && (
-        <Card className="border-l-4 border-l-violet-500 shadow-sm">
-          <CardHeader className="border-b bg-violet-500/[0.04]">
-            <div className="flex items-start gap-3">
-              <div className="rounded-xl bg-violet-500/10 p-2.5 text-violet-700">
-                <LockKeyhole className="size-5" />
+        statusPin === "SEM_PIN" ? (
+          <Card className="border-l-4 border-l-violet-500 shadow-sm">
+            <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+              <div className="flex items-start gap-3">
+                <div className="rounded-xl bg-violet-500/10 p-2.5 text-violet-700">
+                  <LockKeyhole className="size-5" />
+                </div>
+                <div>
+                  <h2 className="font-semibold">Proteja sua ficha com um PIN</h2>
+                  <p className="mt-1 text-sm leading-5 text-muted-foreground">
+                    O PIN ajuda a proteger consultas e transações realizadas em seu nome.
+                  </p>
+                </div>
               </div>
-              <div>
-                <h2 className="font-semibold">Gerenciar PIN de segurança</h2>
-                <p className="mt-1 text-sm leading-5 text-muted-foreground">
-                  {statusPin === "SEM_PIN"
-                    ? "Seu cadastro ainda não possui PIN. Crie um para proteger consultas futuras."
-                    : "Para alterar o PIN, confirme o PIN atual e informe o novo código duas vezes."}
-                </p>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4 p-5 sm:p-6">
-            {statusPin === "COM_PIN" && (
-              <label className="block space-y-2">
-                <span className="text-sm font-medium">PIN atual</span>
-                <Input
-                  type="password"
-                  inputMode="numeric"
-                  autoComplete="current-password"
-                  maxLength={8}
-                  value={pinAtual}
-                  onChange={(event) =>
-                    setPinAtual(event.target.value.replace(/\D/g, "").slice(0, 8))
-                  }
-                  placeholder="Informe o PIN atual"
-                  className="h-11"
-                />
-              </label>
-            )}
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="block space-y-2">
-                <span className="text-sm font-medium">
-                  {statusPin === "SEM_PIN" ? "Criar PIN" : "Novo PIN"}
-                </span>
-                <Input
-                  type="password"
-                  inputMode="numeric"
-                  autoComplete="new-password"
-                  maxLength={8}
-                  value={novoPin}
-                  onChange={(event) =>
-                    setNovoPin(event.target.value.replace(/\D/g, "").slice(0, 8))
-                  }
-                  placeholder="4 a 8 números"
-                  className="h-11"
-                />
-              </label>
-              <label className="block space-y-2">
-                <span className="text-sm font-medium">Confirmar PIN</span>
-                <Input
-                  type="password"
-                  inputMode="numeric"
-                  autoComplete="new-password"
-                  maxLength={8}
-                  value={confirmacaoPin}
-                  onChange={(event) =>
-                    setConfirmacaoPin(event.target.value.replace(/\D/g, "").slice(0, 8))
-                  }
-                  placeholder="Repita o PIN"
-                  className="h-11"
-                />
-              </label>
-            </div>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-xs leading-5 text-muted-foreground">
-                O PIN é armazenado somente como hash seguro. A atualização é sincronizada
-                automaticamente com o painel publicado.
-              </p>
-              <Button
-                onClick={onGerenciarPin}
-                disabled={salvandoPin || !novoPin || !confirmacaoPin}
-                className="shrink-0"
-              >
-                {salvandoPin ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <ShieldCheck className="size-4" />
-                )}
-                {statusPin === "SEM_PIN" ? "Criar PIN" : "Confirmar alteração"}
+              <Button variant="outline" onClick={() => setConfiguracoesAbertas(true)} className="shrink-0">
+                <ShieldCheck className="size-4" /> Cadastrar PIN
               </Button>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        ) : null
       )}
-      <Card className="border-l-4 border-l-sky-500 shadow-sm">
-        <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
-          <div className="flex items-start gap-3">
-            <div className="rounded-xl bg-sky-500/10 p-2.5 text-sky-700">
-              {pushAtivo ? <Bell className="size-5" /> : <BellOff className="size-5" />}
-            </div>
-            <div>
-              <h2 className="font-semibold">Avisos da sua ficha</h2>
-              <p className="mt-1 text-sm leading-5 text-muted-foreground">
-                {!pushConfigurado
-                  ? "As notificações ainda não foram configuradas pelo almoxarifado."
-                  : pushPermissao === "denied"
-                    ? "A permissão está bloqueada neste navegador. Autorize as notificações nas configurações do site."
-                    : pushPermissao === "indisponivel"
-                      ? "Este navegador ou modo de acesso não oferece suporte a notificações push."
-                      : "Receba avisos importantes deste projeto neste dispositivo."}
-              </p>
-            </div>
+      <Dialog open={configuracoesAbertas} onOpenChange={setConfiguracoesAbertas}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Configurações da ficha</DialogTitle>
+            <DialogDescription>
+              Gerencie a proteção da sua ficha e os avisos deste projeto.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-5">
+            {statusPin && (
+              <section className="rounded-xl border border-violet-200 bg-violet-500/[0.04] p-4 sm:p-5">
+                <div className="flex items-start gap-3">
+                  <LockKeyhole className="mt-0.5 size-5 shrink-0 text-violet-700" />
+                  <div>
+                    <h2 className="font-semibold">{statusPin === "SEM_PIN" ? "Cadastrar PIN" : "Alterar PIN"}</h2>
+                    <p className="mt-1 text-sm leading-5 text-muted-foreground">
+                      O PIN é armazenado somente como hash seguro e protege consultas e transações em seu nome.
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-4 space-y-4">
+                  {statusPin === "COM_PIN" && (
+                    <label className="block space-y-2">
+                      <span className="text-sm font-medium">PIN atual</span>
+                      <Input
+                        type="password"
+                        inputMode="numeric"
+                        autoComplete="current-password"
+                        maxLength={8}
+                        value={pinAtual}
+                        onChange={(event) => setPinAtual(event.target.value.replace(/\D/g, "").slice(0, 8))}
+                        placeholder="Informe o PIN atual"
+                        className="h-11"
+                      />
+                    </label>
+                  )}
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="block space-y-2">
+                      <span className="text-sm font-medium">{statusPin === "SEM_PIN" ? "Criar PIN" : "Novo PIN"}</span>
+                      <Input
+                        type="password"
+                        inputMode="numeric"
+                        autoComplete="new-password"
+                        maxLength={8}
+                        value={novoPin}
+                        onChange={(event) => setNovoPin(event.target.value.replace(/\D/g, "").slice(0, 8))}
+                        placeholder="4 a 8 números"
+                        className="h-11"
+                      />
+                    </label>
+                    <label className="block space-y-2">
+                      <span className="text-sm font-medium">Confirmar PIN</span>
+                      <Input
+                        type="password"
+                        inputMode="numeric"
+                        autoComplete="new-password"
+                        maxLength={8}
+                        value={confirmacaoPin}
+                        onChange={(event) => setConfirmacaoPin(event.target.value.replace(/\D/g, "").slice(0, 8))}
+                        placeholder="Repita o PIN"
+                        className="h-11"
+                      />
+                    </label>
+                  </div>
+                  <Button onClick={onGerenciarPin} disabled={salvandoPin || !novoPin || !confirmacaoPin} className="w-full">
+                    {salvandoPin ? <Loader2 className="size-4 animate-spin" /> : <ShieldCheck className="size-4" />}
+                    {statusPin === "SEM_PIN" ? "Criar PIN" : "Confirmar alteração"}
+                  </Button>
+                </div>
+              </section>
+            )}
+            <section className="rounded-xl border border-sky-200 bg-sky-500/[0.04] p-4 sm:p-5">
+              <div className="flex items-start gap-3">
+                {pushAtivo ? <Bell className="mt-0.5 size-5 shrink-0 text-sky-700" /> : <BellOff className="mt-0.5 size-5 shrink-0 text-sky-700" />}
+                <div>
+                  <h2 className="font-semibold">Avisos da sua ficha</h2>
+                  <p className="mt-1 text-sm leading-5 text-muted-foreground">
+                    {!pushConfigurado
+                      ? "As notificações ainda não foram configuradas pelo almoxarifado."
+                      : pushPermissao === "denied"
+                        ? "A permissão está bloqueada neste navegador. Autorize as notificações nas configurações do site."
+                        : pushPermissao === "indisponivel"
+                          ? "Este navegador ou modo de acesso não oferece suporte a notificações push."
+                          : "Receba avisos importantes deste projeto neste dispositivo."}
+                  </p>
+                </div>
+              </div>
+              <Button
+                variant={pushAtivo ? "outline" : "default"}
+                onClick={onAlternarPush}
+                disabled={!pushConfigurado || gerenciandoPush || pushPermissao === "denied" || pushPermissao === "indisponivel"}
+                className="mt-4 w-full"
+              >
+                {gerenciandoPush ? <Loader2 className="size-4 animate-spin" /> : pushAtivo ? <BellOff className="size-4" /> : <Bell className="size-4" />}
+                {pushAtivo ? "Desativar avisos" : "Ativar avisos"}
+              </Button>
+            </section>
           </div>
-          <Button
-            variant={pushAtivo ? "outline" : "default"}
-            onClick={onAlternarPush}
-            disabled={
-              !pushConfigurado ||
-              gerenciandoPush ||
-              pushPermissao === "denied" ||
-              pushPermissao === "indisponivel"
-            }
-            className="shrink-0"
-          >
-            {gerenciandoPush ? <Loader2 className="size-4 animate-spin" /> : pushAtivo ? <BellOff className="size-4" /> : <Bell className="size-4" />}
-            {pushAtivo ? "Desativar avisos" : "Ativar avisos"}
-          </Button>
-        </CardContent>
-      </Card>
+        </DialogContent>
+      </Dialog>
       {painelDesatualizado(dados.atualizado_em) && (
         <div className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
           <AlertTriangle className="mt-0.5 size-5 shrink-0" />
