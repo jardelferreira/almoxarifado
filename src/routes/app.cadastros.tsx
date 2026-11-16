@@ -10,6 +10,7 @@ import {
   Users,
   UsersRound,
   Plus,
+  Search,
   ArrowDownAZ,
   ArrowUpAZ,
   ChevronLeft,
@@ -126,7 +127,7 @@ function CadastrosPage() {
         status: "ATIVO",
       },
       locais: { nome: "", codigo: "", local_pai_id: null, ativo: true },
-      equipes: { nome: "", descricao: "", ativo: true, estoque_segregado: true, membro_ids: [] },
+      equipes: { nome: "", descricao: "", ativo: true, estoque_segregado: true, membros: [] },
     };
     setEditando({ aba, item: base[aba] });
   };
@@ -159,11 +160,14 @@ function CadastrosPage() {
       }
 
       if (aba === "equipes") {
-        const { membro_ids, ...dadosEquipe } = item;
+        const { membros, ...dadosEquipe } = item;
 
         const equipe = await repo.equipes.save(projetoId, dadosEquipe as unknown as Equipe);
 
-        await repo.salvarMembrosDaEquipe(equipe.id, (membro_ids as string[] | undefined) ?? []);
+        await repo.salvarMembrosDaEquipe(
+          equipe.id,
+          (membros as Array<{ funcionario_id: string; papel: "LIDER" | "MEMBRO" }> | undefined) ?? [],
+        );
 
         toast.success("Equipe salva");
         setEditando(null);
@@ -179,12 +183,18 @@ function CadastrosPage() {
       } else if (aba === "funcionarios") {
         const pinNovo = String(item["pin_novo"] ?? "").trim();
         const { pin_novo: _pinNovo, ...itemFuncionario } = item;
+        const funcionarioId = String(itemFuncionario["id"] ?? "");
+        const encarregadoId = (itemFuncionario["encarregado_id"] as string | null | undefined) ?? null;
+        const equipeAutomatica = encarregadoId ? equipeDoEncarregado(encarregadoId) : null;
+        const equipeId = encarregadoId ? equipeAutomatica : ((itemFuncionario["equipe_raiz_id"] as string | null) ?? null);
         const dadosFuncionario = {
           ...itemFuncionario,
+          equipe_raiz_id: equipeId ?? undefined,
           cpf: normalizarCpf(String(itemFuncionario["cpf"] ?? "")),
         } as unknown as Funcionario;
         if (pinNovo) Object.assign(dadosFuncionario, await criarHashPin(pinNovo));
-        await salvarFuncionario(projetoId, dadosFuncionario);
+        const funcionarioSalvo = await salvarFuncionario(projetoId, dadosFuncionario);
+        await repo.atualizarVinculoFuncionarioEquipe(funcionarioSalvo.id, equipeId);
       } else if (aba === "locais") {
         await repo.locais.save(projetoId, item as unknown as Local);
       } else if (aba === "produtos") {
@@ -196,6 +206,17 @@ function CadastrosPage() {
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Não foi possível salvar o cadastro.");
     }
+  };
+
+  const equipeDoEncarregado = (encarregadoId: string): string | null => {
+    const encarregado = dados.funcionarios.find((funcionario) => funcionario.id === encarregadoId);
+    if (!encarregado) return null;
+    if (encarregado.equipe_raiz_id) return encarregado.equipe_raiz_id;
+    return (
+      dados.equipeMembros.find(
+        (membro) => membro.funcionario_id === encarregadoId && membro.papel === "LIDER",
+      )?.equipe_id ?? dados.equipeMembros.find((membro) => membro.funcionario_id === encarregadoId)?.equipe_id ?? null
+    );
   };
 
   const toggleAtivo = async (aba: Aba, row: object, campo: "ativo" | "status") => {
@@ -503,6 +524,7 @@ function CadastrosPage() {
                       {aba === "equipes" && (
                         <>
                           <TableHead>Membros</TableHead>
+                          <TableHead>Líderes</TableHead>
                           <TableHead>Estoque</TableHead>
                         </>
                       )}
@@ -613,10 +635,15 @@ function CadastrosPage() {
                     {aba === "equipes" &&
                       paginaDe(listas.equipes).map((e: Equipe) => {
                         const membros = dados.equipeMembros.filter((m) => m.equipe_id === e.id);
+                        const lideres = membros
+                          .filter((membro) => membro.papel === "LIDER")
+                          .map((membro) => nomeDe(dados.funcionarios, membro.funcionario_id))
+                          .filter(Boolean);
                         return (
                           <TableRow key={e.id}>
                             <TableCell className="font-medium">{e.nome}</TableCell>
                             <TableCell>{membros.length}</TableCell>
+                            <TableCell>{lideres.length ? lideres.join(", ") : "Nenhum líder"}</TableCell>
                             <TableCell>
                               <Badge variant="secondary">
                                 {e.estoque_segregado ? "Segregado" : "Compartilhado"}
@@ -630,7 +657,10 @@ function CadastrosPage() {
                                   aba: "equipes",
                                   item: {
                                     ...e,
-                                    membro_ids: membros.map((m) => m.funcionario_id),
+                                    membros: membros.map((m) => ({
+                                      funcionario_id: m.funcionario_id,
+                                      papel: m.papel ?? "MEMBRO",
+                                    })),
                                   },
                                 })
                               }
@@ -907,14 +937,25 @@ function CadastrosPage() {
                       onChange={(v) =>
                         setEditando({
                           ...editando,
-                          item: { ...editando.item, encarregado_id: v },
+                          item: {
+                            ...editando.item,
+                            encarregado_id: v,
+                            equipe_raiz_id: v ? equipeDoEncarregado(v) : editando.item["equipe_raiz_id"] ?? null,
+                          },
                         })
                       }
-                      opcoes={dados.funcionarios.map((f) => ({ value: f.id, label: f.nome }))}
+                      opcoes={dados.funcionarios
+                        .filter((f) => f.id !== editando.item["id"])
+                        .map((f) => ({ value: f.id, label: f.nome }))}
                     />
                   </div>
                   <div className="space-y-1.5 sm:col-span-2">
-                    <Label>Equipe raiz</Label>
+                    <div className="flex items-center justify-between gap-2">
+                      <Label>Equipe raiz</Label>
+                      {Boolean(editando.item["encarregado_id"] as string | null | undefined) && (
+                        <Badge variant="secondary">Definida pelo encarregado</Badge>
+                      )}
+                    </div>
                     <Combobox
                       placeholder="Não definida"
                       value={(editando.item["equipe_raiz_id"] as string) ?? null}
@@ -927,7 +968,17 @@ function CadastrosPage() {
                       opcoes={dados.equipes
                         .filter((e) => e.ativo)
                         .map((e) => ({ value: e.id, label: e.nome }))}
+                      disabled={Boolean(editando.item["encarregado_id"])}
                     />
+                    <p className="text-xs text-muted-foreground">
+                      {editando.item["encarregado_id"]
+                        ? "A equipe é herdada automaticamente do encarregado e não pode ser alterada aqui."
+                        : "Sem encarregado, o operador pode escolher, trocar ou liberar a equipe."}
+                    </p>
+                    <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900/40">
+                      <span className="font-medium">Equipe atual: </span>
+                      {nomeDe(dados.equipes, (editando.item["equipe_raiz_id"] as string | null) ?? null) || "Nenhuma"}
+                    </div>
                   </div>
                   <div className="space-y-1.5 sm:col-span-2">
                     <Label htmlFor="pin-funcionario">PIN de segurança</Label>
@@ -997,16 +1048,33 @@ function CadastrosPage() {
                     <Label>Usa estoque segregado</Label>
                   </div>
                   <div className="space-y-2 sm:col-span-2">
-                    <Label>Membros</Label>
-                    <SelecaoMultipla
-                      opcoes={dados.funcionarios
-                        .filter((f) => f.status === "ATIVO")
-                        .map((f) => ({ id: f.id, nome: f.nome }))}
-                      selecionados={(editando.item["membro_ids"] as string[] | undefined) ?? []}
-                      onChange={(membro_ids) =>
-                        setEditando({ ...editando, item: { ...editando.item, membro_ids } })
-                      }
-                    />
+                    <div>
+                      <Label>Membros e papel</Label>
+                      <p className="text-xs text-muted-foreground">
+                        Novos funcionários sem equipe podem ser adicionados aqui. Para trocar ou liberar alguém já vinculado, edite o cadastro do funcionário.
+                      </p>
+                    </div>
+                    {(() => {
+                      const equipeId = String(editando.item["id"] ?? "");
+                      const selecionados = (editando.item["membros"] as Array<{ funcionario_id: string; papel: "LIDER" | "MEMBRO" }> | undefined) ?? [];
+                      const selecionadosIds = new Set(selecionados.map((membro) => membro.funcionario_id));
+                      const ocupadosEmOutraEquipe = new Set(
+                        dados.equipeMembros
+                          .filter((membro) => membro.equipe_id !== equipeId)
+                          .map((membro) => membro.funcionario_id),
+                      );
+                      return (
+                        <SelecaoMultipla
+                          opcoes={dados.funcionarios
+                            .filter((f) => f.status === "ATIVO" && (selecionadosIds.has(f.id) || !ocupadosEmOutraEquipe.has(f.id)))
+                            .map((f) => ({ id: f.id, nome: f.nome }))}
+                          selecionados={selecionados}
+                          onChange={(membros) =>
+                            setEditando({ ...editando, item: { ...editando.item, membros } })
+                          }
+                        />
+                      );
+                    })()}
                   </div>
                 </>
               )}
@@ -1030,32 +1098,76 @@ function SelecaoMultipla({
   onChange,
 }: {
   opcoes: { id: string; nome: string }[];
-  selecionados: string[];
-  onChange: (ids: string[]) => void;
+  selecionados: Array<{ funcionario_id: string; papel: "LIDER" | "MEMBRO" }>;
+  onChange: (membros: Array<{ funcionario_id: string; papel: "LIDER" | "MEMBRO" }>) => void;
 }) {
+  const [busca, setBusca] = useState("");
+  const normalizar = (valor: string) =>
+    valor
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLocaleLowerCase("pt-BR")
+      .trim();
+  const termo = normalizar(busca);
+  const filtradas = opcoes.filter((opcao) => !termo || normalizar(opcao.nome).includes(termo));
+
   return (
-    <div className="max-h-40 space-y-2 overflow-y-auto rounded-md border p-3">
-      {opcoes.map((opcao) => {
-        const marcado = selecionados.includes(opcao.id);
+    <div className="overflow-hidden rounded-md border">
+      <div className="flex items-center gap-2 border-b bg-muted/20 px-3">
+        <Search className="size-4 shrink-0 text-muted-foreground" />
+        <Input
+          value={busca}
+          onChange={(event) => setBusca(event.target.value)}
+          placeholder="Filtrar funcionários…"
+          className="h-10 border-0 bg-transparent px-0 text-sm shadow-none focus-visible:ring-0"
+        />
+      </div>
+      <div className="max-h-56 space-y-1 overflow-y-auto p-3">
+      {filtradas.map((opcao) => {
+        const membro = selecionados.find((selecionado) => selecionado.funcionario_id === opcao.id);
+        const marcado = Boolean(membro);
         return (
-          <label key={opcao.id} className="flex cursor-pointer items-center gap-2 text-sm">
+          <div key={opcao.id} className="flex flex-wrap items-center gap-2 rounded-md px-1 py-1.5 hover:bg-muted/40">
             <Checkbox
               checked={marcado}
               onCheckedChange={(checked) =>
                 onChange(
                   checked
-                    ? [...selecionados, opcao.id]
-                    : selecionados.filter((id) => id !== opcao.id),
+                    ? [...selecionados, { funcionario_id: opcao.id, papel: "MEMBRO" }]
+                    : selecionados.filter((item) => item.funcionario_id !== opcao.id),
                 )
               }
             />
-            {opcao.nome}
-          </label>
+            <span className="min-w-0 flex-1 truncate text-sm font-medium" title={opcao.nome}>{opcao.nome}</span>
+            {marcado && (
+              <select
+                aria-label={`Papel de ${opcao.nome}`}
+                value={membro?.papel ?? "MEMBRO"}
+                onChange={(event) =>
+                  onChange(
+                    selecionados.map((item) =>
+                      item.funcionario_id === opcao.id
+                        ? { ...item, papel: event.target.value as "LIDER" | "MEMBRO" }
+                        : item,
+                    ),
+                  )
+                }
+                className="h-8 rounded-md border border-slate-300 bg-background px-2 text-xs font-medium text-foreground"
+              >
+                <option value="MEMBRO">Membro</option>
+                <option value="LIDER">Líder</option>
+              </select>
+            )}
+          </div>
         );
       })}
-      {opcoes.length === 0 && (
+      {filtradas.length === 0 && (
         <p className="text-sm text-muted-foreground">Nenhuma opção disponível.</p>
       )}
+      </div>
+      <div className="border-t bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+        {selecionados.length} selecionado(s) · Líderes recebem papel estruturado para notificações futuras.
+      </div>
     </div>
   );
 }

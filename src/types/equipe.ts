@@ -19,6 +19,8 @@ export interface EquipeMembro {
   id: ID;
   equipe_id: ID;
   funcionario_id: ID;
+  /** Papel do funcionário na equipe, preparado para regras futuras de notificação. */
+  papel?: "LIDER" | "MEMBRO" | undefined;
 }
 
 export interface EstoqueItem {

@@ -304,7 +304,7 @@ export const repo = {
 
   async salvarMembrosDaEquipe(
     equipeId: string,
-    funcionarioIds: string[],
+    membros: Array<string | { funcionario_id: string; papel?: "LIDER" | "MEMBRO" }>,
   ) {
     const db = getDB();
 
@@ -314,7 +314,14 @@ export const repo = {
       throw new Error("Equipe não encontrada");
     }
 
-    const idsUnicos = [...new Set(funcionarioIds)];
+    const membrosNormalizados = [...new Map(
+      membros.map((membro) => {
+        const funcionario_id = typeof membro === "string" ? membro : membro.funcionario_id;
+        const papel = typeof membro === "string" ? "MEMBRO" : membro.papel ?? "MEMBRO";
+        return [funcionario_id, { funcionario_id, papel }] as const;
+      }),
+    ).values()];
+    const idsUnicos = membrosNormalizados.map((membro) => membro.funcionario_id);
 
     /**
      * Garante que todos os funcionários pertencem
@@ -336,24 +343,89 @@ export const repo = {
       );
     }
 
+    const membrosAtuais = await db.equipe_membros
+      .where("equipe_id")
+      .equals(equipeId)
+      .toArray();
+    const atuais = new Set(membrosAtuais.map((membro) => membro.funcionario_id));
+
+    // A remoção ou transferência de alguém já vinculado deve ocorrer no modal do funcionário.
+    // Isso evita que uma edição acidental da equipe apague vínculos existentes.
+    const removidos = [...atuais].filter((id) => !idsUnicos.includes(id));
+    if (removidos.length > 0) {
+      throw new Error(
+        "Para retirar ou transferir um funcionário, use o modal de edição do funcionário.",
+      );
+    }
+
+    const outrosVinculos = await db.equipe_membros
+      .where("funcionario_id")
+      .anyOf(idsUnicos)
+      .toArray();
+    if (outrosVinculos.some((membro) => membro.equipe_id !== equipeId)) {
+      throw new Error("Um funcionário não pode pertencer a duas equipes ao mesmo tempo.");
+    }
+
     await db.transaction(
       "rw",
       db.equipe_membros,
+      db.funcionarios,
       async () => {
-        await db.equipe_membros
-          .where("equipe_id")
-          .equals(equipeId)
-          .delete();
-
         await db.equipe_membros.bulkPut(
-          idsUnicos.map((funcionario_id) => ({
-            id: uid(),
+          membrosNormalizados.map(({ funcionario_id, papel }) => ({
+            id: membrosAtuais.find((membro) => membro.funcionario_id === funcionario_id)?.id ?? uid(),
             equipe_id: equipeId,
             funcionario_id,
+            papel,
           })),
+        );
+
+        await Promise.all(
+          idsUnicos.map((funcionario_id) =>
+            db.funcionarios.update(funcionario_id, { equipe_raiz_id: equipeId }),
+          ),
         );
       },
     );
+  },
+
+  /**
+   * Atualiza o vínculo pelo cadastro do funcionário, único fluxo autorizado
+   * para trocar ou liberar alguém de uma equipe.
+   */
+  async atualizarVinculoFuncionarioEquipe(
+    funcionarioId: string,
+    equipeId: string | null,
+  ) {
+    const db = getDB();
+    const funcionario = await db.funcionarios.get(funcionarioId);
+    if (!funcionario) throw new Error("Funcionário não encontrado");
+
+    if (equipeId) {
+      const equipe = await db.equipes.get(equipeId);
+      if (!equipe || equipe.projeto_id !== funcionario.projeto_id) {
+        throw new Error("Equipe inválida para este funcionário");
+      }
+    }
+
+    await db.transaction("rw", db.equipe_membros, db.funcionarios, async () => {
+      const vinculos = await db.equipe_membros
+        .where("funcionario_id")
+        .equals(funcionarioId)
+        .toArray();
+      await db.equipe_membros.bulkDelete(vinculos.map((vinculo) => vinculo.id));
+
+      if (equipeId) {
+        await db.equipe_membros.put({
+          id: uid(),
+          equipe_id: equipeId,
+          funcionario_id: funcionarioId,
+          papel: vinculos.find((vinculo) => vinculo.equipe_id === equipeId)?.papel ?? "MEMBRO",
+        });
+      }
+
+      await db.funcionarios.update(funcionarioId, { equipe_raiz_id: equipeId });
+    });
   },
 
   // ---------- Movimentações ----------
