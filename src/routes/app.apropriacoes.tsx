@@ -166,6 +166,8 @@ export function ApropriacoesPage() {
                 item.estoque.patrimonio,
                 item.estoque.identificacao,
                 item.estoque.serial,
+                dados.empresas.find((empresa) => empresa.id === item.estoque.empresa_id)?.nome,
+                dados.equipes.find((equipe) => equipe.id === item.estoque.equipe_id)?.nome,
                 item.apropriacoes.map((apropriacao) => apropriacao.funcionario.nome).join(" "),
             ]
                 .join(" ")
@@ -488,7 +490,7 @@ export function ApropriacoesPage() {
                                     <th className="px-4 py-3 font-semibold">Equipamento</th>
                                     <th className="px-4 py-3 font-semibold">Identificação</th>
                                     <th className="px-4 py-3 font-semibold">Responsável</th>
-                                    <th className="px-4 py-3 font-semibold">Equipe</th>
+                                    <th className="px-4 py-3 font-semibold">Origem / proprietários</th>
                                     <th className="px-4 py-3 font-semibold">Status</th>
                                     <th className="w-12 px-4 py-3" aria-label="Ações" />
                                 </tr>
@@ -508,7 +510,10 @@ export function ApropriacoesPage() {
                                                 <div className="space-y-1">{item.apropriacoes.slice(0, 2).map((apropriacao) => <div key={apropriacao.funcionario.id}>{apropriacao.funcionario.nome} <span className="text-xs text-muted-foreground">({apropriacao.quantidade})</span></div>)}{item.apropriacoes.length > 2 && <div className="text-xs text-muted-foreground">+{item.apropriacoes.length - 2} responsáveis</div>}</div>
                                             ) : <span className="text-muted-foreground">Não apropriado</span>}
                                         </td>
-                                        <td className="px-4 py-3 text-muted-foreground">{item.apropriacoes.length > 0 ? "Ver apropriações" : "Almoxarifado"}</td>
+                                        <td className="px-4 py-3">
+                                            <p className="font-medium">{dados.equipes.find((equipe) => equipe.id === item.estoque.equipe_id)?.nome ?? "Projeto inteiro"}</p>
+                                            <p className="text-xs text-muted-foreground">{dados.empresas.find((empresa) => empresa.id === item.estoque.empresa_id)?.nome ?? "Proprietário não localizado"}</p>
+                                        </td>
                                         <td className="px-4 py-3"><StatusBadge status={item.status} /></td>
                                         <td className="px-4 py-3">
                                             <div className="flex items-center justify-end gap-2">
@@ -572,6 +577,10 @@ export function ApropriacoesPage() {
                                     <div className="mt-3 flex items-center gap-2 text-sm">
                                         <UserRound className="size-4 text-muted-foreground" aria-hidden="true" />
                                         <span>{item.apropriacoes.length > 0 ? `${item.apropriacoes.length} responsável(is) · ${item.estado.apropriado} em uso` : "Não apropriado"}</span>
+                                    </div>
+                                    <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                                        <Badge variant="outline">Equipe: {dados.equipes.find((equipe) => equipe.id === item.estoque.equipe_id)?.nome ?? "Projeto inteiro"}</Badge>
+                                        <Badge variant="outline">Proprietário: {dados.empresas.find((empresa) => empresa.id === item.estoque.empresa_id)?.nome ?? "Não localizado"}</Badge>
                                     </div>
                                 </button>
                                 <div className="mt-4">
@@ -652,6 +661,8 @@ export function ApropriacoesPage() {
                                     <Info label="Identificação" value={selecionado.estoque.identificacao} />
                                     <Info label="Número de série" value={selecionado.estoque.serial} />
                                     <Info label="Vínculo" value={selecionado.estoque.vinculo} />
+                                    <Info label="Equipe proprietária" value={dados.equipes.find((equipe) => equipe.id === selecionado.estoque.equipe_id)?.nome ?? "Projeto inteiro"} />
+                                    <Info label="Proprietário" value={dados.empresas.find((empresa) => empresa.id === selecionado.estoque.empresa_id)?.nome} />
                                 </InfoSection>
 
                                 <InfoSection title="Cadastro">
@@ -697,6 +708,7 @@ export function ApropriacoesPage() {
                         <div className="rounded-lg border bg-muted/20 p-3">
                             <p className="font-medium">{selecionado?.equipamento.nome}</p>
                             <p className="text-xs text-muted-foreground">{selecionado?.estoque.patrimonio || selecionado?.estoque.identificacao || selecionado?.estoque.serial || "Sem identificação"}</p>
+                            <p className="mt-1 text-xs font-medium text-foreground">Equipe: {dados.equipes.find((equipe) => equipe.id === selecionado?.estoque.equipe_id)?.nome ?? "Projeto inteiro"} · Proprietário: {dados.empresas.find((empresa) => empresa.id === selecionado?.estoque.empresa_id)?.nome ?? "Não localizado"}</p>
                         </div>
                         <div className="space-y-2">
                             <Label htmlFor="funcionario-apropriacao">Funcionário responsável</Label>

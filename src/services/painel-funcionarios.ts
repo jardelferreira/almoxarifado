@@ -75,6 +75,7 @@ export async function montarPublicacaoPainelFuncionarios(
     equipamentos,
     estoques,
     equipes,
+    empresas,
     produtos,
     unidades,
     locais,
@@ -85,6 +86,7 @@ export async function montarPublicacaoPainelFuncionarios(
     db.equipamentos.where("projeto_id").equals(projetoId).toArray(),
     db.estoque_equipamentos.where("projeto_id").equals(projetoId).toArray(),
     db.equipes.where("projeto_id").equals(projetoId).toArray(),
+    db.empresas.where("projeto_id").equals(projetoId).toArray(),
     db.produtos.where("projeto_id").equals(projetoId).toArray(),
     db.unidades.toArray(),
     db.locais.where("projeto_id").equals(projetoId).toArray(),
@@ -94,6 +96,7 @@ export async function montarPublicacaoPainelFuncionarios(
 
   const equipamentoPorId = new Map(equipamentos.map((item) => [item.id, item]));
   const equipePorId = new Map(equipes.map((item) => [item.id, item]));
+  const empresaPorId = new Map(empresas.map((item) => [item.id, item]));
   const produtoPorId = new Map(produtos.map((item) => [item.id, item]));
   const unidadePorId = new Map(unidades.map((item) => [item.id, item]));
   const localPorId = new Map(locais.map((item) => [item.id, item]));
@@ -120,6 +123,8 @@ export async function montarPublicacaoPainelFuncionarios(
         identificacao:
           estoque.identificacao || estoque.patrimonio || estoque.serial || "Sem identificação",
         quantidade,
+        equipe_proprietaria: equipePorId.get(estoque.equipe_id ?? "")?.nome ?? "Projeto inteiro",
+        proprietario: empresaPorId.get(estoque.empresa_id)?.nome ?? null,
       });
     }
 

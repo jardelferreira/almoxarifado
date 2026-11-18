@@ -6,6 +6,8 @@ export interface PainelFuncionarioEquipamento {
   modelo?: string | null;
   identificacao: string;
   quantidade: number;
+  equipe_proprietaria?: string | null;
+  proprietario?: string | null;
 }
 
 export interface PainelFuncionarioMaterial {

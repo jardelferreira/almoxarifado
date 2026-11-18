@@ -30,7 +30,7 @@ import { getDB } from "@/db/db";
 import { useProjetoAtivoId } from "@/hooks/useAppData";
 import { estadoEquipamentosRepo } from "@/services/equipamentos/estado-repo";
 import { movimentacoesEquipamentosRepo } from "@/services/equipamentos/movimentacoes-repo";
-import type { Equipamento, EstoqueEquipamento, Funcionario } from "@/types";
+import type { Empresa, Equipe, Equipamento, EstoqueEquipamento, Funcionario } from "@/types";
 import { formatarCpf } from "@/utils/seguranca";
 import { num } from "@/utils/format";
 
@@ -81,11 +81,12 @@ export function PainelApropriacoesPage() {
   const dados = useLiveQuery(async () => {
     if (!projetoId) return null;
     const db = getDB();
-    const [funcionarios, equipamentos, estoques, equipes] = await Promise.all([
+    const [funcionarios, equipamentos, estoques, equipes, empresas] = await Promise.all([
       db.funcionarios.where("projeto_id").equals(projetoId).toArray(),
       db.equipamentos.where("projeto_id").equals(projetoId).toArray(),
       db.estoque_equipamentos.where("projeto_id").equals(projetoId).toArray(),
       db.equipes.where("projeto_id").equals(projetoId).toArray(),
+      db.empresas.where("projeto_id").equals(projetoId).toArray(),
     ]);
 
     const equipamentoPorId = new Map(equipamentos.map((item) => [item.id, item]));
@@ -148,6 +149,7 @@ export function PainelApropriacoesPage() {
         .filter((item) => item.status === "ATIVO")
         .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")),
       equipes,
+      empresas,
       itens: itens.sort((a, b) => a.equipamento.nome.localeCompare(b.equipamento.nome, "pt-BR")),
       disponiveis: disponiveis.sort((a, b) =>
         a.equipamento.nome.localeCompare(b.equipamento.nome, "pt-BR"),
@@ -180,6 +182,8 @@ export function PainelApropriacoesPage() {
           item.identificacao,
           item.estoque.patrimonio,
           item.estoque.serial,
+          origemEquipamento(item.estoque, dados.equipes, dados.empresas).equipe,
+          origemEquipamento(item.estoque, dados.equipes, dados.empresas).empresa,
           ...item.proprietarios.flatMap((proprietario) => [
             proprietario.nome,
             proprietario.matricula,
@@ -459,6 +463,14 @@ export function PainelApropriacoesPage() {
                             ? ` · Serial: ${item.estoque.serial}`
                             : ""}
                         </p>
+                        <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                          <Badge variant="outline">
+                            Equipe proprietária: {origemEquipamento(item.estoque, dados.equipes, dados.empresas).equipe}
+                          </Badge>
+                          <Badge variant="outline">
+                            Proprietário: {origemEquipamento(item.estoque, dados.equipes, dados.empresas).empresa}
+                          </Badge>
+                        </div>
                       </div>
                       <div className="flex flex-wrap gap-2 text-xs">
                         <Badge variant={item.proprietarios.length ? "default" : "outline"}>
@@ -553,7 +565,7 @@ export function PainelApropriacoesPage() {
                     variant="outline"
                     size="sm"
                     onClick={() =>
-                      imprimirAtendimento(funcionario, equipe?.nome ?? "Sem equipe", dados.itens)
+                        imprimirAtendimento(funcionario, equipe?.nome ?? "Sem equipe", dados.itens, dados.equipes, dados.empresas)
                     }
                   >
                     <FileDown className="mr-2 size-4" />
@@ -582,6 +594,7 @@ export function PainelApropriacoesPage() {
                         <tr>
                           <th className="px-4 py-3">Equipamento</th>
                           <th className="px-4 py-3">Identificação</th>
+                          <th className="px-4 py-3">Origem</th>
                           <th className="px-4 py-3 text-right">Quantidade</th>
                           <th className="px-4 py-3 text-right">Ação</th>
                         </tr>
@@ -600,6 +613,10 @@ export function PainelApropriacoesPage() {
                               <div className="mt-1 text-xs">
                                 {referenciasFisicas(item.estoque, item.identificacao)}
                               </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <p className="font-medium">{origemEquipamento(item.estoque, dados.equipes, dados.empresas).equipe}</p>
+                              <p className="text-xs text-muted-foreground">{origemEquipamento(item.estoque, dados.equipes, dados.empresas).empresa}</p>
                             </td>
                             <td className="px-4 py-3 text-right font-semibold">
                               {num(item.quantidade)}
@@ -672,9 +689,10 @@ export function PainelApropriacoesPage() {
                     className="h-12 border-primary/40 bg-background text-base font-semibold text-foreground shadow-sm data-[placeholder]:text-muted-foreground"
                     opcoes={dados.disponiveis.map((item) => ({
                       value: item.estoque.id,
-                      label: `${item.equipamento.nome} · disponível: ${item.disponivel}`,
+                      label: `${item.equipamento.nome} · ${origemEquipamento(item.estoque, dados.equipes, dados.empresas).equipe} · disponível: ${item.disponivel}`,
                       hint: [
                         referenciasEquipamento(item),
+                        origemEquipamento(item.estoque, dados.equipes, dados.empresas).texto,
                         referenciasFisicas(item.estoque, item.identificacao),
                       ]
                         .filter(Boolean)
@@ -693,6 +711,9 @@ export function PainelApropriacoesPage() {
                       <p className="mt-1 text-muted-foreground">
                         {referenciasEquipamento(estoqueSelecionado)}
                       </p>
+                      <p className="mt-1 text-sm font-medium text-foreground">
+                        {origemEquipamento(estoqueSelecionado.estoque, dados.equipes, dados.empresas).texto}
+                      </p>
                       <p className="mt-1 text-xs text-muted-foreground">
                         {referenciasFisicas(
                           estoqueSelecionado.estoque,
@@ -707,6 +728,11 @@ export function PainelApropriacoesPage() {
               <div className="rounded-lg border bg-muted/20 p-3 text-sm">
                 <p className="font-medium">{itemDevolucao?.equipamento.nome}</p>
                 <p className="text-muted-foreground">{itemDevolucao?.identificacao}</p>
+                {itemDevolucao && (
+                  <p className="mt-1 text-xs font-medium text-foreground">
+                    {origemEquipamento(itemDevolucao.estoque, dados.equipes, dados.empresas).texto}
+                  </p>
+                )}
               </div>
             )}
             {estoqueSelecionado?.equipamento.tipo_controle === "QUANTITATIVO" ||
@@ -805,6 +831,20 @@ function referenciasFisicas(estoque: EstoqueEquipamento, identificacao: string):
   );
 }
 
+function origemEquipamento(
+  estoque: EstoqueEquipamento,
+  equipes: Equipe[],
+  empresas: Empresa[],
+): { equipe: string; empresa: string; texto: string } {
+  const equipe = equipes.find((item) => item.id === estoque.equipe_id)?.nome ?? "Projeto inteiro";
+  const empresa = empresas.find((item) => item.id === estoque.empresa_id)?.nome ?? "Proprietário não localizado";
+  return {
+    equipe,
+    empresa,
+    texto: `Equipe proprietária: ${equipe} · Proprietário: ${empresa} · Vínculo: ${estoque.vinculo}`,
+  };
+}
+
 function normalizarBusca(valor: unknown): string {
   return String(valor ?? "")
     .normalize("NFD")
@@ -829,7 +869,13 @@ function escapar(valor: unknown): string {
     .replaceAll("'", "&#039;");
 }
 
-function imprimirAtendimento(funcionario: Funcionario, equipe: string, itens: ItemPainel[]) {
+function imprimirAtendimento(
+  funcionario: Funcionario,
+  equipe: string,
+  itens: ItemPainel[],
+  equipes: Equipe[],
+  empresas: Empresa[],
+) {
   const janela = window.open("", "_blank", "width=1000,height=800");
   if (!janela) {
     toast.error("O navegador bloqueou a janela de impressão.");
@@ -839,12 +885,12 @@ function imprimirAtendimento(funcionario: Funcionario, equipe: string, itens: It
     ? itens
         .map(
           (item) =>
-            `<tr><td>${escapar(item.equipamento.nome)}</td><td>${escapar(item.identificacao)}</td><td>${escapar(item.quantidade)}</td></tr>`,
+            `<tr><td>${escapar(item.equipamento.nome)}</td><td>${escapar(item.identificacao)}</td><td>${escapar(origemEquipamento(item.estoque, equipes, empresas).equipe)}</td><td>${escapar(origemEquipamento(item.estoque, equipes, empresas).empresa)}</td><td>${escapar(item.quantidade)}</td></tr>`,
         )
         .join("")
-    : `<tr><td colspan="3">Nenhum equipamento apropriado.</td></tr>`;
+    : `<tr><td colspan="5">Nenhum equipamento apropriado.</td></tr>`;
   janela.document.write(
-    `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Atendimento de equipamentos — ${escapar(funcionario.nome)}</title><style>@page{size:A4 portrait;margin:16mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#172b3a;font-size:12px;margin:0}.topo{border-bottom:3px solid #17324d;padding-bottom:12px;margin-bottom:18px}.marca{font-size:10px;font-weight:700;letter-spacing:1.5px;color:#17324d;text-transform:uppercase}h1{margin:5px 0;font-size:24px;color:#17324d}.dados{display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px;margin-bottom:18px}.campo{border:1px solid #d9e0e7;border-radius:6px;padding:8px}.rotulo{display:block;color:#667788;font-size:9px;text-transform:uppercase;font-weight:700;margin-bottom:3px}table{width:100%;border-collapse:collapse}th{background:#17324d;color:white;text-align:left;padding:8px;font-size:10px;text-transform:uppercase}td{border-bottom:1px solid #d9e0e7;padding:8px;vertical-align:top}td:last-child,th:last-child{text-align:right}.assinaturas{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:70px}.assinatura{border-top:1px solid #172b3a;text-align:center;padding-top:7px}.rodape{margin-top:30px;border-top:1px solid #d9e0e7;padding-top:8px;color:#667788;font-size:10px}@media print{.acoes{display:none}}</style></head><body><div class="acoes" style="text-align:right;margin-bottom:12px"><button onclick="window.print()">Imprimir / Salvar PDF</button></div><div class="topo"><div class="marca">ALMOXARIFADO · Atendimento de equipamentos</div><h1>Ficha de atendimento</h1><div>Emitido em ${escapar(new Date().toLocaleString("pt-BR"))}</div></div><div class="dados"><div class="campo"><span class="rotulo">Funcionário</span>${escapar(funcionario.nome)}</div><div class="campo"><span class="rotulo">CPF</span>${escapar(formatarCpf(funcionario.cpf) || "Não informado")}</div><div class="campo"><span class="rotulo">Equipe</span>${escapar(equipe)}</div></div><table><thead><tr><th>Equipamento</th><th>Identificação</th><th>Quantidade</th></tr></thead><tbody>${linhas}</tbody></table><div class="assinaturas"><div class="assinatura">Funcionário atendido</div><div class="assinatura">Responsável pelo almoxarifado</div></div><div class="rodape">Documento emitido a partir do estado atual das apropriações do projeto.</div><script>window.addEventListener('load',()=>setTimeout(()=>window.print(),300));</script></body></html>`,
+    `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Atendimento de equipamentos — ${escapar(funcionario.nome)}</title><style>@page{size:A4 portrait;margin:16mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#172b3a;font-size:12px;margin:0}.topo{border-bottom:3px solid #17324d;padding-bottom:12px;margin-bottom:18px}.marca{font-size:10px;font-weight:700;letter-spacing:1.5px;color:#17324d;text-transform:uppercase}h1{margin:5px 0;font-size:24px;color:#17324d}.dados{display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px;margin-bottom:18px}.campo{border:1px solid #d9e0e7;border-radius:6px;padding:8px}.rotulo{display:block;color:#667788;font-size:9px;text-transform:uppercase;font-weight:700;margin-bottom:3px}table{width:100%;border-collapse:collapse}th{background:#17324d;color:white;text-align:left;padding:8px;font-size:10px;text-transform:uppercase}td{border-bottom:1px solid #d9e0e7;padding:8px;vertical-align:top}td:last-child,th:last-child{text-align:right}.assinaturas{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:70px}.assinatura{border-top:1px solid #172b3a;text-align:center;padding-top:7px}.rodape{margin-top:30px;border-top:1px solid #d9e0e7;padding-top:8px;color:#667788;font-size:10px}@media print{.acoes{display:none}}</style></head><body><div class="acoes" style="text-align:right;margin-bottom:12px"><button onclick="window.print()">Imprimir / Salvar PDF</button></div><div class="topo"><div class="marca">ALMOXARIFADO · Atendimento de equipamentos</div><h1>Ficha de atendimento</h1><div>Emitido em ${escapar(new Date().toLocaleString("pt-BR"))}</div></div><div class="dados"><div class="campo"><span class="rotulo">Funcionário</span>${escapar(funcionario.nome)}</div><div class="campo"><span class="rotulo">CPF</span>${escapar(formatarCpf(funcionario.cpf) || "Não informado")}</div><div class="campo"><span class="rotulo">Equipe</span>${escapar(equipe)}</div></div><table><thead><tr><th>Equipamento</th><th>Identificação</th><th>Equipe proprietária</th><th>Proprietário</th><th>Quantidade</th></tr></thead><tbody>${linhas}</tbody></table><div class="assinaturas"><div class="assinatura">Funcionário atendido</div><div class="assinatura">Responsável pelo almoxarifado</div></div><div class="rodape">Documento emitido a partir do estado atual das apropriações do projeto.</div><script>window.addEventListener('load',()=>setTimeout(()=>window.print(),300));</script></body></html>`,
   );
   janela.document.close();
   janela.focus();

@@ -555,6 +555,10 @@ function FichaResultado({
                           "Sem marca ou modelo"}
                       </p>
                       <p className="mt-2 text-sm">{item.identificacao}</p>
+                      <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                        <Badge variant="outline">Equipe proprietária: {item.equipe_proprietaria ?? "Projeto inteiro"}</Badge>
+                        <Badge variant="outline">Proprietário: {item.proprietario ?? "Não informado"}</Badge>
+                      </div>
                     </div>
                     <Badge variant="outline">Quantidade: {item.quantidade}</Badge>
                   </div>
