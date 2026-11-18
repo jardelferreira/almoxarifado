@@ -16,6 +16,8 @@ export type RelatorioEquipamentoInput = {
     categoria: string;
     responsavel: Funcionario | undefined;
     equipe: string;
+    equipeProprietaria?: string;
+    proprietario?: string;
     status: "DISPONIVEL" | "EM_USO" | "MANUTENCAO";
     movimentacoes: MovimentacaoEquipamento[];
     maps: ParticipanteMaps;
@@ -71,6 +73,8 @@ export function gerarRelatorioEquipamento({
     categoria,
     responsavel,
     equipe,
+    equipeProprietaria = "Projeto inteiro",
+    proprietario = "Proprietário não localizado",
     status,
     movimentacoes,
     maps,
@@ -347,7 +351,9 @@ th:nth-child(5), td:nth-child(5) { width: 31%; }
     <h2 class="section-title">Responsabilidade atual</h2>
     <div class="responsibility">
         <div><span class="label">Responsável</span><span class="value">${esc(responsavel?.nome ?? "Disponível no Almoxarifado")}</span></div>
-        <div><span class="label">Equipe</span><span class="value">${esc(equipe)}</span></div>
+        <div><span class="label">Equipe atual</span><span class="value">${esc(equipe)}</span></div>
+        <div><span class="label">Equipe proprietária</span><span class="value">${esc(equipeProprietaria)}</span></div>
+        <div><span class="label">Proprietário</span><span class="value">${esc(proprietario)}</span></div>
         <div><span class="label">Status</span><span class="value">${esc(statusLabel[status])}</span></div>
     </div>
 </section>

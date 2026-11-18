@@ -382,6 +382,12 @@ export function ApropriacoesPage() {
         const equipe = selecionado.responsavel
             ? equipeDoFuncionario.get(selecionado.responsavel.id) ?? "Sem equipe"
             : "Almoxarifado";
+        const equipeProprietaria = dados.equipes.find(
+            (item) => item.id === selecionado.estoque.equipe_id,
+        )?.nome ?? "Projeto inteiro";
+        const proprietario = dados.empresas.find(
+            (item) => item.id === selecionado.estoque.empresa_id,
+        )?.nome ?? "Proprietário não localizado";
 
         try {
             gerarRelatorioEquipamento({
@@ -390,6 +396,8 @@ export function ApropriacoesPage() {
                 categoria,
                 responsavel: selecionado.responsavel,
                 equipe,
+                equipeProprietaria,
+                proprietario,
                 status: selecionado.status,
                 movimentacoes: dados.movimentacoes.filter(
                     (movimento) => movimento.estoque_equipamento_id === selecionado.estoque.id,
