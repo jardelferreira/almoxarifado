@@ -288,16 +288,26 @@ function detalhesRegistroFisico(
   stock: EstoqueEquipamento,
   equipamento: Equipamento | undefined,
   empresaPorId: Map<string, Empresa>,
+  equipePorId: Map<string, Equipe>,
 ): string {
-  if (equipamento?.tipo_controle !== "INDIVIDUAL") {
-    return stock.identificacao || stock.patrimonio || stock.serial || "Sem identificação";
-  }
-  return [
-    `Empresa: ${empresaPorId.get(stock.empresa_id)?.nome ?? "não informada"}`,
-    `Patrimônio: ${stock.patrimonio || "—"}`,
-    `Identificação: ${stock.identificacao || "—"}`,
-    `Serial: ${stock.serial || "—"}`,
-  ].join(" · ");
+  const vinculo = stock.vinculo === "PROPRIO"
+    ? "Próprio"
+    : stock.vinculo === "ALUGADO"
+      ? "Alugado"
+      : "Empréstimo";
+  const equipe = equipePorId.get(stock.equipe_id ?? "")?.nome ?? "Projeto inteiro";
+  const proprietario = empresaPorId.get(stock.empresa_id)?.nome ?? "Não informado";
+  const identificadores = equipamento?.tipo_controle === "INDIVIDUAL"
+    ? [
+        `Patrimônio: ${stock.patrimonio || "—"}`,
+        `Identificação: ${stock.identificacao || "—"}`,
+        `Serial: ${stock.serial || "—"}`,
+      ].join(" · ")
+    : stock.identificacao || stock.patrimonio || stock.serial
+      ? `Identificação: ${stock.identificacao || stock.patrimonio || stock.serial}`
+      : "Sem identificação individual";
+
+  return `Equipe proprietária: ${equipe} · Proprietário: ${proprietario} · Vínculo: ${vinculo} · ${identificadores}`;
 }
 
 
@@ -1405,7 +1415,7 @@ function MovimentacoesEquipamentosPage() {
         "Movimentação": tipoLabels[mov.tipo],
         "Equipamento": equipamento?.nome ?? "Equipamento removido",
         "Identificação": stock
-          ? detalhesRegistroFisico(stock, equipamento, empresaPorId)
+          ? detalhesRegistroFisico(stock, equipamento, empresaPorId, equipePorId)
           : "—",
         "Origem": nomeParte(
           mov.tipo_origem,
@@ -2041,7 +2051,7 @@ function MovimentacoesEquipamentosPage() {
         return {
           value: stock.id,
           label: `${equipamento?.nome ?? "Equipamento"} · disponível: ${quantidadeDisponivel}`,
-          hint: detalhesRegistroFisico(stock, equipamento, empresaPorId),
+          hint: detalhesRegistroFisico(stock, equipamento, empresaPorId, equipePorId),
         };
       })
       .sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }));
@@ -2227,7 +2237,7 @@ function MovimentacoesEquipamentosPage() {
                         </td>
                         <td className="px-3 py-3 align-middle">
                           <div className="font-medium">{equipamento?.nome ?? "Equipamento removido"}</div>
-                          {stock && <div className="mt-0.5 max-w-[18rem] truncate text-xs text-muted-foreground">{detalhesRegistroFisico(stock, equipamento, empresaPorId)}</div>}
+                          {stock && <div className="mt-0.5 max-w-[22rem] break-words text-xs leading-5 text-slate-600 dark:text-slate-300">{detalhesRegistroFisico(stock, equipamento, empresaPorId, equipePorId)}</div>}
                         </td>
                         <td className="px-3 py-3 align-middle">
                           <div className="flex min-w-[15rem] items-center gap-2">
@@ -2294,11 +2304,11 @@ function MovimentacoesEquipamentosPage() {
                         <td className="whitespace-nowrap px-3 py-3">{new Intl.DateTimeFormat("pt-BR", { dateStyle: "short" }).format(new Date(`${substituicao.data}T00:00:00`))}</td>
                         <td className="px-3 py-3">
                           <div className="font-medium">{equipamentoOrigem?.nome ?? "Equipamento removido"}</div>
-                          <div className="max-w-[16rem] truncate text-xs text-muted-foreground">{estoqueOrigem ? detalhesRegistroFisico(estoqueOrigem, equipamentoOrigem, empresaPorId) : "Registro físico não encontrado"}</div>
+                          <div className="max-w-[16rem] truncate text-xs text-muted-foreground">{estoqueOrigem ? detalhesRegistroFisico(estoqueOrigem, equipamentoOrigem, empresaPorId, equipePorId) : "Registro físico não encontrado"}</div>
                         </td>
                         <td className="px-3 py-3">
                           <div className="flex items-center gap-2 font-medium"><ArrowRight className="size-3.5 shrink-0 text-muted-foreground" />{equipamentoSubstituto?.nome ?? "Equipamento removido"}</div>
-                          <div className="max-w-[16rem] truncate text-xs text-muted-foreground">{estoqueSubstituto ? detalhesRegistroFisico(estoqueSubstituto, equipamentoSubstituto, empresaPorId) : "Registro físico não encontrado"}</div>
+                          <div className="max-w-[16rem] truncate text-xs text-muted-foreground">{estoqueSubstituto ? detalhesRegistroFisico(estoqueSubstituto, equipamentoSubstituto, empresaPorId, equipePorId) : "Registro físico não encontrado"}</div>
                         </td>
                         <td className="px-3 py-3"><Badge variant="outline">{substituicao.quantidade}</Badge></td>
                         <td className="px-3 py-3"><Badge variant="secondary">{substituicao.regras_substituto_ids.length}</Badge></td>
@@ -2369,7 +2379,7 @@ function MovimentacoesEquipamentosPage() {
                   <div className="space-y-2"><Label>Vínculo</Label><Combobox opcoes={[{ value: "PROPRIO", label: "Próprio" }, { value: "ALUGADO", label: "Alugado" }, { value: "EMPRESTIMO", label: "Empréstimo" }]} value={formulario.vinculo} onChange={(value) => value && atualizar("vinculo", value as Formulario["vinculo"])} placeholder="Selecione o vínculo" vazio="Nenhum vínculo disponível" allowClear={false} /></div>
                 </div>
 
-                <div className="space-y-2"><Label>Equipe destinada (opcional)</Label><Combobox opcoes={[{ value: "__nenhuma__", label: "Todo o projeto" }, ...equipes.map((equipe) => ({ value: equipe.id, label: equipe.nome }))].sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))} value={formulario.equipeId || "__nenhuma__"} onChange={(value) => atualizar("equipeId", !value || value === "__nenhuma__" ? "" : value)} placeholder="Todo o projeto" vazio="Nenhuma equipe disponível" /></div>
+                  <div className="space-y-2"><Label>Equipe proprietária (opcional)</Label><Combobox opcoes={[{ value: "__nenhuma__", label: "Todo o projeto", hint: "Sem equipe proprietária específica" }, ...equipes.map((equipe) => ({ value: equipe.id, label: equipe.nome, hint: "Origem proprietária deste lote" }))].sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))} value={formulario.equipeId || "__nenhuma__"} onChange={(value) => atualizar("equipeId", !value || value === "__nenhuma__" ? "" : value)} placeholder="Todo o projeto" vazio="Nenhuma equipe disponível" /></div>
 
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2"><Label>Quantidade</Label><Input type="number" min={1} step={equipamentoSelecionado?.tipo_controle === "INDIVIDUAL" ? 1 : 1} disabled={equipamentoSelecionado?.tipo_controle === "INDIVIDUAL"} value={formulario.quantidade} onChange={(event) => atualizar("quantidade", event.target.value)} /></div>
@@ -2449,12 +2459,12 @@ function MovimentacoesEquipamentosPage() {
                       <Label>Equipamento em estoque</Label>
                       <Combobox
                         opcoes={estoquesDaOrigemEnvio.map((stock) => {
-                            const equipamento = equipamentoPorId.get(stock.equipamento_id);
-                            const estado = estados.get(stock.id);
+                    const equipamento = equipamentoPorId.get(stock.equipamento_id);
+                    const estado = estados.get(stock.id);
                             const quantidadeDisponivel = formulario.origemId === equipesOperacionais.manutencao?.id
                               ? Math.max(0, (estado?.manutencao ?? 0) - (estado?.empresa ?? 0))
                               : estado?.almoxarifado ?? 0;
-                            return { value: stock.id, label: `${equipamento?.nome ?? "Equipamento"} · disponível: ${quantidadeDisponivel}`, hint: detalhesRegistroFisico(stock, equipamento, empresaPorId) };
+                            return { value: stock.id, label: `${equipamento?.nome ?? "Equipamento"} · disponível: ${quantidadeDisponivel}`, hint: detalhesRegistroFisico(stock, equipamento, empresaPorId, equipePorId) };
                           }).sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))}
                         value={formulario.estoqueEquipamentoId}
                         onChange={(value) => value && selecionarEstoque(value)}
@@ -2508,7 +2518,7 @@ function MovimentacoesEquipamentosPage() {
                             const quantidadeDisponivel = externo
                               ? estado?.empresa ?? 0
                               : estado?.manutencao ?? 0;
-                            return { value: stock.id, label: `${equipamento?.nome ?? "Equipamento"} · ${externo ? "Empresa de manutenção" : "Manutenção"} · disponível: ${quantidadeDisponivel}`, hint: detalhesRegistroFisico(stock, equipamento, empresaPorId) };
+                            return { value: stock.id, label: `${equipamento?.nome ?? "Equipamento"} · ${externo ? "Empresa de manutenção" : "Manutenção"} · disponível: ${quantidadeDisponivel}`, hint: detalhesRegistroFisico(stock, equipamento, empresaPorId, equipePorId) };
                           }).sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))}
                         value={formulario.estoqueEquipamentoId}
                         onChange={(value) => value && selecionarEstoque(value)}
@@ -2531,7 +2541,7 @@ function MovimentacoesEquipamentosPage() {
                             const equipamento = equipamentoPorId.get(stock.equipamento_id);
                             const pendencia = pendenciasReentrada.get(stock.id);
                             const origem = pendencia?.tipo === "BAIXA" ? "Baixa" : "Devolução ao fornecedor";
-                            return { value: stock.id, label: `${equipamento?.nome ?? "Equipamento"} · ${origem} · disponível: ${pendencia?.restante ?? 0}`, hint: detalhesRegistroFisico(stock, equipamento, empresaPorId) };
+                            return { value: stock.id, label: `${equipamento?.nome ?? "Equipamento"} · ${origem} · disponível: ${pendencia?.restante ?? 0}`, hint: detalhesRegistroFisico(stock, equipamento, empresaPorId, equipePorId) };
                           }).sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))}
                         value={formulario.estoqueEquipamentoId}
                         onChange={(value) => value && selecionarEstoque(value)}
@@ -2578,7 +2588,7 @@ function MovimentacoesEquipamentosPage() {
                                       ? (estado?.manutencao ?? 0)
                                       : (estado?.almoxarifado ?? 0),
                                     estado?.saldo ?? 0,
-                                  )}`, hint: detalhesRegistroFisico(stock, equipamento, empresaPorId) };
+                                  )}`, hint: detalhesRegistroFisico(stock, equipamento, empresaPorId, equipePorId) };
                           }).sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))}
                         value={formulario.estoqueEquipamentoId}
                         onChange={(value) => value && selecionarEstoque(value)}
@@ -2612,7 +2622,7 @@ function MovimentacoesEquipamentosPage() {
                             const equipamento = equipamentoPorId.get(stock.equipamento_id);
                             const estado = estados.get(stock.id);
                             const quantidadeDisponivel = estado?.almoxarifado ?? 0;
-                            return { value: stock.id, label: `${equipamento?.nome ?? "Equipamento"} · disponível: ${quantidadeDisponivel}`, hint: detalhesRegistroFisico(stock, equipamento, empresaPorId) };
+                            return { value: stock.id, label: `${equipamento?.nome ?? "Equipamento"} · disponível: ${quantidadeDisponivel}`, hint: detalhesRegistroFisico(stock, equipamento, empresaPorId, equipePorId) };
                           }).sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))}
                         value={formulario.estoqueEquipamentoId}
                         onChange={(value) => value && selecionarEstoque(value)}
@@ -2645,11 +2655,18 @@ function MovimentacoesEquipamentosPage() {
                 )}
 
                 {estadoSelecionado && (
-                  <div className="grid grid-cols-2 gap-3 rounded-lg border p-4 text-sm sm:grid-cols-4">
+                  <div className="space-y-3 rounded-lg border bg-slate-50/70 p-4 text-sm dark:bg-slate-900/20">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div><div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Equipe proprietária</div><strong>{equipePorId.get(estoqueSelecionado?.equipe_id ?? "")?.nome ?? "Projeto inteiro"}</strong></div>
+                      <div><div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Proprietário</div><strong>{empresaPorId.get(estoqueSelecionado?.empresa_id ?? "")?.nome ?? "Não informado"}</strong></div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                     <div><div className="text-muted-foreground">Almoxarifado</div><strong>{estadoSelecionado.almoxarifado}</strong></div>
                     <div><div className="text-muted-foreground">Manutenção</div><strong>{estadoSelecionado.manutencao}</strong></div>
                     <div><div className="text-muted-foreground">Em uso</div><strong>{[...estadoSelecionado.funcionarios.values()].reduce((a, b) => a + b, 0)}</strong></div>
                     <div><div className="text-muted-foreground">Saldo</div><strong>{estadoSelecionado.saldo}</strong></div>
+                    </div>
+                    <div className="text-xs text-slate-600 dark:text-slate-300">{detalhesRegistroFisico(estoqueSelecionado!, equipamentoSelecionado, empresaPorId, equipePorId)}</div>
                   </div>
                 )}
 
@@ -2693,7 +2710,7 @@ function MovimentacoesEquipamentosPage() {
                   return {
                     value: stock.id,
                     label: `${equipamento?.nome ?? "Equipamento"} · disponível: ${estado?.almoxarifado ?? 0}`,
-                    hint: detalhesRegistroFisico(stock, equipamento, empresaPorId),
+                    hint: detalhesRegistroFisico(stock, equipamento, empresaPorId, equipePorId),
                   };
                 }).sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))}
                 value={formularioSubstituicao.estoqueOrigemId}
@@ -2786,8 +2803,8 @@ function MovimentacoesEquipamentosPage() {
                   <div className="mt-1 text-muted-foreground">{new Intl.DateTimeFormat("pt-BR", { dateStyle: "full" }).format(new Date(`${detalheSubstituicao.data}T00:00:00`))}</div>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-xl border p-3"><div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Equipamento devolvido</div><div className="mt-1 font-semibold">{equipamentoOrigem?.nome ?? "Equipamento removido"}</div><div className="mt-1 text-xs text-muted-foreground">{origem ? detalhesRegistroFisico(origem, equipamentoOrigem, empresaPorId) : "Registro físico não encontrado"}</div></div>
-                  <div className="rounded-xl border p-3"><div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Equipamento substituto</div><div className="mt-1 font-semibold">{equipamentoSubstituto?.nome ?? "Equipamento removido"}</div><div className="mt-1 text-xs text-muted-foreground">{substituto ? detalhesRegistroFisico(substituto, equipamentoSubstituto, empresaPorId) : "Registro físico não encontrado"}</div></div>
+                  <div className="rounded-xl border p-3"><div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Equipamento devolvido</div><div className="mt-1 font-semibold">{equipamentoOrigem?.nome ?? "Equipamento removido"}</div><div className="mt-1 text-xs text-muted-foreground">{origem ? detalhesRegistroFisico(origem, equipamentoOrigem, empresaPorId, equipePorId) : "Registro físico não encontrado"}</div></div>
+                  <div className="rounded-xl border p-3"><div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Equipamento substituto</div><div className="mt-1 font-semibold">{equipamentoSubstituto?.nome ?? "Equipamento removido"}</div><div className="mt-1 text-xs text-muted-foreground">{substituto ? detalhesRegistroFisico(substituto, equipamentoSubstituto, empresaPorId, equipePorId) : "Registro físico não encontrado"}</div></div>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-3">
                   <div className="rounded-xl border p-3"><div className="text-xs text-muted-foreground">Quantidade</div><div className="mt-1 text-lg font-bold">{detalheSubstituicao.quantidade}</div></div>
@@ -2836,7 +2853,7 @@ function MovimentacoesEquipamentosPage() {
                 <div className="rounded-xl border bg-muted/20 p-3">
                   <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Equipamento</div>
                   <div className="mt-1 font-semibold">{equipamento?.nome ?? "Equipamento removido"}</div>
-                  {stock && <div className="mt-1 text-xs text-muted-foreground">{detalhesRegistroFisico(stock, equipamento, empresaPorId)}</div>}
+                  {stock && <div className="mt-1 text-xs text-muted-foreground">{detalhesRegistroFisico(stock, equipamento, empresaPorId, equipePorId)}</div>}
                 </div>
 
                 <div>
