@@ -654,6 +654,70 @@ export function exportarRelatorioEquipamentosEquipe(
 }
 
 /* -------------------------------------------------------------------------- */
+/* Relatório por proprietário                                                  */
+/* -------------------------------------------------------------------------- */
+
+export type RelatorioEquipamentosProprietario = RelatorioEquipamentosEquipe;
+
+export async function consultarRelatorioEquipamentosProprietario(
+  projetoId: string,
+): Promise<RelatorioEquipamentosProprietario> {
+  const db = getDB();
+  const [estoques, empresas] = await Promise.all([
+    db.estoque_equipamentos.where("projeto_id").equals(projetoId).toArray(),
+    db.empresas.where("projeto_id").equals(projetoId).toArray(),
+  ]);
+  const nomesEmpresas = new Map(empresas.map((empresa) => [empresa.id, empresa.nome]));
+  const mapa = new Map<string, RelatorioEquipeLinha>();
+  const resumo: ResumoSituacao = { total: 0, disponivel: 0, emUso: 0, manutencao: 0, encerrado: 0 };
+
+  for (const estoque of estoques) {
+    const estado = await estadoEquipamentosRepo.calcular(projetoId, estoque.id);
+    const proprietarioId = estoque.empresa_id || null;
+    const proprietarioNome = proprietarioId
+      ? nomesEmpresas.get(proprietarioId) ?? "Proprietário não localizado"
+      : "Proprietário não informado";
+
+    resumo.total += estado.saldo;
+    resumo.disponivel += estado.disponivel;
+    resumo.emUso += estado.apropriado;
+    resumo.manutencao += estado.manutencao;
+    resumo.encerrado += estado.devolvido + estado.baixado;
+
+    acumularEquipe(mapa, proprietarioId, proprietarioNome, "disponivel", estado.disponivel);
+    acumularEquipe(mapa, proprietarioId, proprietarioNome, "emUso", estado.apropriado);
+    acumularEquipe(mapa, proprietarioId, proprietarioNome, "manutencao", estado.manutencao);
+    acumularEquipe(mapa, proprietarioId, proprietarioNome, "encerrado", estado.devolvido + estado.baixado);
+  }
+
+  return { projetoId, linhas: [...mapa.values()].sort((a, b) => a.equipeNome.localeCompare(b.equipeNome, "pt-BR")), resumo };
+}
+
+export function exportarRelatorioEquipamentosProprietario(
+  relatorio: RelatorioEquipamentosProprietario,
+  formato: "xlsx" | "csv",
+) {
+  criarPlanilhaRelatorio(
+    {
+      nomeAba: "Por proprietário",
+      arquivo: `relatorio_equipamentos_por_proprietario_${new Date().toISOString().slice(0, 10)}`,
+      colunas: ["PROPRIETARIO", "TOTAL", "DISPONIVEL", "EM_USO", "MANUTENCAO", "ENCERRADO"],
+      linhas: relatorio.linhas.map((linha) => ({
+        PROPRIETARIO: linha.equipeNome,
+        TOTAL: linha.total,
+        DISPONIVEL: linha.disponivel,
+        EM_USO: linha.emUso,
+        MANUTENCAO: linha.manutencao,
+        ENCERRADO: linha.encerrado,
+      })),
+      larguras: { PROPRIETARIO: 36, TOTAL: 12, DISPONIVEL: 14, EM_USO: 12, MANUTENCAO: 14, ENCERRADO: 14 },
+      formatosNumero: ["TOTAL", "DISPONIVEL", "EM_USO", "MANUTENCAO", "ENCERRADO"],
+    },
+    formato,
+  );
+}
+
+/* -------------------------------------------------------------------------- */
 /* Relatório Em Uso                                                           */
 /* -------------------------------------------------------------------------- */
 
@@ -1575,6 +1639,32 @@ export function imprimirRelatorioEquipamentosEquipe(
       { label: "Em uso", valor: relatorio.resumo.emUso },
       { label: "Manutenção", valor: relatorio.resumo.manutencao },
       { label: "Encerrado", valor: relatorio.resumo.encerrado },
+    ],
+  );
+}
+
+export function imprimirRelatorioEquipamentosProprietario(
+  relatorio: RelatorioEquipamentosProprietario,
+  projetoNome: string,
+) {
+  imprimirTabelaRelatorioEquipamentos(
+    "Equipamentos por proprietário",
+    projetoNome,
+    ["Proprietário", "Total", "Disponível", "Em uso", "Manutenção", "Encerrado"],
+    relatorio.linhas.map((linha) => [
+      linha.equipeNome,
+      linha.total,
+      linha.disponivel,
+      linha.emUso,
+      linha.manutencao,
+      linha.encerrado,
+    ]),
+    [
+      { label: "Proprietários", valor: relatorio.linhas.length },
+      { label: "Total", valor: relatorio.resumo.total },
+      { label: "Disponível", valor: relatorio.resumo.disponivel },
+      { label: "Em uso", valor: relatorio.resumo.emUso },
+      { label: "Manutenção", valor: relatorio.resumo.manutencao },
     ],
   );
 }

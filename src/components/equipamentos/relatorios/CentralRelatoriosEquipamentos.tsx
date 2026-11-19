@@ -2,6 +2,7 @@ import { useState } from "react";
 import {
   ArchiveX,
   BarChart3,
+  Building2,
   FileClock,
   Package,
   UserRound,
@@ -15,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { RelatorioEquipamentosEncerrados } from "@/components/equipamentos/relatorios/RelatorioEquipamentosEncerrados";
 import { RelatorioEquipamentosSituacao } from "@/components/equipamentos/relatorios/RelatorioEquipamentosSituacao";
 import { RelatorioEquipamentosEquipe } from "@/components/equipamentos/relatorios/RelatorioEquipamentosEquipe";
+import { RelatorioEquipamentosProprietario } from "@/components/equipamentos/relatorios/RelatorioEquipamentosProprietario";
 import { RelatorioEquipamentosEmUso } from "@/components/equipamentos/relatorios/RelatorioEquipamentosEmUso";
 import { RelatorioEquipamentosResponsavel } from "@/components/equipamentos/relatorios/RelatorioEquipamentosResponsavel";
 import { RelatorioEquipamentosDisponibilidade } from "@/components/equipamentos/relatorios/RelatorioEquipamentosDisponibilidade";
@@ -29,11 +31,13 @@ import type {
   RelatorioEquipamentosManutencao as DadosRelatorioManutencao,
   RelatorioEquipamentosMovimentacoes as DadosRelatorioMovimentacoes,
   RelatorioEquipamentosEncerrados as DadosRelatorioEncerrados,
+  RelatorioEquipamentosProprietario as DadosRelatorioProprietario,
 } from "@/services/equipamentos/relatorios";
 
 type RelatorioId =
   | "situacao"
   | "equipe"
+  | "proprietario"
   | "uso"
   | "responsavel"
   | "disponibilidade"
@@ -62,6 +66,13 @@ const relatorios: RelatorioOpcao[] = [
     label: "Por equipe",
     descricao: "Distribuição por equipe",
     icon: Users,
+    disponivel: true,
+  },
+  {
+    id: "proprietario",
+    label: "Por proprietário",
+    descricao: "Distribuição por proprietário",
+    icon: Building2,
     disponivel: true,
   },
   {
@@ -111,6 +122,7 @@ const relatorios: RelatorioOpcao[] = [
 export function CentralRelatoriosEquipamentos({
   dadosSituacao,
   dadosEquipe,
+  dadosProprietario,
   dadosEmUso,
   dadosResponsavel,
   dadosDisponibilidade,
@@ -121,6 +133,7 @@ export function CentralRelatoriosEquipamentos({
 }: {
   dadosSituacao: DadosRelatorioSituacao;
   dadosEquipe: DadosRelatorioEquipe;
+  dadosProprietario: DadosRelatorioProprietario;
   dadosEmUso: DadosRelatorioEmUso;
   dadosResponsavel: DadosRelatorioResponsavel;
   dadosDisponibilidade: DadosRelatorioDisponibilidade;
@@ -249,6 +262,13 @@ export function CentralRelatoriosEquipamentos({
           {relatorioAtivo === "equipe" && (
             <RelatorioEquipamentosEquipe
               dados={dadosEquipe}
+              projetoNome={projetoNome}
+            />
+          )}
+
+          {relatorioAtivo === "proprietario" && (
+            <RelatorioEquipamentosProprietario
+              dados={dadosProprietario}
               projetoNome={projetoNome}
             />
           )}

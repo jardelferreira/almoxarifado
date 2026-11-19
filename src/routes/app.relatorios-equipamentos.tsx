@@ -11,6 +11,7 @@ import {
   consultarRelatorioEquipamentosManutencao,
   consultarRelatorioEquipamentosMovimentacoes,
   consultarRelatorioEquipamentosEquipe,
+  consultarRelatorioEquipamentosProprietario,
   consultarRelatorioEquipamentosSituacao,
   consultarRelatorioEquipamentosEncerrados,
 } from "@/services/equipamentos/relatorios";
@@ -38,6 +39,14 @@ function RelatoriosEquipamentosPage() {
     () =>
       projetoId
         ? consultarRelatorioEquipamentosEquipe(projetoId)
+        : undefined,
+    [projetoId],
+  );
+
+  const dadosProprietario = useLiveQuery(
+    () =>
+      projetoId
+        ? consultarRelatorioEquipamentosProprietario(projetoId)
         : undefined,
     [projetoId],
   );
@@ -103,7 +112,7 @@ function RelatoriosEquipamentosPage() {
     );
   }
 
-  if (!dadosSituacao || !dadosEquipe || !dadosEmUso || !dadosResponsavel || !dadosDisponibilidade || !dadosManutencao || !dadosMovimentacoes || !dadosEncerrados) {
+  if (!dadosSituacao || !dadosEquipe || !dadosProprietario || !dadosEmUso || !dadosResponsavel || !dadosDisponibilidade || !dadosManutencao || !dadosMovimentacoes || !dadosEncerrados) {
     return (
       <p className="text-sm text-muted-foreground">
         Carregando relatórios de equipamentos…
@@ -115,6 +124,7 @@ function RelatoriosEquipamentosPage() {
     <CentralRelatoriosEquipamentos
       dadosSituacao={dadosSituacao}
       dadosEquipe={dadosEquipe}
+      dadosProprietario={dadosProprietario}
       dadosEmUso={dadosEmUso}
       dadosResponsavel={dadosResponsavel}
       dadosDisponibilidade={dadosDisponibilidade}

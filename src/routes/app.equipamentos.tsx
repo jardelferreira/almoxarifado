@@ -2,6 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import {
   Box,
+  Check,
+  ChevronsUpDown,
   Eye,
   ClipboardList,
   Warehouse,
@@ -27,12 +29,18 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
+import * as XLSX from "xlsx";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Combobox } from "@/components/common/Combobox";
 import {
   Dialog,
@@ -209,6 +217,78 @@ function estoqueFormularioInicial(equipamentoId = ""): EstoqueFormulario {
   };
 }
 
+function FiltroMultiplo({
+  label,
+  opcoes,
+  selecionados,
+  onChange,
+}: {
+  label: string;
+  opcoes: Array<{ value: string; label: string }>;
+  selecionados: string[];
+  onChange: (valores: string[]) => void;
+}) {
+  const alternar = (valor: string) => {
+    onChange(
+      selecionados.includes(valor)
+        ? selecionados.filter((item) => item !== valor)
+        : [...selecionados, valor],
+    );
+  };
+
+  const resumo = selecionados.length === 0
+    ? "Todos"
+    : selecionados.length === 1
+      ? opcoes.find((item) => item.value === selecionados[0])?.label ?? "1 selecionado"
+      : `${selecionados.length} selecionados`;
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button type="button" variant="outline" className="h-10 min-w-[170px] justify-between gap-2 bg-background">
+          <span className="truncate text-left">{label}: {resumo}</span>
+          {selecionados.length > 0 ? (
+            <Badge variant="secondary" className="shrink-0 px-1.5">{selecionados.length}</Badge>
+          ) : (
+            <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground" />
+          )}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-[min(300px,calc(100vw-2rem))] p-2">
+        <div className="flex items-center justify-between border-b px-2 pb-2">
+          <span className="text-sm font-semibold">{label}</span>
+          <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => onChange([])} disabled={selecionados.length === 0}>
+            Limpar
+          </Button>
+        </div>
+        <div className="mt-2 max-h-64 space-y-1 overflow-y-auto">
+          {opcoes.map((opcao) => {
+            const marcado = selecionados.includes(opcao.value);
+            return (
+              <button key={opcao.value} type="button" className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm hover:bg-muted" onClick={() => alternar(opcao.value)}>
+                <span className={`flex size-4 shrink-0 items-center justify-center rounded-sm border ${marcado ? "border-primary bg-primary text-primary-foreground" : "border-input"}`}>
+                  {marcado && <Check className="size-3" />}
+                </span>
+                <span className="min-w-0 flex-1 break-words">{opcao.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function escaparHtmlEquipamentos(valor: unknown): string {
+  return String(valor ?? "—")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;")
+    .replaceAll("\n", "<br />");
+}
+
 function EquipamentosPage() {
   const [projetoId] = useProjetoAtivoId();
   const configuracao = useLiveQuery(
@@ -230,7 +310,13 @@ function EquipamentosPage() {
   const [manutencaoDocumentos, setManutencaoDocumentos] = useState<Map<string, ManutencaoDocumento[]>>(new Map());
   const [apropriacoesFinanceiras, setApropriacoesFinanceiras] = useState<ApropriacaoFinanceiraEquipamento[]>([]);
   const [busca, setBusca] = useState("");
-  const [filtroOperacional, setFiltroOperacional] = useState<"almoxarifado" | "emUso" | "manutencao" | null>(null);
+  const [filtroOperacionais, setFiltroOperacionais] = useState<Array<"almoxarifado" | "emUso" | "manutencao">>([]);
+  const [filtroCategorias, setFiltroCategorias] = useState<string[]>([]);
+  const [filtroProprietarios, setFiltroProprietarios] = useState<string[]>([]);
+  const [filtroEquipes, setFiltroEquipes] = useState<string[]>([]);
+  const [filtroControles, setFiltroControles] = useState<string[]>([]);
+  const [filtroVinculos, setFiltroVinculos] = useState<string[]>([]);
+  const [filtroSituacoes, setFiltroSituacoes] = useState<string[]>([]);
   const [formulario, setFormulario] = useState<Formulario>(formularioInicial);
   const [estoqueFormulario, setEstoqueFormulario] = useState<EstoqueFormulario>(estoqueFormularioInicial());
   const [editando, setEditando] = useState<Equipamento | null>(null);
@@ -525,23 +611,63 @@ function EquipamentosPage() {
     const termo = busca.trim().toLowerCase();
 
     return equipamentos.filter((e) => {
+      const registros = (estoquePorEquipamento.get(e.id) ?? []).filter((item) => item.ativo !== false);
+      const resumo = resumoPorEquipamento.get(e.id);
+      const proprietarios = new Set(registros.map((item) => item.empresa_id));
+      const equipesDoEstoque = new Set(registros.map((item) => item.equipe_id ?? "__projeto__"));
+      const vinculos = new Set<string>(registros.map((item) => item.vinculo));
       const correspondeBusca = !termo || [
         e.nome,
         e.marca,
         e.modelo,
         e.descricao,
         categoriaPorId.get(e.categoria_id),
+        ...registros.flatMap((item) => [
+          empresaPorId.get(item.empresa_id),
+          equipePorId.get(item.equipe_id ?? "") ?? "Projeto inteiro",
+          item.patrimonio,
+          item.identificacao,
+          item.serial,
+          item.vinculo,
+        ]),
       ].some((v) => String(v ?? "").toLowerCase().includes(termo));
 
       if (!correspondeBusca) return false;
-      if (!filtroOperacional) return true;
-
-      const resumo = resumoPorEquipamento.get(e.id);
-      if (filtroOperacional === "almoxarifado") return (resumo?.almoxarifado ?? 0) > 0;
-      if (filtroOperacional === "emUso") return (resumo?.apropriado ?? 0) > 0;
-      return (resumo?.manutencao ?? 0) > 0;
+      if (filtroCategorias.length > 0 && !filtroCategorias.includes(e.categoria_id)) return false;
+      if (filtroProprietarios.length > 0 && !filtroProprietarios.some((item) => proprietarios.has(item))) return false;
+      if (filtroEquipes.length > 0 && !filtroEquipes.some((item) => equipesDoEstoque.has(item))) return false;
+      if (filtroControles.length > 0 && !filtroControles.includes(e.tipo_controle)) return false;
+      if (filtroVinculos.length > 0 && !filtroVinculos.some((item) => vinculos.has(item))) return false;
+      if (filtroSituacoes.length > 0) {
+        const situacao = e.ativo === false ? "INATIVO" : e.situacao === "PLANEJADO" ? "PLANEJADO" : "ATIVO";
+        if (!filtroSituacoes.includes(situacao)) return false;
+      }
+      if (filtroOperacionais.length === 0) return true;
+      return filtroOperacionais.some((filtro) =>
+        filtro === "almoxarifado" ? (resumo?.almoxarifado ?? 0) > 0
+          : filtro === "emUso" ? (resumo?.apropriado ?? 0) > 0
+            : (resumo?.manutencao ?? 0) > 0,
+      );
     });
-  }, [equipamentos, busca, categoriaPorId, filtroOperacional, resumoPorEquipamento]);
+  }, [equipamentos, busca, categoriaPorId, empresaPorId, equipePorId, estoquePorEquipamento, filtroCategorias, filtroControles, filtroEquipes, filtroOperacionais, filtroProprietarios, filtroSituacoes, filtroVinculos, resumoPorEquipamento]);
+
+  const opcoesFiltroCategorias = useMemo(() => categorias.map((item) => ({ value: item.id, label: item.nome })).sort((a, b) => a.label.localeCompare(b.label, "pt-BR")), [categorias]);
+  const opcoesFiltroProprietarios = useMemo(() => empresas.map((item) => ({ value: item.id, label: item.nome })).sort((a, b) => a.label.localeCompare(b.label, "pt-BR")), [empresas]);
+  const opcoesFiltroEquipes = useMemo(() => [{ value: "__projeto__", label: "Todo o projeto" }, ...equipes.map((item) => ({ value: item.id, label: item.nome }))].sort((a, b) => a.label.localeCompare(b.label, "pt-BR")), [equipes]);
+  const opcoesFiltroControles = [
+    { value: "INDIVIDUAL", label: "Individual" },
+    { value: "QUANTITATIVO", label: "Quantitativo" },
+  ];
+  const opcoesFiltroVinculos = [
+    { value: "PROPRIO", label: "Próprio" },
+    { value: "ALUGADO", label: "Alugado" },
+    { value: "EMPRESTIMO", label: "Empréstimo" },
+  ];
+  const opcoesFiltroSituacoes = [
+    { value: "ATIVO", label: "Operacional" },
+    { value: "PLANEJADO", label: "Planejado" },
+    { value: "INATIVO", label: "Inativo" },
+  ];
 
   const atualizarCampo = <K extends keyof Formulario>(campo: K, valor: Formulario[K]) => setFormulario((atual) => ({ ...atual, [campo]: valor }));
   const atualizarEstoque = <K extends keyof EstoqueFormulario>(campo: K, valor: EstoqueFormulario[K]) => setEstoqueFormulario((atual) => ({ ...atual, [campo]: valor }));
@@ -1432,6 +1558,83 @@ function EquipamentosPage() {
     },
   ];
 
+  const limparFiltros = () => {
+    setBusca("");
+    setFiltroOperacionais([]);
+    setFiltroCategorias([]);
+    setFiltroProprietarios([]);
+    setFiltroEquipes([]);
+    setFiltroControles([]);
+    setFiltroVinculos([]);
+    setFiltroSituacoes([]);
+  };
+
+  const exportarCatalogoExcel = () => {
+    const linhas = filtrados.map((equipamento) => {
+      const registros = estoquePorEquipamento.get(equipamento.id) ?? [];
+      const proprietarios = [...new Set(registros.map((item) => empresaPorId.get(item.empresa_id) ?? "Não informado"))].join("; ");
+      const equipesOrigem = [...new Set(registros.map((item) => equipePorId.get(item.equipe_id ?? "") ?? "Todo o projeto"))].join("; ");
+      return {
+        EQUIPAMENTO: equipamento.nome,
+        CATEGORIA: categoriaPorId.get(equipamento.categoria_id) ?? "—",
+        CONTROLE: equipamento.tipo_controle === "INDIVIDUAL" ? "Individual" : "Quantitativo",
+        PROPRIETARIO: proprietarios || "—",
+        EQUIPE_PROPRIETARIA: equipesOrigem || "—",
+        VINCULOS: [...new Set(registros.map((item) => vinculoLabel(item.vinculo)))].join("; ") || "—",
+        SALDO: saldoTotal(equipamento.id),
+        ALMOXARIFADO: almoxarifadoTotal(equipamento.id),
+        EM_USO: apropriadoTotal(equipamento.id),
+        MANUTENCAO: manutencaoTotal(equipamento.id),
+        REGISTROS: registros.filter((item) => item.ativo !== false).length,
+        SITUACAO: equipamento.ativo === false ? "Inativo" : equipamento.situacao === "PLANEJADO" ? "Planejado" : "Operacional",
+      };
+    });
+    const colunas = Object.keys(linhas[0] ?? {
+      EQUIPAMENTO: "", CATEGORIA: "", CONTROLE: "", PROPRIETARIO: "", EQUIPE_PROPRIETARIA: "", VINCULOS: "", SALDO: 0, ALMOXARIFADO: 0, EM_USO: 0, MANUTENCAO: 0, REGISTROS: 0, SITUACAO: "",
+    });
+    const worksheet = XLSX.utils.json_to_sheet(linhas, { header: colunas });
+    worksheet["!autofilter"] = { ref: worksheet["!ref"] ?? "A1" };
+    worksheet["!freeze"] = { xSplit: 0, ySplit: 1 };
+    worksheet["!cols"] = colunas.map((coluna) => ({ wch: ["EQUIPAMENTO", "PROPRIETARIO", "EQUIPE_PROPRIETARIA"].includes(coluna) ? 30 : 16 }));
+    const range = XLSX.utils.decode_range(worksheet["!ref"] ?? "A1");
+    for (let coluna = range.s.c; coluna <= range.e.c; coluna += 1) {
+      const celula = worksheet[XLSX.utils.encode_cell({ r: 0, c: coluna })];
+      if (celula) celula.s = { fill: { fgColor: { rgb: "17324D" } }, font: { bold: true, color: { rgb: "FFFFFF" } } };
+    }
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Equipamentos");
+    XLSX.writeFile(workbook, `equipamentos_filtrados_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    toast.success(`${filtrados.length} equipamento(s) exportado(s) para Excel.`);
+  };
+
+  const imprimirCatalogoPdf = () => {
+    const janela = window.open("", "_blank", "width=1280,height=900");
+    if (!janela) {
+      toast.error("Não foi possível abrir o relatório. Verifique o bloqueio de pop-ups.");
+      return;
+    }
+    const linhas = filtrados.map((equipamento) => {
+      const registros = estoquePorEquipamento.get(equipamento.id) ?? [];
+      const proprietarios = [...new Set(registros.map((item) => empresaPorId.get(item.empresa_id) ?? "Não informado"))].join("; ");
+      const equipesOrigem = [...new Set(registros.map((item) => equipePorId.get(item.equipe_id ?? "") ?? "Todo o projeto"))].join("; ");
+      return [
+        equipamento.nome,
+        categoriaPorId.get(equipamento.categoria_id) ?? "—",
+        equipamento.tipo_controle === "INDIVIDUAL" ? "Individual" : "Quantitativo",
+        proprietarios || "—",
+        equipesOrigem || "—",
+        saldoTotal(equipamento.id),
+        almoxarifadoTotal(equipamento.id),
+        apropriadoTotal(equipamento.id),
+        manutencaoTotal(equipamento.id),
+      ];
+    });
+    const htmlLinhas = linhas.map((linha, indice) => `<tr class="${indice % 2 ? "alt" : ""}">${linha.map((valor) => `<td>${escaparHtmlEquipamentos(valor)}</td>`).join("")}</tr>`).join("") || `<tr><td colspan="9" class="empty">Nenhum equipamento encontrado.</td></tr>`;
+    janela.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Equipamentos filtrados</title><style>@page{size:A4 landscape;margin:12mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#243447;font-size:9px;margin:0}.top{border-bottom:3px solid #17324D;padding-bottom:10px}.brand{color:#17324D;font-size:10px;font-weight:700;letter-spacing:1px}.top h1{color:#17324D;margin:5px 0;font-size:22px}.muted{color:#667788}table{width:100%;border-collapse:collapse;margin-top:16px}th{background:#17324D;color:#fff;text-align:left;padding:6px;font-size:8px}td{padding:5px;border-bottom:1px solid #D9E0E7;vertical-align:top;overflow-wrap:anywhere}.alt td{background:#F4F7F9}.num{text-align:right}.empty{text-align:center;padding:20px}.actions{position:fixed;right:14px;top:14px}.actions button{background:#17324D;color:#fff;border:0;border-radius:5px;padding:8px 12px;font-weight:700}@media print{.actions{display:none}}</style></head><body><div class="actions"><button onclick="window.print()">Imprimir / Salvar PDF</button></div><div class="top"><div class="brand">ALMOXARIFADO · GESTÃO LOCAL-FIRST</div><h1>Catálogo de equipamentos</h1><div class="muted">${escaparHtmlEquipamentos(projetoId)} · ${linhas.length} registro(s) · Emitido em ${escaparHtmlEquipamentos(new Date().toLocaleString("pt-BR"))}</div></div><table><thead><tr>${["Equipamento", "Categoria", "Controle", "Proprietário", "Equipe proprietária", "Saldo", "Almoxarifado", "Em uso", "Manutenção"].map((item) => `<th>${item}</th>`).join("")}</tr></thead><tbody>${htmlLinhas}</tbody></table><script>window.addEventListener("load",()=>setTimeout(()=>window.print(),350));</script></body></html>`);
+    janela.document.close();
+    janela.focus();
+  };
+
   if (!projetoId) return <Card><CardContent className="py-10 text-center text-sm text-muted-foreground">Nenhum projeto ativo selecionado.</CardContent></Card>;
 
   return <>
@@ -1442,7 +1645,7 @@ function EquipamentosPage() {
       </div>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {cardsResumo.map(({ label, value, description, icon: Icon, className, iconClassName, filtro }) => {
-          const selecionado = filtro !== null && filtroOperacional === filtro;
+          const selecionado = filtro !== null && filtroOperacionais.includes(filtro);
           const clicavel = filtro !== null;
 
           return (
@@ -1450,11 +1653,11 @@ function EquipamentosPage() {
               key={label}
               role={clicavel ? "button" : undefined}
               tabIndex={clicavel ? 0 : undefined}
-              onClick={clicavel ? () => setFiltroOperacional(selecionado ? null : filtro) : undefined}
+              onClick={clicavel ? () => setFiltroOperacionais((atual) => selecionado ? atual.filter((item) => item !== filtro) : [...atual, filtro]) : undefined}
               onKeyDown={clicavel ? (event) => {
                 if (event.key === "Enter" || event.key === " ") {
                   event.preventDefault();
-                  setFiltroOperacional(selecionado ? null : filtro);
+                  setFiltroOperacionais((atual) => selecionado ? atual.filter((item) => item !== filtro) : [...atual, filtro]);
                 }
               } : undefined}
               className={`overflow-hidden shadow-sm transition-all ${className} ${
@@ -1486,28 +1689,23 @@ function EquipamentosPage() {
               <div className="flex flex-wrap items-center gap-2 font-semibold">
                 <Box className="h-4 w-4 text-primary" />
                 <span>Catálogo de equipamentos</span>
-                {filtroOperacional && (
-                  <Badge variant="outline" className="bg-background">
-                    {filtroOperacional === "almoxarifado" ? "Almoxarifado" : filtroOperacional === "emUso" ? "Em uso" : "Manutenção"}
-                  </Badge>
-                )}
+                {filtroOperacionais.length > 0 && <Badge variant="outline" className="bg-background">{filtroOperacionais.length} filtro(s) operacional(is)</Badge>}
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
-                {filtroOperacional
-                  ? `Exibindo ${filtrados.length} equipamento(s) com estoque em ${filtroOperacional === "almoxarifado" ? "Almoxarifado" : filtroOperacional === "emUso" ? "uso" : "manutenção"}.`
+                {(filtroOperacionais.length || filtroCategorias.length || filtroProprietarios.length || filtroEquipes.length || filtroControles.length || filtroVinculos.length || filtroSituacoes.length)
+                  ? `Exibindo ${filtrados.length} equipamento(s) conforme os filtros selecionados.`
                   : "Visão consolidada do saldo e da situação operacional."}
               </p>
             </div>
             <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
-              {(filtroOperacional || busca.trim()) && (
+              {(filtroOperacionais.length || filtroCategorias.length || filtroProprietarios.length || filtroEquipes.length || filtroControles.length || filtroVinculos.length || filtroSituacoes.length || busca.trim()) && (
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
                   className="h-10 shrink-0"
                   onClick={() => {
-                    setFiltroOperacional(null);
-                    setBusca("");
+                    limparFiltros();
                   }}
                 >
                   <X className="mr-2 h-4 w-4" />
@@ -1518,6 +1716,18 @@ function EquipamentosPage() {
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Pesquisar equipamento..." className="h-10 pl-9 bg-background" />
               </div>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2 border-t px-4 py-3">
+            <FiltroMultiplo label="Categoria" opcoes={opcoesFiltroCategorias} selecionados={filtroCategorias} onChange={setFiltroCategorias} />
+            <FiltroMultiplo label="Proprietário" opcoes={opcoesFiltroProprietarios} selecionados={filtroProprietarios} onChange={setFiltroProprietarios} />
+            <FiltroMultiplo label="Equipe" opcoes={opcoesFiltroEquipes} selecionados={filtroEquipes} onChange={setFiltroEquipes} />
+            <FiltroMultiplo label="Controle" opcoes={opcoesFiltroControles} selecionados={filtroControles} onChange={setFiltroControles} />
+            <FiltroMultiplo label="Vínculo" opcoes={opcoesFiltroVinculos} selecionados={filtroVinculos} onChange={setFiltroVinculos} />
+            <FiltroMultiplo label="Situação" opcoes={opcoesFiltroSituacoes} selecionados={filtroSituacoes} onChange={setFiltroSituacoes} />
+            <div className="ml-auto flex flex-wrap gap-2">
+              <Button type="button" variant="outline" className="h-10" onClick={exportarCatalogoExcel} disabled={filtrados.length === 0}><FileText className="mr-2 size-4" />Excel</Button>
+              <Button type="button" variant="outline" className="h-10" onClick={imprimirCatalogoPdf} disabled={filtrados.length === 0}><FileText className="mr-2 size-4" />PDF</Button>
             </div>
           </div>
         </CardHeader>
