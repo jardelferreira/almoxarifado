@@ -109,11 +109,11 @@ export function RelatorioEquipamentosSituacao({
     <div className="space-y-4">
       <Card className="overflow-hidden">
         <CardContent className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-5">
-          <Resumo label="Total" value={dados.resumo.total} />
-          <Resumo label="Disponível" value={dados.resumo.disponivel} destaque="emerald" />
-          <Resumo label="Em uso" value={dados.resumo.emUso} destaque="blue" />
-          <Resumo label="Manutenção" value={dados.resumo.manutencao} destaque="amber" />
-          <Resumo label="Encerrado" value={dados.resumo.encerrado} destaque="red" />
+          <Resumo label="Total" value={resumoFiltrado.total} />
+          <Resumo label="Disponível" value={resumoFiltrado.disponivel} destaque="emerald" />
+          <Resumo label="Em uso" value={resumoFiltrado.emUso} destaque="blue" />
+          <Resumo label="Manutenção" value={resumoFiltrado.manutencao} destaque="amber" />
+          <Resumo label="Encerrado" value={resumoFiltrado.encerrado} destaque="red" />
         </CardContent>
       </Card>
 
