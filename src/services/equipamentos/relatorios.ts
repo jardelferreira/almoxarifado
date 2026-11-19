@@ -214,7 +214,16 @@ export function formatarDataHoraRelatorio(valor: string | Date | null | undefine
 }
 
 function criarPlanilhaRelatorio(config: RelatorioPlanilhaConfig, formato: RelatorioFormato): void {
-  const linhas = config.linhas.map((linha) => config.colunas.map((coluna) => linha[coluna] ?? ""));
+  const formatosNumero = new Set(config.formatosNumero ?? []);
+  const linhasDados = config.linhas.map((linha) => config.colunas.map((coluna) => linha[coluna] ?? ""));
+  const linhaTotal = config.linhas.length > 0
+    ? config.colunas.map((coluna, indice) => {
+        if (indice === 0) return "TOTAL";
+        if (!formatosNumero.has(coluna)) return "";
+        return config.linhas.reduce((total, linha) => total + (typeof linha[coluna] === "number" ? Number(linha[coluna]) : 0), 0);
+      })
+    : null;
+  const linhas = linhaTotal ? [...linhasDados, linhaTotal] : linhasDados;
   const worksheet = XLSX.utils.aoa_to_sheet([config.colunas, ...linhas]);
 
   worksheet["!autofilter"] = { ref: worksheet["!ref"] ?? "A1" };
@@ -238,7 +247,6 @@ function criarPlanilhaRelatorio(config: RelatorioPlanilhaConfig, formato: Relato
     }
   }
 
-  const formatosNumero = new Set(config.formatosNumero ?? []);
   for (let linha = 1; linha <= range.e.r; linha += 1) {
     for (let coluna = range.s.c; coluna <= range.e.c; coluna += 1) {
       const chave = config.colunas[coluna];
@@ -250,6 +258,15 @@ function criarPlanilhaRelatorio(config: RelatorioPlanilhaConfig, formato: Relato
         celula.s = {
           ...(celula.s ?? {}),
           fill: { fgColor: { rgb: "F7F9FB" } },
+        };
+      }
+
+      if (linhaTotal && linha === range.e.r) {
+        celula.s = {
+          ...(celula.s ?? {}),
+          fill: { fgColor: { rgb: "DCEAF2" } },
+          font: { bold: true, color: { rgb: "17324D" } },
+          border: { top: { style: "medium", color: { rgb: "17324D" } } },
         };
       }
 
@@ -1153,6 +1170,12 @@ export type RelatorioManutencaoLinha = {
   origem: "ALMOXARIFADO" | "FUNCIONARIO";
   funcionario: Funcionario | undefined;
   equipe: Equipe | undefined;
+  empresa: Empresa | undefined;
+  equipeProprietaria: Equipe | undefined;
+  statusManutencao: string | null;
+  dataAbertura: string | null;
+  dataEnvio: string | null;
+  dataRetorno: string | null;
   observacaoInicial: string | null;
   observacaoManutencao: string | null;
 };
@@ -1184,6 +1207,8 @@ export async function consultarRelatorioEquipamentosManutencao(
   const categoriaPorId = new Map(categorias.map((item) => [item.id, item]));
   const funcionarioPorId = new Map(funcionarios.map((item) => [item.id, item]));
   const equipePorId = new Map(equipes.map((item) => [item.id, item]));
+  const empresas = await db.empresas.where("projeto_id").equals(projetoId).toArray();
+  const empresaPorId = new Map(empresas.map((item) => [item.id, item]));
   const movimentacaoPorId = new Map(movimentacoes.map((item) => [item.id, item]));
   const manutencoesPorEstoque = new Map<string, typeof manutencoes>();
   for (const manutencao of manutencoes) {
@@ -1207,10 +1232,10 @@ export async function consultarRelatorioEquipamentosManutencao(
       .sort((a, b) =>
         `${a.data}|${a.criado_em}|${a.id}`.localeCompare(`${b.data}|${b.criado_em}|${b.id}`),
       );
-    const primeiraObservacao =
-      estoque.observacoes?.trim() ||
-      movimentosDoEstoque.find((movimento) => movimento.observacoes?.trim())?.observacoes?.trim() ||
-      null;
+    const observacoesCronologicas = movimentosDoEstoque
+      .map((movimento) => movimento.observacoes?.trim())
+      .filter((observacao): observacao is string => Boolean(observacao));
+    const primeiraObservacao = estoque.observacoes?.trim() || observacoesCronologicas[0] || null;
     const ocorrenciaAberta = (manutencoesPorEstoque.get(estoque.id) ?? [])
       .filter(
         (item) =>
@@ -1224,10 +1249,22 @@ export async function consultarRelatorioEquipamentosManutencao(
           .reverse()
           .find(
             (movimento) =>
-              movimento.tipo === "SINALIZAR_MANUTENCAO" || movimento.tipo === "MANUTENCAO",
+              movimento.tipo === "SINALIZAR_MANUTENCAO" ||
+              movimento.tipo === "MANUTENCAO" ||
+              movimento.tipo === "ENVIO" ||
+              movimento.tipo === "RETIRADA_MANUTENCAO",
           );
+    const movimentoEnvio = ocorrenciaAberta?.movimento_envio_id
+      ? movimentacaoPorId.get(ocorrenciaAberta.movimento_envio_id)
+      : [...movimentosDoEstoque]
+          .reverse()
+          .find((movimento) => movimento.tipo === "ENVIO" || movimento.tipo === "RETIRADA_MANUTENCAO");
     const observacaoManutencao =
-      movimentoSinalizacao?.observacoes?.trim() || ocorrenciaAberta?.motivo?.trim() || null;
+      movimentoEnvio?.observacoes?.trim() ||
+      movimentoSinalizacao?.observacoes?.trim() ||
+      ocorrenciaAberta?.motivo?.trim() ||
+      null;
+    const origemMovimento = movimentoSinalizacao ?? movimentoEnvio;
 
     linhas.push({
       estoqueId: estoque.id,
@@ -1238,8 +1275,14 @@ export async function consultarRelatorioEquipamentosManutencao(
       identificacao:
         estoque.identificacao || estoque.patrimonio || estoque.serial || "Sem identificação",
       origem: estado.apropriado > 0 ? "FUNCIONARIO" : "ALMOXARIFADO",
-      funcionario: undefined,
-      equipe: undefined,
+      funcionario: origemMovimento?.tipo_origem === "FUNCIONARIO" ? funcionarioPorId.get(origemMovimento.origem_id) : undefined,
+      equipe: origemMovimento?.tipo_origem === "EQUIPE" ? equipePorId.get(origemMovimento.origem_id) : undefined,
+      empresa: empresaPorId.get(estoque.empresa_id),
+      equipeProprietaria: estoque.equipe_id ? equipePorId.get(estoque.equipe_id) : undefined,
+      statusManutencao: ocorrenciaAberta?.status_operacional ?? "EM_MANUTENCAO",
+      dataAbertura: ocorrenciaAberta?.data_abertura ?? null,
+      dataEnvio: ocorrenciaAberta?.data_envio ?? movimentoEnvio?.data ?? null,
+      dataRetorno: ocorrenciaAberta?.data_retorno ?? null,
       observacaoInicial: primeiraObservacao,
       observacaoManutencao,
     });
@@ -1270,8 +1313,14 @@ export function exportarRelatorioEquipamentosManutencao(
         "EQUIPAMENTO",
         "CATEGORIA",
         "IDENTIFICACAO",
+        "PROPRIETARIO",
+        "EQUIPE_PROPRIETARIA",
         "QUANTIDADE",
         "ORIGEM",
+        "STATUS",
+        "DATA_ABERTURA",
+        "DATA_ENVIO",
+        "DATA_RETORNO",
         "OBSERVACAO_INICIAL",
         "SINALIZACAO_MANUTENCAO",
       ],
@@ -1279,8 +1328,14 @@ export function exportarRelatorioEquipamentosManutencao(
         EQUIPAMENTO: linha.equipamento.nome,
         CATEGORIA: linha.categoria?.nome ?? "—",
         IDENTIFICACAO: linha.identificacao,
+        PROPRIETARIO: linha.empresa?.nome ?? "—",
+        EQUIPE_PROPRIETARIA: linha.equipeProprietaria?.nome ?? "Projeto inteiro",
         QUANTIDADE: linha.quantidade,
         ORIGEM: linha.origem,
+        STATUS: linha.statusManutencao ?? "—",
+        DATA_ABERTURA: linha.dataAbertura ?? "",
+        DATA_ENVIO: linha.dataEnvio ?? "",
+        DATA_RETORNO: linha.dataRetorno ?? "",
         OBSERVACAO_INICIAL: linha.observacaoInicial ?? "",
         SINALIZACAO_MANUTENCAO: linha.observacaoManutencao ?? "",
       })),
@@ -1288,8 +1343,14 @@ export function exportarRelatorioEquipamentosManutencao(
         EQUIPAMENTO: 34,
         CATEGORIA: 22,
         IDENTIFICACAO: 20,
+        PROPRIETARIO: 28,
+        EQUIPE_PROPRIETARIA: 28,
         QUANTIDADE: 12,
         ORIGEM: 28,
+        STATUS: 20,
+        DATA_ABERTURA: 16,
+        DATA_ENVIO: 16,
+        DATA_RETORNO: 16,
         OBSERVACAO_INICIAL: 42,
         SINALIZACAO_MANUTENCAO: 52,
       },
@@ -1558,7 +1619,7 @@ function imprimirTabelaRelatorioEquipamentos(
 </style>
 </head>
 <body>
-<div class="actions"><button onclick="window.close()">Fechar</button><button class="primary" onclick="window.print()">Imprimir / Salvar PDF</button></div>
+<div class="actions"><button id="fechar-relatorio" type="button">Fechar</button><button id="imprimir-relatorio" class="primary" type="button">Imprimir / Salvar PDF</button></div>
 <main class="report">
   <header class="topbar">
     <div><div class="brand">ALMOXARIFADO · Gestão local-first</div><h1>${escaparHtmlRelatorio(titulo)}</h1><div class="subtitle">Projeto: ${escaparHtmlRelatorio(projetoNome)}</div></div>
@@ -1569,9 +1630,13 @@ function imprimirTabelaRelatorioEquipamentos(
   <div class="note">Documento gerado a partir dos registros atuais do projeto. Os valores refletem o estado calculado no momento da emissão.</div>
   <footer class="footer"><span>ALMOXARIFADO · Gestão local-first</span><span>${escaparHtmlRelatorio(titulo)} · ${escaparHtmlRelatorio(new Date().toLocaleDateString("pt-BR"))}</span></footer>
 </main>
-<script>window.addEventListener("load",()=>setTimeout(()=>window.print(),350));</script>
 </body></html>`);
   janela.document.close();
+  janela.document.getElementById("fechar-relatorio")?.addEventListener("click", () => janela.close());
+  janela.document.getElementById("imprimir-relatorio")?.addEventListener("click", () => {
+    janela.focus();
+    janela.print();
+  });
   janela.focus();
 }
 
@@ -1784,14 +1849,20 @@ export function imprimirRelatorioEquipamentosManutencao(
   imprimirTabelaRelatorioEquipamentos(
     "Equipamentos em manutenção",
     projetoNome,
-    ["Equipamento", "Categoria", "Identificação", "Quantidade", "Origem", "Observações"],
+    ["Equipamento", "Categoria", "Identificação", "Proprietário / equipe", "Quantidade", "Origem", "Status", "Abertura", "Envio", "Retorno", "Observação inicial", "Última observação da manutenção"],
     relatorio.linhas.map((linha) => [
       linha.equipamento.nome,
       linha.categoria?.nome ?? "—",
       linha.identificacao,
+      [linha.empresa?.nome ?? "—", linha.equipeProprietaria?.nome ?? "Projeto inteiro"].join(" / "),
       linha.quantidade,
       linha.origem,
-      linha.estoque.observacoes ?? "",
+      linha.statusManutencao ?? "—",
+      linha.dataAbertura ?? "—",
+      linha.dataEnvio ?? "—",
+      linha.dataRetorno ?? "—",
+      linha.observacaoInicial ?? "—",
+      linha.observacaoManutencao ?? "—",
     ]),
     [
       { label: "Registros", valor: relatorio.totalRegistros },
