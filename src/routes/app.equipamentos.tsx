@@ -607,49 +607,91 @@ function EquipamentosPage() {
     return mapa;
   }, [estoques, resumoPorEstoque]);
 
-  const filtrados = useMemo(() => {
+  const estoquesFiltradosPorEquipamento = useMemo(() => {
     const termo = busca.trim().toLowerCase();
+    const resultado = new Map<string, EstoqueEquipamentoUI[]>();
 
-    return equipamentos.filter((e) => {
-      const registros = (estoquePorEquipamento.get(e.id) ?? []).filter((item) => item.ativo !== false);
-      const resumo = resumoPorEquipamento.get(e.id);
-      const proprietarios = new Set(registros.map((item) => item.empresa_id));
-      const equipesDoEstoque = new Set(registros.map((item) => item.equipe_id ?? "__projeto__"));
-      const vinculos = new Set<string>(registros.map((item) => item.vinculo));
-      const correspondeBusca = !termo || [
-        e.nome,
-        e.marca,
-        e.modelo,
-        e.descricao,
-        categoriaPorId.get(e.categoria_id),
-        ...registros.flatMap((item) => [
-          empresaPorId.get(item.empresa_id),
-          equipePorId.get(item.equipe_id ?? "") ?? "Projeto inteiro",
-          item.patrimonio,
-          item.identificacao,
-          item.serial,
-          item.vinculo,
-        ]),
-      ].some((v) => String(v ?? "").toLowerCase().includes(termo));
+    for (const equipamento of equipamentos) {
+      const registrosAtivos = (estoquePorEquipamento.get(equipamento.id) ?? [])
+        .filter((item) => item.ativo !== false);
+      const textoEquipamento = [
+        equipamento.nome,
+        equipamento.marca,
+        equipamento.modelo,
+        equipamento.descricao,
+        categoriaPorId.get(equipamento.categoria_id),
+      ].join(" ").toLowerCase();
+      const equipamentoAtendeBusca = !termo || textoEquipamento.includes(termo);
 
-      if (!correspondeBusca) return false;
-      if (filtroCategorias.length > 0 && !filtroCategorias.includes(e.categoria_id)) return false;
-      if (filtroProprietarios.length > 0 && !filtroProprietarios.some((item) => proprietarios.has(item))) return false;
-      if (filtroEquipes.length > 0 && !filtroEquipes.some((item) => equipesDoEstoque.has(item))) return false;
-      if (filtroControles.length > 0 && !filtroControles.includes(e.tipo_controle)) return false;
-      if (filtroVinculos.length > 0 && !filtroVinculos.some((item) => vinculos.has(item))) return false;
+      if (filtroCategorias.length > 0 && !filtroCategorias.includes(equipamento.categoria_id)) continue;
+      if (filtroControles.length > 0 && !filtroControles.includes(equipamento.tipo_controle)) continue;
       if (filtroSituacoes.length > 0) {
-        const situacao = e.ativo === false ? "INATIVO" : e.situacao === "PLANEJADO" ? "PLANEJADO" : "ATIVO";
-        if (!filtroSituacoes.includes(situacao)) return false;
+        const situacao = equipamento.ativo === false
+          ? "INATIVO"
+          : equipamento.situacao === "PLANEJADO"
+            ? "PLANEJADO"
+            : "ATIVO";
+        if (!filtroSituacoes.includes(situacao)) continue;
       }
-      if (filtroOperacionais.length === 0) return true;
-      return filtroOperacionais.some((filtro) =>
-        filtro === "almoxarifado" ? (resumo?.almoxarifado ?? 0) > 0
-          : filtro === "emUso" ? (resumo?.apropriado ?? 0) > 0
-            : (resumo?.manutencao ?? 0) > 0,
-      );
-    });
-  }, [equipamentos, busca, categoriaPorId, empresaPorId, equipePorId, estoquePorEquipamento, filtroCategorias, filtroControles, filtroEquipes, filtroOperacionais, filtroProprietarios, filtroSituacoes, filtroVinculos, resumoPorEquipamento]);
+
+      const registros = registrosAtivos.filter((registro) => {
+        if (filtroProprietarios.length > 0 && !filtroProprietarios.includes(registro.empresa_id)) return false;
+        const equipeId = registro.equipe_id ?? "__projeto__";
+        if (filtroEquipes.length > 0 && !filtroEquipes.includes(equipeId)) return false;
+        if (filtroVinculos.length > 0 && !filtroVinculos.includes(registro.vinculo)) return false;
+        if (!termo || equipamentoAtendeBusca) return true;
+
+        return [
+          empresaPorId.get(registro.empresa_id),
+          equipePorId.get(registro.equipe_id ?? "") ?? "Projeto inteiro",
+          registro.patrimonio,
+          registro.identificacao,
+          registro.serial,
+          registro.vinculo,
+        ].join(" ").toLowerCase().includes(termo);
+      });
+
+      const exigeLoteCorrespondente = filtroProprietarios.length > 0
+        || filtroEquipes.length > 0
+        || filtroVinculos.length > 0
+        || (Boolean(termo) && !equipamentoAtendeBusca);
+
+      if (exigeLoteCorrespondente && registros.length === 0) continue;
+      resultado.set(equipamento.id, registros);
+    }
+
+    return resultado;
+  }, [busca, categoriaPorId, equipamentos, empresaPorId, equipePorId, estoquePorEquipamento, filtroCategorias, filtroControles, filtroEquipes, filtroProprietarios, filtroSituacoes, filtroVinculos]);
+
+  const resumoFiltradoPorEquipamento = useMemo(() => {
+    const resultado = new Map<string, ResumoEstoque>();
+    for (const [equipamentoId, registros] of estoquesFiltradosPorEquipamento) {
+      const resumo = { quantidade: 0, saldo: 0, almoxarifado: 0, manutencao: 0, apropriado: 0, disponivel: 0 };
+      for (const registro of registros) {
+        const estado = resumoPorEstoque.get(registro.id);
+        if (!estado) continue;
+        resumo.quantidade += estado.quantidade;
+        resumo.saldo += estado.saldo;
+        resumo.almoxarifado += estado.almoxarifado;
+        resumo.manutencao += estado.manutencao;
+        resumo.apropriado += estado.apropriado;
+        resumo.disponivel += estado.disponivel;
+      }
+      resultado.set(equipamentoId, resumo);
+    }
+    return resultado;
+  }, [estoquesFiltradosPorEquipamento, resumoPorEstoque]);
+
+  const filtrados = useMemo(() => equipamentos.filter((equipamento) => {
+    const resumo = resumoFiltradoPorEquipamento.get(equipamento.id);
+    if (!resumo) return false;
+    if (filtroOperacionais.length === 0) return true;
+    return filtroOperacionais.some((filtro) =>
+      filtro === "almoxarifado" ? resumo.almoxarifado > 0
+        : filtro === "emUso" ? resumo.apropriado > 0
+          : resumo.manutencao > 0,
+    );
+  }), [equipamentos, filtroOperacionais, resumoFiltradoPorEquipamento]);
 
   const opcoesFiltroCategorias = useMemo(() => categorias.map((item) => ({ value: item.id, label: item.nome })).sort((a, b) => a.label.localeCompare(b.label, "pt-BR")), [categorias]);
   const opcoesFiltroProprietarios = useMemo(() => empresas.map((item) => ({ value: item.id, label: item.nome })).sort((a, b) => a.label.localeCompare(b.label, "pt-BR")), [empresas]);
@@ -1253,7 +1295,7 @@ function EquipamentosPage() {
     }
   }
 
-  const estoqueSelecionado = equipamentoDetalhe ? estoquePorEquipamento.get(equipamentoDetalhe.id) ?? [] : [];
+  const estoqueSelecionado = equipamentoDetalhe ? estoquesFiltradosPorEquipamento.get(equipamentoDetalhe.id) ?? [] : [];
   const manutencoesSelecionadas = equipamentoDetalhe
     ? manutencoes.filter((item) => item.equipamento_id === equipamentoDetalhe.id)
     : [];
@@ -1571,7 +1613,8 @@ function EquipamentosPage() {
 
   const exportarCatalogoExcel = () => {
     const linhas = filtrados.map((equipamento) => {
-      const registros = estoquePorEquipamento.get(equipamento.id) ?? [];
+      const registros = estoquesFiltradosPorEquipamento.get(equipamento.id) ?? [];
+      const resumo = resumoFiltradoPorEquipamento.get(equipamento.id) ?? { saldo: 0, almoxarifado: 0, apropriado: 0, manutencao: 0 };
       const proprietarios = [...new Set(registros.map((item) => empresaPorId.get(item.empresa_id) ?? "Não informado"))].join("; ");
       const equipesOrigem = [...new Set(registros.map((item) => equipePorId.get(item.equipe_id ?? "") ?? "Todo o projeto"))].join("; ");
       return {
@@ -1581,10 +1624,10 @@ function EquipamentosPage() {
         PROPRIETARIO: proprietarios || "—",
         EQUIPE_PROPRIETARIA: equipesOrigem || "—",
         VINCULOS: [...new Set(registros.map((item) => vinculoLabel(item.vinculo)))].join("; ") || "—",
-        SALDO: saldoTotal(equipamento.id),
-        ALMOXARIFADO: almoxarifadoTotal(equipamento.id),
-        EM_USO: apropriadoTotal(equipamento.id),
-        MANUTENCAO: manutencaoTotal(equipamento.id),
+        SALDO: resumo.saldo,
+        ALMOXARIFADO: resumo.almoxarifado,
+        EM_USO: resumo.apropriado,
+        MANUTENCAO: resumo.manutencao,
         REGISTROS: registros.filter((item) => item.ativo !== false).length,
         SITUACAO: equipamento.ativo === false ? "Inativo" : equipamento.situacao === "PLANEJADO" ? "Planejado" : "Operacional",
       };
@@ -1614,7 +1657,8 @@ function EquipamentosPage() {
       return;
     }
     const linhas = filtrados.map((equipamento) => {
-      const registros = estoquePorEquipamento.get(equipamento.id) ?? [];
+      const registros = estoquesFiltradosPorEquipamento.get(equipamento.id) ?? [];
+      const resumo = resumoFiltradoPorEquipamento.get(equipamento.id) ?? { saldo: 0, almoxarifado: 0, apropriado: 0, manutencao: 0 };
       const proprietarios = [...new Set(registros.map((item) => empresaPorId.get(item.empresa_id) ?? "Não informado"))].join("; ");
       const equipesOrigem = [...new Set(registros.map((item) => equipePorId.get(item.equipe_id ?? "") ?? "Todo o projeto"))].join("; ");
       return [
@@ -1623,10 +1667,10 @@ function EquipamentosPage() {
         equipamento.tipo_controle === "INDIVIDUAL" ? "Individual" : "Quantitativo",
         proprietarios || "—",
         equipesOrigem || "—",
-        saldoTotal(equipamento.id),
-        almoxarifadoTotal(equipamento.id),
-        apropriadoTotal(equipamento.id),
-        manutencaoTotal(equipamento.id),
+        resumo.saldo,
+        resumo.almoxarifado,
+        resumo.apropriado,
+        resumo.manutencao,
       ];
     });
     const htmlLinhas = linhas.map((linha, indice) => `<tr class="${indice % 2 ? "alt" : ""}">${linha.map((valor) => `<td>${escaparHtmlEquipamentos(valor)}</td>`).join("")}</tr>`).join("") || `<tr><td colspan="9" class="empty">Nenhum equipamento encontrado.</td></tr>`;
@@ -1739,11 +1783,17 @@ function EquipamentosPage() {
               </tr></thead>
               <tbody>
                 {filtrados.map((e) => {
-                  const registros = estoquePorEquipamento.get(e.id) ?? [];
-                  const saldo = saldoTotal(e.id);
-                  const almox = almoxarifadoTotal(e.id);
-                  const emUso = apropriadoTotal(e.id);
-                  const manutencao = manutencaoTotal(e.id);
+                  const registros = estoquesFiltradosPorEquipamento.get(e.id) ?? [];
+                  const resumoVisivel = resumoFiltradoPorEquipamento.get(e.id) ?? {
+                    saldo: 0,
+                    almoxarifado: 0,
+                    apropriado: 0,
+                    manutencao: 0,
+                  };
+                  const saldo = resumoVisivel.saldo;
+                  const almox = resumoVisivel.almoxarifado;
+                  const emUso = resumoVisivel.apropriado;
+                  const manutencao = resumoVisivel.manutencao;
                   return <tr key={e.id} className="group border-b transition-colors last:border-0 hover:bg-muted/20">
                     <td className="px-4 py-3.5">
                       <div className="flex items-center gap-3">
@@ -1819,7 +1869,7 @@ function EquipamentosPage() {
 
     <Dialog open={Boolean(equipamentoDetalhe)} onOpenChange={(open) => !open && setEquipamentoDetalhe(null)}><DialogContent className="w-[calc(100vw-1rem)] max-w-none max-h-[95vh] overflow-y-auto p-3 sm:w-[calc(100vw-2rem)] sm:max-w-[1400px] sm:p-5 lg:max-w-[1500px]"><DialogHeader><DialogTitle className="flex items-center gap-2"><Box className="h-5 w-5 text-primary" />Detalhes do equipamento</DialogTitle></DialogHeader>{equipamentoDetalhe && <div className="space-y-6">
       <div className="rounded-lg border bg-muted/30 p-4"><div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"><div><h2 className="text-xl font-semibold">{equipamentoDetalhe.nome}</h2><div className="mt-2 flex flex-wrap items-center gap-2"><Badge variant="secondary">{categoriaPorId.get(equipamentoDetalhe.categoria_id) ?? "Sem categoria"}</Badge><Badge variant="outline">{equipamentoDetalhe.tipo_controle === "INDIVIDUAL" ? "Controle individual" : "Controle quantitativo"}</Badge><Badge variant={equipamentoDetalhe.situacao === "PLANEJADO" ? "outline" : "secondary"}>{equipamentoDetalhe.situacao === "PLANEJADO" ? "Planejado" : "Operacional"}</Badge><Badge variant={equipamentoDetalhe.ativo === false ? "outline" : "secondary"}>{equipamentoDetalhe.ativo === false ? "Inativo" : "Ativo"}</Badge></div><p className="mt-3 text-sm text-muted-foreground">{[equipamentoDetalhe.marca, equipamentoDetalhe.modelo].filter(Boolean).join(" • ") || "Marca/modelo não informados"}</p>{equipamentoDetalhe.descricao && <p className="mt-2 max-w-3xl text-sm">{equipamentoDetalhe.descricao}</p>}</div><Button onClick={() => abrirNovoEstoque(equipamentoDetalhe)} disabled={equipamentoDetalhe.ativo === false || equipamentoDetalhe.situacao === "PLANEJADO"}><Plus className="mr-2 h-4 w-4" />Adicionar estoque</Button></div></div>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5"><div className="rounded-xl border border-primary/15 bg-primary/5 p-4"><div className="flex items-center gap-2 text-xs font-medium text-primary"><Box className="h-4 w-4" />Saldo</div><p className="mt-2 text-2xl font-bold">{saldoTotal(equipamentoDetalhe.id)}</p></div><div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-4"><div className="flex items-center gap-2 text-xs font-medium text-emerald-700"><Warehouse className="h-4 w-4" />Almoxarifado</div><p className="mt-2 text-2xl font-bold text-emerald-800">{almoxarifadoTotal(equipamentoDetalhe.id)}</p></div><div className="rounded-xl border border-blue-200 bg-blue-50/60 p-4"><div className="flex items-center gap-2 text-xs font-medium text-blue-700"><UserRound className="h-4 w-4" />Em uso</div><p className="mt-2 text-2xl font-bold text-blue-800">{apropriadoTotal(equipamentoDetalhe.id)}</p></div><div className="rounded-xl border border-orange-200 bg-orange-50/60 p-4"><div className="flex items-center gap-2 text-xs font-medium text-orange-700"><Wrench className="h-4 w-4" />Manutenção</div><p className="mt-2 text-2xl font-bold text-orange-800">{manutencaoTotal(equipamentoDetalhe.id)}</p></div><div className="rounded-xl border bg-muted/20 p-4"><div className="flex items-center gap-2 text-xs font-medium text-muted-foreground"><ClipboardList className="h-4 w-4" />Registros físicos</div><p className="mt-2 text-2xl font-bold">{estoqueSelecionado.length}</p></div></div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5"><div className="rounded-xl border border-primary/15 bg-primary/5 p-4"><div className="flex items-center gap-2 text-xs font-medium text-primary"><Box className="h-4 w-4" />Saldo</div><p className="mt-2 text-2xl font-bold">{resumoFiltradoPorEquipamento.get(equipamentoDetalhe.id)?.saldo ?? 0}</p></div><div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-4"><div className="flex items-center gap-2 text-xs font-medium text-emerald-700"><Warehouse className="h-4 w-4" />Almoxarifado</div><p className="mt-2 text-2xl font-bold text-emerald-800">{resumoFiltradoPorEquipamento.get(equipamentoDetalhe.id)?.almoxarifado ?? 0}</p></div><div className="rounded-xl border border-blue-200 bg-blue-50/60 p-4"><div className="flex items-center gap-2 text-xs font-medium text-blue-700"><UserRound className="h-4 w-4" />Em uso</div><p className="mt-2 text-2xl font-bold text-blue-800">{resumoFiltradoPorEquipamento.get(equipamentoDetalhe.id)?.apropriado ?? 0}</p></div><div className="rounded-xl border border-orange-200 bg-orange-50/60 p-4"><div className="flex items-center gap-2 text-xs font-medium text-orange-700"><Wrench className="h-4 w-4" />Manutenção</div><p className="mt-2 text-2xl font-bold text-orange-800">{resumoFiltradoPorEquipamento.get(equipamentoDetalhe.id)?.manutencao ?? 0}</p></div><div className="rounded-xl border bg-muted/20 p-4"><div className="flex items-center gap-2 text-xs font-medium text-muted-foreground"><ClipboardList className="h-4 w-4" />Registros físicos</div><p className="mt-2 text-2xl font-bold">{estoqueSelecionado.length}</p></div></div>
       <div className="space-y-3"><div><h3 className="font-semibold">Estoque físico</h3><p className="text-sm text-muted-foreground">Cada linha representa um registro físico independente. A equipe proprietária identifica a origem do lote, mesmo quando o equipamento é quantitativo e não possui serial.</p></div><div className="overflow-x-auto rounded-lg border"><table className="min-w-[1120px] w-full text-sm"><thead><tr className="border-b bg-muted/30 text-left"><th className="px-3 py-3">Proprietário</th><th className="px-3 py-3">Equipe proprietária</th><th className="px-3 py-3">Vínculo</th><th className="px-3 py-3">Localização atual</th><th className="px-3 py-3">Identificação</th><th className="px-3 py-3">Serial</th><th className="px-3 py-3">Patrimônio</th><th className="px-3 py-3">Saldo</th>{financeiroEquipamentosAtivo && <><th className="px-3 py-3">Valor efetivo</th><th className="px-3 py-3">Recorrente</th></>}<th className="px-3 py-3">Ativo</th>{financeiroEquipamentosAtivo && <th className="px-3 py-3 text-right">Financeiro</th>}</tr></thead><tbody>{estoqueSelecionado.map((e) => { const equipamento = equipamentoDetalhe; const valorUnitario = resolverValorUnitario(equipamento, e); const custoRecorrente = resolverCustoRecorrenteUnitario(equipamento, e); const valorTotal = valorUnitario == null ? null : valorUnitario * Math.max(0, e.quantidade); const recorrenteTotal = custoRecorrente == null ? null : custoRecorrente * Math.max(0, e.quantidade); const valorEspecifico = e.valor_unitario != null; const recorrenteEspecifico = e.custo_recorrente_unitario != null; return <tr key={e.id} className="border-b last:border-0 align-top"><td className="px-3 py-3">{empresaPorId.get(e.empresa_id) ?? "—"}</td><td className="px-3 py-3">{equipePorId.get(e.equipe_id ?? "") ?? "Projeto inteiro"}</td><td className="px-3 py-3">{vinculoLabel(e.vinculo)}</td><td className="px-3 py-3"><div className="space-y-1">{(alocacoesAtuais.get(e.id) ?? []).map((local) => <div key={`${local.tipo}:${local.id}`}><span>{rotuloLocal(local)}</span><span className="ml-2 text-xs text-muted-foreground">({local.quantidade})</span></div>)}{(alocacoesAtuais.get(e.id) ?? []).length === 0 && <span className={resumoPorEstoque.get(e.id)?.saldo === 0 ? "font-medium text-muted-foreground" : "text-muted-foreground"}>{situacaoSemLocalizacao(e.id)}</span>}</div></td><td className="px-3 py-3">{e.identificacao ?? "—"}</td><td className="px-3 py-3">{e.serial ?? "—"}</td><td className="px-3 py-3">{e.patrimonio ?? "—"}</td><td className="px-3 py-3 font-medium">{resumoPorEstoque.get(e.id)?.saldo ?? Math.max(0, e.quantidade - e.devolvido)}</td>{financeiroEquipamentosAtivo && <><td className="px-3 py-3"><div className="font-semibold">{valorTotal == null ? "—" : valorTotal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</div><div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground"><span>{valorUnitario == null ? "Sem valor" : `${valorUnitario.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} / un.`}</span><Badge variant="outline" className="h-5 px-1.5 text-[10px]">{valorEspecifico ? "Específico" : "Padrão"}</Badge></div></td><td className="px-3 py-3"><div className="font-medium">{recorrenteTotal == null ? "—" : recorrenteTotal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</div><div className="mt-1 text-xs text-muted-foreground">{(e.periodicidade_custo ?? equipamento.periodicidade_custo) === "HORA" ? "por hora" : (e.periodicidade_custo ?? equipamento.periodicidade_custo) === "DIA" ? "por dia" : (e.periodicidade_custo ?? equipamento.periodicidade_custo) === "SEMANA" ? "por semana" : (e.periodicidade_custo ?? equipamento.periodicidade_custo) === "MES" ? "por mês" : (e.periodicidade_custo ?? equipamento.periodicidade_custo) === "ANO" ? "por ano" : "sem periodicidade"}{recorrenteEspecifico ? " · específico" : " · padrão"}</div></td></>}<td className="px-3 py-3"><label className="inline-flex cursor-pointer items-center gap-2" title={e.ativo === false ? "Ativar registro" : "Desativar registro"}><input type="checkbox" checked={e.ativo !== false} onChange={() => void alternarEstoqueAtivo(e)} className="h-4 w-4 cursor-pointer rounded border-input accent-primary" /><span className="text-xs text-muted-foreground">{e.ativo === false ? "Inativo" : "Ativo"}</span></label></td>{financeiroEquipamentosAtivo && <td className="px-3 py-3 text-right"><Button variant="outline" size="sm" className="h-8" onClick={() => abrirEdicaoFinanceiro(e)}><DollarSign className="mr-1.5 h-3.5 w-3.5" />Editar custos</Button></td>}</tr>; })}{estoqueSelecionado.length === 0 && <tr><td colSpan={financeiroEquipamentosAtivo ? 12 : 9} className="py-8 text-center text-muted-foreground">Nenhum registro de estoque.</td></tr>}</tbody></table></div></div>
       {estoqueSelecionado.length > 0 && <section className="space-y-3 rounded-xl border border-sky-200 bg-sky-50/40 p-4">
         <div><h3 className="font-semibold">Correção cadastral do registro físico</h3><p className="mt-1 text-sm text-muted-foreground">Corrija erros de digitação sem alterar quantidade, saldo, movimentações, apropriações ou histórico operacional.</p></div>
