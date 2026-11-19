@@ -24,6 +24,8 @@ import {
   ChevronDown,
   DollarSign,
   FileText,
+  FileSpreadsheet,
+  Printer,
   Link2,
   Unlink2,
   X,
@@ -262,7 +264,7 @@ function FiltroMultiplo({
           </Button>
         </div>
         <div className="mt-2 max-h-64 space-y-1 overflow-y-auto">
-          {opcoes.map((opcao) => {
+          {opcoes.length === 0 ? <p className="px-2 py-3 text-sm text-muted-foreground">Nenhum item presente nos dados exibidos.</p> : opcoes.map((opcao) => {
             const marcado = selecionados.includes(opcao.value);
             return (
               <button key={opcao.value} type="button" className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm hover:bg-muted" onClick={() => alternar(opcao.value)}>
@@ -693,23 +695,31 @@ function EquipamentosPage() {
     );
   }), [equipamentos, filtroOperacionais, resumoFiltradoPorEquipamento]);
 
-  const opcoesFiltroCategorias = useMemo(() => categorias.map((item) => ({ value: item.id, label: item.nome })).sort((a, b) => a.label.localeCompare(b.label, "pt-BR")), [categorias]);
-  const opcoesFiltroProprietarios = useMemo(() => empresas.map((item) => ({ value: item.id, label: item.nome })).sort((a, b) => a.label.localeCompare(b.label, "pt-BR")), [empresas]);
-  const opcoesFiltroEquipes = useMemo(() => [{ value: "__projeto__", label: "Todo o projeto" }, ...equipes.map((item) => ({ value: item.id, label: item.nome }))].sort((a, b) => a.label.localeCompare(b.label, "pt-BR")), [equipes]);
-  const opcoesFiltroControles = [
-    { value: "INDIVIDUAL", label: "Individual" },
-    { value: "QUANTITATIVO", label: "Quantitativo" },
-  ];
-  const opcoesFiltroVinculos = [
-    { value: "PROPRIO", label: "Próprio" },
-    { value: "ALUGADO", label: "Alugado" },
-    { value: "EMPRESTIMO", label: "Empréstimo" },
-  ];
-  const opcoesFiltroSituacoes = [
-    { value: "ATIVO", label: "Operacional" },
-    { value: "PLANEJADO", label: "Planejado" },
-    { value: "INATIVO", label: "Inativo" },
-  ];
+  const opcoesFiltroDinamicas = useMemo(() => {
+    const categoriasPresentes = new Set(filtrados.map((item) => item.categoria_id));
+    const controlesPresentes = new Set(filtrados.map((item) => item.tipo_controle));
+    const situacoesPresentes = new Set(filtrados.map((item) => item.ativo === false ? "INATIVO" : item.situacao === "PLANEJADO" ? "PLANEJADO" : "ATIVO"));
+    const proprietariosPresentes = new Set<string>();
+    const equipesPresentes = new Set<string>();
+    const vinculosPresentes = new Set<string>();
+
+    for (const equipamento of filtrados) {
+      for (const registro of estoquesFiltradosPorEquipamento.get(equipamento.id) ?? []) {
+        proprietariosPresentes.add(registro.empresa_id);
+        equipesPresentes.add(registro.equipe_id ?? "__projeto__");
+        vinculosPresentes.add(registro.vinculo);
+      }
+    }
+
+    return {
+      categorias: categorias.filter((item) => categoriasPresentes.has(item.id)).map((item) => ({ value: item.id, label: item.nome })).sort((a, b) => a.label.localeCompare(b.label, "pt-BR")),
+      proprietarios: empresas.filter((item) => proprietariosPresentes.has(item.id)).map((item) => ({ value: item.id, label: item.nome })).sort((a, b) => a.label.localeCompare(b.label, "pt-BR")),
+      equipes: [{ value: "__projeto__", label: "Todo o projeto" }, ...equipes.map((item) => ({ value: item.id, label: item.nome }))].filter((item) => equipesPresentes.has(item.value)).sort((a, b) => a.label.localeCompare(b.label, "pt-BR")),
+      controles: [{ value: "INDIVIDUAL", label: "Individual" }, { value: "QUANTITATIVO", label: "Quantitativo" }].filter((item) => controlesPresentes.has(item.value)),
+      vinculos: [{ value: "PROPRIO", label: "Próprio" }, { value: "ALUGADO", label: "Alugado" }, { value: "EMPRESTIMO", label: "Empréstimo" }].filter((item) => vinculosPresentes.has(item.value)),
+      situacoes: [{ value: "ATIVO", label: "Operacional" }, { value: "PLANEJADO", label: "Planejado" }, { value: "INATIVO", label: "Inativo" }].filter((item) => situacoesPresentes.has(item.value)),
+    };
+  }, [categorias, empresas, equipes, estoquesFiltradosPorEquipamento, filtrados]);
 
   const atualizarCampo = <K extends keyof Formulario>(campo: K, valor: Formulario[K]) => setFormulario((atual) => ({ ...atual, [campo]: valor }));
   const atualizarEstoque = <K extends keyof EstoqueFormulario>(campo: K, valor: EstoqueFormulario[K]) => setEstoqueFormulario((atual) => ({ ...atual, [campo]: valor }));
@@ -1517,36 +1527,23 @@ function EquipamentosPage() {
   };
 
 
-  const resumoGeral = useMemo(() => {
-    const equipamentosAtivos = equipamentos.filter((equipamento) => equipamento.ativo !== false && equipamento.situacao !== "PLANEJADO");
-    const estoquesAtivos = estoques.filter((estoque) => estoque.ativo !== false);
-
-    return {
-      equipamentos: equipamentosAtivos.length,
-      saldo: equipamentosAtivos.reduce(
-        (total, equipamento) => total + (resumoPorEquipamento.get(equipamento.id)?.saldo ?? 0),
-        0,
-      ),
-      almoxarifado: equipamentosAtivos.reduce(
-        (total, equipamento) => total + (resumoPorEquipamento.get(equipamento.id)?.almoxarifado ?? 0),
-        0,
-      ),
-      emUso: equipamentosAtivos.reduce(
-        (total, equipamento) => total + (resumoPorEquipamento.get(equipamento.id)?.apropriado ?? 0),
-        0,
-      ),
-      manutencao: equipamentosAtivos.reduce(
-        (total, equipamento) => total + (resumoPorEquipamento.get(equipamento.id)?.manutencao ?? 0),
-        0,
-      ),
-      registros: estoquesAtivos.length,
-    };
-  }, [equipamentos, estoques, resumoPorEquipamento]);
+  const resumoTabela = useMemo(() => {
+    const resumo = { equipamentos: filtrados.length, saldo: 0, almoxarifado: 0, emUso: 0, manutencao: 0, registros: 0 };
+    for (const equipamento of filtrados) {
+      const item = resumoFiltradoPorEquipamento.get(equipamento.id);
+      resumo.saldo += item?.saldo ?? 0;
+      resumo.almoxarifado += item?.almoxarifado ?? 0;
+      resumo.emUso += item?.apropriado ?? 0;
+      resumo.manutencao += item?.manutencao ?? 0;
+      resumo.registros += (estoquesFiltradosPorEquipamento.get(equipamento.id) ?? []).length;
+    }
+    return resumo;
+  }, [estoquesFiltradosPorEquipamento, filtrados, resumoFiltradoPorEquipamento]);
 
   const cardsResumo = [
     {
       label: "Equipamentos",
-      value: resumoGeral.equipamentos,
+      value: resumoTabela.equipamentos,
       description: "cadastros ativos",
       icon: PackageCheck,
       className: "border-primary/15 bg-primary/5",
@@ -1555,7 +1552,7 @@ function EquipamentosPage() {
     },
     {
       label: "Saldo total",
-      value: resumoGeral.saldo,
+      value: resumoTabela.saldo,
       description: "quantidade em estoque",
       icon: ClipboardList,
       className: "border-sky-200 bg-sky-50/60",
@@ -1564,7 +1561,7 @@ function EquipamentosPage() {
     },
     {
       label: "Registros físicos",
-      value: resumoGeral.registros,
+      value: resumoTabela.registros,
       description: "registros ativos de estoque",
       icon: Box,
       className: "border-border bg-muted/20",
@@ -1573,7 +1570,7 @@ function EquipamentosPage() {
     },
     {
       label: "Almoxarifado",
-      value: resumoGeral.almoxarifado,
+      value: resumoTabela.almoxarifado,
       description: "disponíveis para retirada",
       icon: Warehouse,
       className: "border-emerald-200 bg-emerald-50/60",
@@ -1582,7 +1579,7 @@ function EquipamentosPage() {
     },
     {
       label: "Em uso",
-      value: resumoGeral.emUso,
+      value: resumoTabela.emUso,
       description: "apropriados a funcionários",
       icon: UserRound,
       className: "border-blue-200 bg-blue-50/60",
@@ -1591,7 +1588,7 @@ function EquipamentosPage() {
     },
     {
       label: "Manutenção",
-      value: resumoGeral.manutencao,
+      value: resumoTabela.manutencao,
       description: "em manutenção",
       icon: Wrench,
       className: "border-orange-200 bg-orange-50/60",
@@ -1635,7 +1632,15 @@ function EquipamentosPage() {
     const colunas = Object.keys(linhas[0] ?? {
       EQUIPAMENTO: "", CATEGORIA: "", CONTROLE: "", PROPRIETARIO: "", EQUIPE_PROPRIETARIA: "", VINCULOS: "", SALDO: 0, ALMOXARIFADO: 0, EM_USO: 0, MANUTENCAO: 0, REGISTROS: 0, SITUACAO: "",
     });
-    const worksheet = XLSX.utils.json_to_sheet(linhas, { header: colunas });
+    const total = linhas.reduce((acumulado, linha) => ({
+      ...acumulado,
+      SALDO: acumulado.SALDO + Number(linha.SALDO ?? 0),
+      ALMOXARIFADO: acumulado.ALMOXARIFADO + Number(linha.ALMOXARIFADO ?? 0),
+      EM_USO: acumulado.EM_USO + Number(linha.EM_USO ?? 0),
+      MANUTENCAO: acumulado.MANUTENCAO + Number(linha.MANUTENCAO ?? 0),
+      REGISTROS: acumulado.REGISTROS + Number(linha.REGISTROS ?? 0),
+    }), { EQUIPAMENTO: "TOTAL", SALDO: 0, ALMOXARIFADO: 0, EM_USO: 0, MANUTENCAO: 0, REGISTROS: 0 });
+    const worksheet = XLSX.utils.json_to_sheet([...linhas, total], { header: colunas });
     worksheet["!autofilter"] = { ref: worksheet["!ref"] ?? "A1" };
     worksheet["!freeze"] = { xSplit: 0, ySplit: 1 };
     worksheet["!cols"] = colunas.map((coluna) => ({ wch: ["EQUIPAMENTO", "PROPRIETARIO", "EQUIPE_PROPRIETARIA"].includes(coluna) ? 30 : 16 }));
@@ -1673,8 +1678,10 @@ function EquipamentosPage() {
         resumo.manutencao,
       ];
     });
-    const htmlLinhas = linhas.map((linha, indice) => `<tr class="${indice % 2 ? "alt" : ""}">${linha.map((valor) => `<td>${escaparHtmlEquipamentos(valor)}</td>`).join("")}</tr>`).join("") || `<tr><td colspan="9" class="empty">Nenhum equipamento encontrado.</td></tr>`;
-    janela.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Equipamentos filtrados</title><style>@page{size:A4 landscape;margin:12mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#243447;font-size:9px;margin:0}.top{border-bottom:3px solid #17324D;padding-bottom:10px}.brand{color:#17324D;font-size:10px;font-weight:700;letter-spacing:1px}.top h1{color:#17324D;margin:5px 0;font-size:22px}.muted{color:#667788}table{width:100%;border-collapse:collapse;margin-top:16px}th{background:#17324D;color:#fff;text-align:left;padding:6px;font-size:8px}td{padding:5px;border-bottom:1px solid #D9E0E7;vertical-align:top;overflow-wrap:anywhere}.alt td{background:#F4F7F9}.num{text-align:right}.empty{text-align:center;padding:20px}.actions{position:fixed;right:14px;top:14px}.actions button{background:#17324D;color:#fff;border:0;border-radius:5px;padding:8px 12px;font-weight:700}@media print{.actions{display:none}}</style></head><body><div class="actions"><button onclick="window.print()">Imprimir / Salvar PDF</button></div><div class="top"><div class="brand">ALMOXARIFADO · GESTÃO LOCAL-FIRST</div><h1>Catálogo de equipamentos</h1><div class="muted">${escaparHtmlEquipamentos(projetoId)} · ${linhas.length} registro(s) · Emitido em ${escaparHtmlEquipamentos(new Date().toLocaleString("pt-BR"))}</div></div><table><thead><tr>${["Equipamento", "Categoria", "Controle", "Proprietário", "Equipe proprietária", "Saldo", "Almoxarifado", "Em uso", "Manutenção"].map((item) => `<th>${item}</th>`).join("")}</tr></thead><tbody>${htmlLinhas}</tbody></table><script>window.addEventListener("load",()=>setTimeout(()=>window.print(),350));</script></body></html>`);
+    const totalNumerico = linhas.reduce((acumulado, linha) => ({ saldo: acumulado.saldo + Number(linha[5] ?? 0), almoxarifado: acumulado.almoxarifado + Number(linha[6] ?? 0), emUso: acumulado.emUso + Number(linha[7] ?? 0), manutencao: acumulado.manutencao + Number(linha[8] ?? 0) }), { saldo: 0, almoxarifado: 0, emUso: 0, manutencao: 0 });
+    const htmlLinhas = linhas.map((linha, indice) => `<tr class="${indice % 2 ? "alt" : ""}">${linha.map((valor, coluna) => `<td class="${coluna >= 5 ? "num" : ""}">${escaparHtmlEquipamentos(valor)}</td>`).join("")}</tr>`).join("") || `<tr><td colspan="9" class="empty">Nenhum equipamento encontrado.</td></tr>`;
+    const htmlTotal = linhas.length > 0 ? `<tr class="total"><td colspan="5">TOTAL</td><td class="num">${totalNumerico.saldo}</td><td class="num">${totalNumerico.almoxarifado}</td><td class="num">${totalNumerico.emUso}</td><td class="num">${totalNumerico.manutencao}</td></tr>` : "";
+    janela.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Equipamentos filtrados</title><style>@page{size:A4 landscape;margin:12mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#243447;font-size:9px;margin:0}.top{border-bottom:3px solid #17324D;padding-bottom:10px}.brand{color:#17324D;font-size:10px;font-weight:700;letter-spacing:1px}.top h1{color:#17324D;margin:5px 0;font-size:22px}.muted{color:#667788}table{width:100%;border-collapse:collapse;margin-top:16px}th{background:#17324D;color:#fff;text-align:left;padding:6px;font-size:8px}td{padding:5px;border-bottom:1px solid #D9E0E7;vertical-align:top;overflow-wrap:anywhere}.alt td{background:#F4F7F9}.num{text-align:right}.total td{background:#DCEAF2;color:#17324D;font-weight:800;border-top:2px solid #17324D}.empty{text-align:center;padding:20px}.actions{display:flex;gap:8px;position:fixed;right:14px;top:14px}.actions button{border:0;border-radius:5px;padding:8px 12px;font-weight:700;cursor:pointer}.primary{background:#17324D;color:#fff}.secondary{background:#F4A01C;color:#1B2633}.light{background:#E7EDF1;color:#17324D}.hint{margin-top:10px;color:#667788;font-size:11px}@media print{.actions,.hint{display:none}}</style></head><body><div class="actions"><button class="primary" onclick="imprimirRelatorio()">Imprimir</button><button class="secondary" onclick="salvarPdf()">Salvar como PDF</button><button class="light" onclick="window.close()">Fechar</button></div><div class="top"><div class="brand">ALMOXARIFADO · GESTÃO LOCAL-FIRST</div><h1>Catálogo de equipamentos</h1><div class="muted">${escaparHtmlEquipamentos(projetoId)} · ${linhas.length} registro(s) · Emitido em ${escaparHtmlEquipamentos(new Date().toLocaleString("pt-BR"))}</div></div><div class="hint">Para salvar em PDF, clique em “Salvar como PDF” e selecione essa opção na janela de impressão.</div><table><thead><tr>${["Equipamento", "Categoria", "Controle", "Proprietário", "Equipe proprietária", "Saldo", "Almoxarifado", "Em uso", "Manutenção"].map((item) => `<th>${item}</th>`).join("")}</tr></thead><tbody>${htmlLinhas}${htmlTotal}</tbody></table><script>function imprimirRelatorio(){window.focus();window.print()}function salvarPdf(){window.focus();window.print()}window.addEventListener("load",()=>window.focus());</script></body></html>`);
     janela.document.close();
     janela.focus();
   };
@@ -1763,15 +1770,15 @@ function EquipamentosPage() {
             </div>
           </div>
           <div className="flex flex-wrap gap-2 border-t px-4 py-3">
-            <FiltroMultiplo label="Categoria" opcoes={opcoesFiltroCategorias} selecionados={filtroCategorias} onChange={setFiltroCategorias} />
-            <FiltroMultiplo label="Proprietário" opcoes={opcoesFiltroProprietarios} selecionados={filtroProprietarios} onChange={setFiltroProprietarios} />
-            <FiltroMultiplo label="Equipe" opcoes={opcoesFiltroEquipes} selecionados={filtroEquipes} onChange={setFiltroEquipes} />
-            <FiltroMultiplo label="Controle" opcoes={opcoesFiltroControles} selecionados={filtroControles} onChange={setFiltroControles} />
-            <FiltroMultiplo label="Vínculo" opcoes={opcoesFiltroVinculos} selecionados={filtroVinculos} onChange={setFiltroVinculos} />
-            <FiltroMultiplo label="Situação" opcoes={opcoesFiltroSituacoes} selecionados={filtroSituacoes} onChange={setFiltroSituacoes} />
+            <FiltroMultiplo label="Categoria" opcoes={opcoesFiltroDinamicas.categorias} selecionados={filtroCategorias} onChange={setFiltroCategorias} />
+            <FiltroMultiplo label="Proprietário" opcoes={opcoesFiltroDinamicas.proprietarios} selecionados={filtroProprietarios} onChange={setFiltroProprietarios} />
+            <FiltroMultiplo label="Equipe" opcoes={opcoesFiltroDinamicas.equipes} selecionados={filtroEquipes} onChange={setFiltroEquipes} />
+            <FiltroMultiplo label="Controle" opcoes={opcoesFiltroDinamicas.controles} selecionados={filtroControles} onChange={setFiltroControles} />
+            <FiltroMultiplo label="Vínculo" opcoes={opcoesFiltroDinamicas.vinculos} selecionados={filtroVinculos} onChange={setFiltroVinculos} />
+            <FiltroMultiplo label="Situação" opcoes={opcoesFiltroDinamicas.situacoes} selecionados={filtroSituacoes} onChange={setFiltroSituacoes} />
             <div className="ml-auto flex flex-wrap gap-2">
-              <Button type="button" variant="outline" className="h-10" onClick={exportarCatalogoExcel} disabled={filtrados.length === 0}><FileText className="mr-2 size-4" />Excel</Button>
-              <Button type="button" variant="outline" className="h-10" onClick={imprimirCatalogoPdf} disabled={filtrados.length === 0}><FileText className="mr-2 size-4" />PDF</Button>
+              <Button type="button" variant="outline" className="h-10" onClick={exportarCatalogoExcel} disabled={filtrados.length === 0}><FileSpreadsheet className="mr-2 size-4" />Exportar Excel</Button>
+              <Button type="button" variant="outline" className="h-10" onClick={imprimirCatalogoPdf} disabled={filtrados.length === 0}><Printer className="mr-2 size-4" />Gerar PDF</Button>
             </div>
           </div>
         </CardHeader>
