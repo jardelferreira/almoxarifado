@@ -280,7 +280,7 @@ export function PainelApropriacoesPage() {
       BAIXA: "Registrar baixa definitiva",
     })[valor];
 
-  const exigeConfirmacao = (valor: AcaoPainel) => valor !== "APROPRIAR";
+  const exigeConfirmacao = (valor: AcaoPainel) => valor === "BAIXA";
 
   const executarAcao = async () => {
     if (!projetoId || !funcionarioId || !funcionario || !estoqueId) {
