@@ -41,11 +41,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Combobox } from "@/components/common/Combobox";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useProjetoAtivoId } from "@/hooks/useAppData";
 import { getDB } from "@/db/db";
 import { estoqueEquipamentosRepo } from "@/services/equipamentos/estoque-repo";
@@ -290,26 +286,27 @@ function detalhesRegistroFisico(
   empresaPorId: Map<string, Empresa>,
   equipePorId: Map<string, Equipe>,
 ): string {
-  const vinculo = stock.vinculo === "PROPRIO"
-    ? "Próprio"
-    : stock.vinculo === "ALUGADO"
-      ? "Alugado"
-      : "Empréstimo";
+  const vinculo =
+    stock.vinculo === "PROPRIO"
+      ? "Próprio"
+      : stock.vinculo === "ALUGADO"
+        ? "Alugado"
+        : "Empréstimo";
   const equipe = equipePorId.get(stock.equipe_id ?? "")?.nome ?? "Projeto inteiro";
   const proprietario = empresaPorId.get(stock.empresa_id)?.nome ?? "Não informado";
-  const identificadores = equipamento?.tipo_controle === "INDIVIDUAL"
-    ? [
-        `Patrimônio: ${stock.patrimonio || "—"}`,
-        `Identificação: ${stock.identificacao || "—"}`,
-        `Serial: ${stock.serial || "—"}`,
-      ].join(" · ")
-    : stock.identificacao || stock.patrimonio || stock.serial
-      ? `Identificação: ${stock.identificacao || stock.patrimonio || stock.serial}`
-      : "Sem identificação individual";
+  const identificadores =
+    equipamento?.tipo_controle === "INDIVIDUAL"
+      ? [
+          `Patrimônio: ${stock.patrimonio || "—"}`,
+          `Identificação: ${stock.identificacao || "—"}`,
+          `Serial: ${stock.serial || "—"}`,
+        ].join(" · ")
+      : stock.identificacao || stock.patrimonio || stock.serial
+        ? `Identificação: ${stock.identificacao || stock.patrimonio || stock.serial}`
+        : "Sem identificação individual";
 
   return `Equipe proprietária: ${equipe} · Proprietário: ${proprietario} · Vínculo: ${vinculo} · ${identificadores}`;
 }
-
 
 type FiltroOpcao = {
   value: string;
@@ -329,14 +326,11 @@ function MultiSelectFiltro({
   selected: string[];
   onChange: (values: string[]) => void;
 }) {
-  const todosSelecionados =
-    options.length > 0 && selected.length === options.length;
+  const todosSelecionados = options.length > 0 && selected.length === options.length;
 
   const alternar = (value: string) => {
     onChange(
-      selected.includes(value)
-        ? selected.filter((item) => item !== value)
-        : [...selected, value],
+      selected.includes(value) ? selected.filter((item) => item !== value) : [...selected, value],
     );
   };
 
@@ -350,7 +344,7 @@ function MultiSelectFiltro({
     selected.length === 0
       ? placeholder
       : selected.length === 1
-        ? options.find((option) => option.value === selected[0])?.label ?? "1 selecionado"
+        ? (options.find((option) => option.value === selected[0])?.label ?? "1 selecionado")
         : `${selected.length} selecionados`;
 
   return (
@@ -362,7 +356,9 @@ function MultiSelectFiltro({
           size="sm"
           className="h-9 min-w-[150px] justify-between gap-2"
         >
-          <span className="truncate">{label}: {resumo}</span>
+          <span className="truncate">
+            {label}: {resumo}
+          </span>
           {selected.length > 0 ? (
             <Badge variant="secondary" className="shrink-0 px-1.5">
               {selected.length}
@@ -377,9 +373,7 @@ function MultiSelectFiltro({
         <div className="flex items-center justify-between border-b px-2 pb-2">
           <div>
             <p className="text-sm font-semibold">{label}</p>
-            <p className="text-xs text-muted-foreground">
-              Selecione uma ou mais opções.
-            </p>
+            <p className="text-xs text-muted-foreground">Selecione uma ou mais opções.</p>
           </div>
           <div className="flex gap-1">
             <Button
@@ -456,7 +450,9 @@ function MovimentacoesEquipamentosPage() {
   const [dialogAberto, setDialogAberto] = useState(false);
   const [substituicaoAberta, setSubstituicaoAberta] = useState(false);
   const [detalhe, setDetalhe] = useState<MovimentacaoEquipamento | null>(null);
-  const [detalheSubstituicao, setDetalheSubstituicao] = useState<SubstituicaoEquipamento | null>(null);
+  const [detalheSubstituicao, setDetalheSubstituicao] = useState<SubstituicaoEquipamento | null>(
+    null,
+  );
   const [formulario, setFormulario] = useState<Formulario>(formularioInicial);
   const [salvando, setSalvando] = useState(false);
   const [salvandoSubstituicao, setSalvandoSubstituicao] = useState(false);
@@ -483,15 +479,31 @@ function MovimentacoesEquipamentosPage() {
       substituicoesEquipamentosRepo.listar(projetoId),
       db.equipamentos.where("projeto_id").equals(projetoId).toArray(),
       db.estoque_equipamentos.where("projeto_id").equals(projetoId).toArray(),
-      db.empresas.where("projeto_id").equals(projetoId).and((x) => x.ativo).toArray(),
-      db.equipes.where("projeto_id").equals(projetoId).and((x) => x.ativo).toArray(),
-      db.funcionarios.where("projeto_id").equals(projetoId).and((x) => x.status === "ATIVO").toArray(),
+      db.empresas
+        .where("projeto_id")
+        .equals(projetoId)
+        .and((x) => x.ativo)
+        .toArray(),
+      db.equipes
+        .where("projeto_id")
+        .equals(projetoId)
+        .and((x) => x.ativo)
+        .toArray(),
+      db.funcionarios
+        .where("projeto_id")
+        .equals(projetoId)
+        .and((x) => x.status === "ATIVO")
+        .toArray(),
     ]);
 
-    setMovimentacoes([...movs].sort((a, b) => `${b.criado_em}|${b.id}`.localeCompare(`${a.criado_em}|${a.id}`)));
+    setMovimentacoes(
+      [...movs].sort((a, b) => `${b.criado_em}|${b.id}`.localeCompare(`${a.criado_em}|${a.id}`)),
+    );
     setSubstituicoes(subs);
     setEquipamentos(eqs);
-    setEstoques(stocks.map((stock) => stock.ativo === undefined ? { ...stock, ativo: true } : stock));
+    setEstoques(
+      stocks.map((stock) => (stock.ativo === undefined ? { ...stock, ativo: true } : stock)),
+    );
     setEmpresas(emps);
     setEquipes(teams);
     setFuncionarios(funcs);
@@ -512,18 +524,9 @@ function MovimentacoesEquipamentosPage() {
     () => equipamentos.filter((item) => item.ativo !== false),
     [equipamentos],
   );
-  const estoquePorId = useMemo(
-    () => new Map(estoques.map((item) => [item.id, item])),
-    [estoques],
-  );
-  const empresaPorId = useMemo(
-    () => new Map(empresas.map((item) => [item.id, item])),
-    [empresas],
-  );
-  const equipePorId = useMemo(
-    () => new Map(equipes.map((item) => [item.id, item])),
-    [equipes],
-  );
+  const estoquePorId = useMemo(() => new Map(estoques.map((item) => [item.id, item])), [estoques]);
+  const empresaPorId = useMemo(() => new Map(empresas.map((item) => [item.id, item])), [empresas]);
+  const equipePorId = useMemo(() => new Map(equipes.map((item) => [item.id, item])), [equipes]);
   const funcionarioPorId = useMemo(
     () => new Map(funcionarios.map((item) => [item.id, item])),
     [funcionarios],
@@ -553,8 +556,8 @@ function MovimentacoesEquipamentosPage() {
       });
     }
 
-    const ordenadas = [...movimentacoes].sort(
-      (a, b) => `${a.criado_em}|${a.id}`.localeCompare(`${b.criado_em}|${b.id}`),
+    const ordenadas = [...movimentacoes].sort((a, b) =>
+      `${a.criado_em}|${a.id}`.localeCompare(`${b.criado_em}|${b.id}`),
     );
 
     const pendenciasPorEstoque = new Map<
@@ -570,10 +573,7 @@ function MovimentacoesEquipamentosPage() {
       if (!estado) continue;
 
       const adicionarFuncionario = (id: string, quantidade: number) => {
-        estado.funcionarios.set(
-          id,
-          (estado.funcionarios.get(id) ?? 0) + quantidade,
-        );
+        estado.funcionarios.set(id, (estado.funcionarios.get(id) ?? 0) + quantidade);
       };
 
       const removerFuncionario = (id: string, quantidade: number) => {
@@ -583,8 +583,7 @@ function MovimentacoesEquipamentosPage() {
         else estado.funcionarios.set(id, novo);
       };
 
-      const pendencias =
-        pendenciasPorEstoque.get(mov.estoque_equipamento_id) ?? [];
+      const pendencias = pendenciasPorEstoque.get(mov.estoque_equipamento_id) ?? [];
       pendenciasPorEstoque.set(mov.estoque_equipamento_id, pendencias);
 
       switch (mov.tipo) {
@@ -664,8 +663,10 @@ function MovimentacoesEquipamentosPage() {
           break;
 
         case "BAIXA":
-          if (mov.tipo_origem === "EQUIPE" &&
-              mov.origem_id === equipesOperacionais.manutencao?.id) {
+          if (
+            mov.tipo_origem === "EQUIPE" &&
+            mov.origem_id === equipesOperacionais.manutencao?.id
+          ) {
             estado.manutencao -= mov.quantidade;
           } else {
             estado.almoxarifado -= mov.quantidade;
@@ -727,24 +728,16 @@ function MovimentacoesEquipamentosPage() {
       estado.empresa = Math.max(0, estado.empresa);
       estado.baixado = Math.max(0, estado.baixado);
       estado.devolvido = Math.max(0, estado.devolvido);
-      const estoqueAtual = estoques.find(
-        (item) => item.id === mov.estoque_equipamento_id,
-      );
+      const estoqueAtual = estoques.find((item) => item.id === mov.estoque_equipamento_id);
       if (estoqueAtual) {
-        estado.saldo = Math.max(
-          0,
-          estoqueAtual.quantidade - estado.devolvido - estado.baixado,
-        );
+        estado.saldo = Math.max(0, estoqueAtual.quantidade - estado.devolvido - estado.baixado);
       }
     }
 
     for (const [stockId, estado] of resultado) {
       const stock = estoques.find((item) => item.id === stockId);
       if (!stock) continue;
-      estado.saldo = Math.max(
-        0,
-        stock.quantidade - estado.devolvido - estado.baixado,
-      );
+      estado.saldo = Math.max(0, stock.quantidade - estado.devolvido - estado.baixado);
     }
 
     return resultado;
@@ -758,16 +751,11 @@ function MovimentacoesEquipamentosPage() {
 
     for (const estado of estados.values()) {
       for (const [funcionarioId, quantidade] of estado.funcionarios) {
-        quantidades.set(
-          funcionarioId,
-          (quantidades.get(funcionarioId) ?? 0) + quantidade,
-        );
+        quantidades.set(funcionarioId, (quantidades.get(funcionarioId) ?? 0) + quantidade);
       }
     }
 
-    return funcionarios.filter(
-      (funcionario) => (quantidades.get(funcionario.id) ?? 0) > 0,
-    );
+    return funcionarios.filter((funcionario) => (quantidades.get(funcionario.id) ?? 0) > 0);
   }, [funcionarios, estados]);
 
   // Depois que o funcionário é escolhido, restringimos os registros físicos
@@ -798,8 +786,8 @@ function MovimentacoesEquipamentosPage() {
 
     for (const [estoqueId, lista] of porEstoque) {
       let pendente = 0;
-      const ordenadas = [...lista].sort(
-        (a, b) => `${a.criado_em}|${a.id}`.localeCompare(`${b.criado_em}|${b.id}`),
+      const ordenadas = [...lista].sort((a, b) =>
+        `${a.criado_em}|${a.id}`.localeCompare(`${b.criado_em}|${b.id}`),
       );
 
       for (const mov of ordenadas) {
@@ -821,7 +809,11 @@ function MovimentacoesEquipamentosPage() {
   // A sinalização começa no Almoxarifado. O funcionário só participa depois,
   // quando recebe o equipamento novamente por uma saída regular.
   const estoquesDaOrigemManutencao = useMemo(() => {
-    if (formulario.tipo !== "SINALIZAR_MANUTENCAO" || formulario.origemParte !== "EQUIPE" || !formulario.origemId) {
+    if (
+      formulario.tipo !== "SINALIZAR_MANUTENCAO" ||
+      formulario.origemParte !== "EQUIPE" ||
+      !formulario.origemId
+    ) {
       return [];
     }
 
@@ -837,8 +829,7 @@ function MovimentacoesEquipamentosPage() {
       }
 
       return (
-        formulario.origemId === equipesOperacionais.almoxarifado?.id &&
-        estado.almoxarifado > 0
+        formulario.origemId === equipesOperacionais.almoxarifado?.id && estado.almoxarifado > 0
       );
     });
   }, [
@@ -857,10 +848,19 @@ function MovimentacoesEquipamentosPage() {
     const origens: Array<{ id: string; label: string }> = [];
     const almoxarifadoId = equipesOperacionais.almoxarifado?.id;
     const manutencaoId = equipesOperacionais.manutencao?.id;
-    if (almoxarifadoId && estoques.some((stock) => (estados.get(stock.id)?.almoxarifado ?? 0) > 0)) {
+    if (
+      almoxarifadoId &&
+      estoques.some((stock) => (estados.get(stock.id)?.almoxarifado ?? 0) > 0)
+    ) {
       origens.push({ id: almoxarifadoId, label: "Almoxarifado" });
     }
-    if (manutencaoId && estoques.some((stock) => ((estados.get(stock.id)?.manutencao ?? 0) - (estados.get(stock.id)?.empresa ?? 0)) > 0)) {
+    if (
+      manutencaoId &&
+      estoques.some(
+        (stock) =>
+          (estados.get(stock.id)?.manutencao ?? 0) - (estados.get(stock.id)?.empresa ?? 0) > 0,
+      )
+    ) {
       origens.push({ id: manutencaoId, label: "Manutenção" });
     }
     return origens;
@@ -881,7 +881,8 @@ function MovimentacoesEquipamentosPage() {
       if (!estado) return false;
 
       if (formulario.origemParte !== "EQUIPE") return false;
-      if (formulario.origemId === equipesOperacionais.almoxarifado?.id) return estado.almoxarifado > 0;
+      if (formulario.origemId === equipesOperacionais.almoxarifado?.id)
+        return estado.almoxarifado > 0;
       if (formulario.origemId === equipesOperacionais.manutencao?.id) {
         return estado.manutencao - estado.empresa > 0;
       }
@@ -908,12 +909,7 @@ function MovimentacoesEquipamentosPage() {
       if (!estado) return false;
       return estado.manutencao > 0;
     });
-  }, [
-    formulario.tipo,
-    estoques,
-    estados,
-    equipamentoPorId,
-  ]);
+  }, [formulario.tipo, estoques, estados, equipamentoPorId]);
 
   // Equipamentos de terceiros podem ser devolvidos ao fornecedor
   // diretamente da Manutenção, sem passar novamente pelo Almoxarifado.
@@ -940,22 +936,39 @@ function MovimentacoesEquipamentosPage() {
     const manutencaoId = equipesOperacionais.manutencao?.id;
     const origens: Array<{ id: string; label: string }> = [];
 
-    if (almoxarifadoId && estoques.some((stock) => (estados.get(stock.id)?.almoxarifado ?? 0) > 0)) {
+    if (
+      almoxarifadoId &&
+      estoques.some(
+        (stock) => stock.vinculo === "PROPRIO" && (estados.get(stock.id)?.almoxarifado ?? 0) > 0,
+      )
+    ) {
       origens.push({ id: almoxarifadoId, label: "Almoxarifado" });
     }
 
-    if (manutencaoId && estoques.some((stock) => (estados.get(stock.id)?.manutencao ?? 0) > 0)) {
+    if (
+      manutencaoId &&
+      estoques.some(
+        (stock) => stock.vinculo === "PROPRIO" && (estados.get(stock.id)?.manutencao ?? 0) > 0,
+      )
+    ) {
       origens.push({ id: manutencaoId, label: "Manutenção" });
     }
 
     return origens;
-  }, [formulario.tipo, equipesOperacionais.almoxarifado?.id, equipesOperacionais.manutencao?.id, estoques, estados]);
+  }, [
+    formulario.tipo,
+    equipesOperacionais.almoxarifado?.id,
+    equipesOperacionais.manutencao?.id,
+    estoques,
+    estados,
+  ]);
 
   const estoquesParaBaixa = useMemo(() => {
     if (formulario.tipo !== "BAIXA" || !formulario.origemId) return [];
 
     return estoques.filter((stock) => {
       if (stock.ativo === false) return false;
+      if (stock.vinculo !== "PROPRIO") return false;
       if (equipamentoPorId.get(stock.equipamento_id)?.ativo === false) return false;
       const estado = estados.get(stock.id);
       if (!estado) return false;
@@ -970,10 +983,21 @@ function MovimentacoesEquipamentosPage() {
 
       return false;
     });
-  }, [formulario.tipo, formulario.origemId, estoques, estados, equipamentoPorId, equipesOperacionais.almoxarifado?.id, equipesOperacionais.manutencao?.id]);
+  }, [
+    formulario.tipo,
+    formulario.origemId,
+    estoques,
+    estados,
+    equipamentoPorId,
+    equipesOperacionais.almoxarifado?.id,
+    equipesOperacionais.manutencao?.id,
+  ]);
 
   const pendenciasReentrada = useMemo(() => {
-    const resultado = new Map<string, { tipo: "DEVOLUCAO_FORNECEDOR" | "BAIXA"; restante: number; origemId: string }>();
+    const resultado = new Map<
+      string,
+      { tipo: "DEVOLUCAO_FORNECEDOR" | "BAIXA"; restante: number; origemId: string }
+    >();
     const porEstoque = new Map<string, typeof movimentacoes>();
 
     for (const mov of movimentacoes) {
@@ -983,8 +1007,14 @@ function MovimentacoesEquipamentosPage() {
     }
 
     for (const [estoqueId, lista] of porEstoque) {
-      const pendentes: Array<{ tipo: "DEVOLUCAO_FORNECEDOR" | "BAIXA"; restante: number; origemId: string }> = [];
-      const ordenadas = [...lista].sort((a, b) => `${a.criado_em}|${a.id}`.localeCompare(`${b.criado_em}|${b.id}`));
+      const pendentes: Array<{
+        tipo: "DEVOLUCAO_FORNECEDOR" | "BAIXA";
+        restante: number;
+        origemId: string;
+      }> = [];
+      const ordenadas = [...lista].sort((a, b) =>
+        `${a.criado_em}|${a.id}`.localeCompare(`${b.criado_em}|${b.id}`),
+      );
       for (const mov of ordenadas) {
         if (mov.tipo === "DEVOLUCAO_FORNECEDOR" || mov.tipo === "BAIXA") {
           pendentes.push({ tipo: mov.tipo, restante: mov.quantidade, origemId: mov.destino_id });
@@ -1044,7 +1074,9 @@ function MovimentacoesEquipamentosPage() {
         case "RETORNO_MANUTENCAO":
           return estado.manutencao > 0 || estado.empresa > 0;
         case "BAIXA":
-          return estado.saldo > 0 && estado.almoxarifado === estado.saldo;
+          return (
+            stock.vinculo === "PROPRIO" && estado.saldo > 0 && estado.almoxarifado === estado.saldo
+          );
         case "DEVOLUCAO_FORNECEDOR":
           return estado.almoxarifado > 0 || estado.manutencao > 0;
         case "REENTRADA":
@@ -1062,25 +1094,24 @@ function MovimentacoesEquipamentosPage() {
   useEffect(() => {
     if (formulario.tipo === "ENTRADA" || !formulario.estoqueEquipamentoId) return;
 
-    const listaPermitida = (formulario.tipo === "DEVOLUCAO" || formulario.tipo === "TRANSFERENCIA")
-      ? estoquesDoFuncionario
-      : formulario.tipo === "SINALIZAR_MANUTENCAO"
-        ? estoquesDaOrigemManutencao
-        : formulario.tipo === "ENVIO"
-          ? estoquesDaOrigemEnvio
-          : formulario.tipo === "RETORNO_MANUTENCAO"
-            ? estoquesParaRetornoManutencao
-            : formulario.tipo === "BAIXA"
-              ? estoquesParaBaixa
-              : formulario.tipo === "REENTRADA"
-                ? estoquesParaReentrada
-                : formulario.tipo === "DEVOLUCAO_FORNECEDOR"
-                  ? estoquesParaDevolucaoFornecedor
-                  : estoquesDisponiveis;
+    const listaPermitida =
+      formulario.tipo === "DEVOLUCAO" || formulario.tipo === "TRANSFERENCIA"
+        ? estoquesDoFuncionario
+        : formulario.tipo === "SINALIZAR_MANUTENCAO"
+          ? estoquesDaOrigemManutencao
+          : formulario.tipo === "ENVIO"
+            ? estoquesDaOrigemEnvio
+            : formulario.tipo === "RETORNO_MANUTENCAO"
+              ? estoquesParaRetornoManutencao
+              : formulario.tipo === "BAIXA"
+                ? estoquesParaBaixa
+                : formulario.tipo === "REENTRADA"
+                  ? estoquesParaReentrada
+                  : formulario.tipo === "DEVOLUCAO_FORNECEDOR"
+                    ? estoquesParaDevolucaoFornecedor
+                    : estoquesDisponiveis;
 
-    const permitido = listaPermitida.some(
-      (stock) => stock.id === formulario.estoqueEquipamentoId,
-    );
+    const permitido = listaPermitida.some((stock) => stock.id === formulario.estoqueEquipamentoId);
 
     if (!permitido) {
       setFormulario((atual) => ({
@@ -1088,7 +1119,8 @@ function MovimentacoesEquipamentosPage() {
         estoqueEquipamentoId: "",
         // Na devolução, a seleção do funcionário é o primeiro passo e
         // não deve ser apagada só porque ainda não há equipamento escolhido.
-        origemId: (atual.tipo === "DEVOLUCAO" || atual.tipo === "TRANSFERENCIA") ? atual.origemId : "",
+        origemId:
+          atual.tipo === "DEVOLUCAO" || atual.tipo === "TRANSFERENCIA" ? atual.origemId : "",
         destinoId: "",
         quantidade: "1",
       }));
@@ -1108,11 +1140,12 @@ function MovimentacoesEquipamentosPage() {
   ]);
 
   const estoqueSelecionado = estoquePorId.get(formulario.estoqueEquipamentoId);
-  const equipamentoSelecionado = formulario.tipo === "ENTRADA"
-    ? equipamentoPorId.get(formulario.equipamentoId)
-    : estoqueSelecionado
-      ? equipamentoPorId.get(estoqueSelecionado.equipamento_id)
-      : undefined;
+  const equipamentoSelecionado =
+    formulario.tipo === "ENTRADA"
+      ? equipamentoPorId.get(formulario.equipamentoId)
+      : estoqueSelecionado
+        ? equipamentoPorId.get(estoqueSelecionado.equipamento_id)
+        : undefined;
   const estadoSelecionado = estoqueSelecionado ? estados.get(estoqueSelecionado.id) : undefined;
 
   const estoquePorEquipamento = useMemo(() => {
@@ -1154,16 +1187,44 @@ function MovimentacoesEquipamentosPage() {
     const manut = equipesOperacionais.manutencao;
 
     if (tipo === "ENTRADA") {
-      return { origemParte: "EMPRESA" as const, origemId: formulario.empresaId, destinoParte: "EQUIPE" as const, destinoId: almox?.id ?? "", origemLabel: "Empresa proprietária", destinoLabel: "Almoxarifado" };
+      return {
+        origemParte: "EMPRESA" as const,
+        origemId: formulario.empresaId,
+        destinoParte: "EQUIPE" as const,
+        destinoId: almox?.id ?? "",
+        origemLabel: "Empresa proprietária",
+        destinoLabel: "Almoxarifado",
+      };
     }
     if (tipo === "SAIDA") {
-      return { origemParte: "EQUIPE" as const, origemId: almox?.id ?? "", destinoParte: "FUNCIONARIO" as const, destinoId: formulario.destinoId, origemLabel: "Almoxarifado", destinoLabel: "Funcionário" };
+      return {
+        origemParte: "EQUIPE" as const,
+        origemId: almox?.id ?? "",
+        destinoParte: "FUNCIONARIO" as const,
+        destinoId: formulario.destinoId,
+        origemLabel: "Almoxarifado",
+        destinoLabel: "Funcionário",
+      };
     }
     if (tipo === "DEVOLUCAO") {
-      return { origemParte: "FUNCIONARIO" as const, origemId: formulario.origemId, destinoParte: "EQUIPE" as const, destinoId: almox?.id ?? "", origemLabel: "Funcionário", destinoLabel: "Almoxarifado" };
+      return {
+        origemParte: "FUNCIONARIO" as const,
+        origemId: formulario.origemId,
+        destinoParte: "EQUIPE" as const,
+        destinoId: almox?.id ?? "",
+        origemLabel: "Funcionário",
+        destinoLabel: "Almoxarifado",
+      };
     }
     if (tipo === "TRANSFERENCIA") {
-      return { origemParte: "FUNCIONARIO" as const, origemId: formulario.origemId, destinoParte: "FUNCIONARIO" as const, destinoId: formulario.destinoId, origemLabel: "Funcionário", destinoLabel: "Funcionário" };
+      return {
+        origemParte: "FUNCIONARIO" as const,
+        origemId: formulario.origemId,
+        destinoParte: "FUNCIONARIO" as const,
+        destinoId: formulario.destinoId,
+        origemLabel: "Funcionário",
+        destinoLabel: "Funcionário",
+      };
     }
     if (tipo === "SINALIZAR_MANUTENCAO") {
       return {
@@ -1181,24 +1242,26 @@ function MovimentacoesEquipamentosPage() {
         origemId: formulario.origemId,
         destinoParte: "EMPRESA" as const,
         destinoId: formulario.destinoId,
-        origemLabel: formulario.origemId === manut?.id
-          ? "Manutenção"
-          : formulario.origemId
-            ? "Almoxarifado"
-            : "Origem",
-        destinoLabel: estoqueSelecionado?.vinculo === "PROPRIO"
-          ? "Empresa de manutenção"
-          : "Empresa do vínculo",
+        origemLabel:
+          formulario.origemId === manut?.id
+            ? "Manutenção"
+            : formulario.origemId
+              ? "Almoxarifado"
+              : "Origem",
+        destinoLabel:
+          estoqueSelecionado?.vinculo === "PROPRIO"
+            ? "Empresa de manutenção"
+            : "Empresa do vínculo",
       };
     }
     if (tipo === "RETORNO_MANUTENCAO") {
       const origemEmpresa = (estadoSelecionado?.empresa ?? 0) > 0;
       const empresaId = estoqueSelecionado
-        ? empresaManutencaoPorEstoque.get(estoqueSelecionado.id) ?? ""
+        ? (empresaManutencaoPorEstoque.get(estoqueSelecionado.id) ?? "")
         : "";
       return {
-        origemParte: origemEmpresa ? "EMPRESA" as const : "EQUIPE" as const,
-        origemId: origemEmpresa ? empresaId : manut?.id ?? "",
+        origemParte: origemEmpresa ? ("EMPRESA" as const) : ("EQUIPE" as const),
+        origemId: origemEmpresa ? empresaId : (manut?.id ?? ""),
         destinoParte: "EQUIPE" as const,
         destinoId: almox?.id ?? "",
         origemLabel: origemEmpresa ? "Empresa de manutenção" : "Manutenção",
@@ -1232,8 +1295,23 @@ function MovimentacoesEquipamentosPage() {
         destinoLabel: "Baixa definitiva",
       };
     }
-    return { origemParte: "EQUIPE" as const, origemId: formulario.origemId, destinoParte: "EMPRESA" as const, destinoId: estoqueSelecionado?.empresa_id ?? "", origemLabel: formulario.origemId === manut?.id ? "Manutenção" : "Almoxarifado", destinoLabel: "Empresa proprietária" };
-  }, [formulario, equipesOperacionais, equipes, estoqueSelecionado, empresaManutencaoPorEstoque, pendenciasReentrada]);
+    return {
+      origemParte: "EQUIPE" as const,
+      origemId: formulario.origemId,
+      destinoParte: "EMPRESA" as const,
+      destinoId: estoqueSelecionado?.empresa_id ?? "",
+      origemLabel: formulario.origemId === manut?.id ? "Manutenção" : "Almoxarifado",
+      destinoLabel: "Empresa proprietária",
+    };
+  }, [
+    formulario,
+    equipesOperacionais,
+    equipes,
+    estoqueSelecionado,
+    estadoSelecionado?.empresa,
+    empresaManutencaoPorEstoque,
+    pendenciasReentrada,
+  ]);
 
   const maxQuantidade = useMemo(() => {
     if (formulario.tipo === "ENTRADA") {
@@ -1274,17 +1352,20 @@ function MovimentacoesEquipamentosPage() {
       default:
         return 0;
     }
-  }, [formulario, equipamentoSelecionado, estadoSelecionado, equipesOperacionais, pendenciasReentrada]);
+  }, [
+    formulario,
+    equipamentoSelecionado,
+    estadoSelecionado,
+    equipesOperacionais,
+    pendenciasReentrada,
+  ]);
 
   const opcoesFiltros = useMemo(() => {
     const tipos = tiposMovimentacaoVisiveis
       .filter((tipo) => movimentacoes.some((mov) => mov.tipo === tipo))
       .map((tipo) => ({ value: tipo, label: tipoLabels[tipo] }));
 
-    const participantes = (
-      tipo: MovimentacaoEquipamentoParte,
-      id: string,
-    ) => `${tipo}:${id}`;
+    const participantes = (tipo: MovimentacaoEquipamentoParte, id: string) => `${tipo}:${id}`;
 
     const origens = new Map<string, string>();
     const destinos = new Map<string, string>();
@@ -1292,44 +1373,22 @@ function MovimentacoesEquipamentosPage() {
     for (const mov of movimentacoes) {
       origens.set(
         participantes(mov.tipo_origem, mov.origem_id),
-        nomeParte(
-          mov.tipo_origem,
-          mov.origem_id,
-          empresaPorId,
-          equipePorId,
-          funcionarioPorId,
-        ),
+        nomeParte(mov.tipo_origem, mov.origem_id, empresaPorId, equipePorId, funcionarioPorId),
       );
       destinos.set(
         participantes(mov.tipo_destino, mov.destino_id),
-        nomeParte(
-          mov.tipo_destino,
-          mov.destino_id,
-          empresaPorId,
-          equipePorId,
-          funcionarioPorId,
-        ),
+        nomeParte(mov.tipo_destino, mov.destino_id, empresaPorId, equipePorId, funcionarioPorId),
       );
     }
 
-    const ordenar = (a: FiltroOpcao, b: FiltroOpcao) =>
-      a.label.localeCompare(b.label, "pt-BR");
+    const ordenar = (a: FiltroOpcao, b: FiltroOpcao) => a.label.localeCompare(b.label, "pt-BR");
 
     return {
       tipos,
-      origens: [...origens.entries()]
-        .map(([value, label]) => ({ value, label }))
-        .sort(ordenar),
-      destinos: [...destinos.entries()]
-        .map(([value, label]) => ({ value, label }))
-        .sort(ordenar),
+      origens: [...origens.entries()].map(([value, label]) => ({ value, label })).sort(ordenar),
+      destinos: [...destinos.entries()].map(([value, label]) => ({ value, label })).sort(ordenar),
     };
-  }, [
-    movimentacoes,
-    empresaPorId,
-    equipePorId,
-    funcionarioPorId,
-  ]);
+  }, [movimentacoes, empresaPorId, equipePorId, funcionarioPorId]);
 
   const movimentacoesFiltradas = useMemo(() => {
     const termo = busca.trim().toLowerCase();
@@ -1352,9 +1411,7 @@ function MovimentacoesEquipamentosPage() {
       if (!termo) return true;
 
       const stock = estoquePorId.get(mov.estoque_equipamento_id);
-      const equipamento = stock
-        ? equipamentoPorId.get(stock.equipamento_id)
-        : undefined;
+      const equipamento = stock ? equipamentoPorId.get(stock.equipamento_id) : undefined;
       const origem = nomeParte(
         mov.tipo_origem,
         mov.origem_id,
@@ -1381,7 +1438,9 @@ function MovimentacoesEquipamentosPage() {
         mov.referencia_documento,
         mov.observacoes,
       ].some((valor) =>
-        String(valor ?? "").toLowerCase().includes(termo),
+        String(valor ?? "")
+          .toLowerCase()
+          .includes(termo),
       );
     });
   }, [
@@ -1397,43 +1456,40 @@ function MovimentacoesEquipamentosPage() {
     funcionarioPorId,
   ]);
 
-  const filtrosAtivos =
-    filtroTipos.length + filtroOrigens.length + filtroDestinos.length;
+  const filtrosAtivos = filtroTipos.length + filtroOrigens.length + filtroDestinos.length;
 
   const linhasExportacao = useMemo(() => {
     return movimentacoesFiltradas.map((mov) => {
       const stock = estoquePorId.get(mov.estoque_equipamento_id);
-      const equipamento = stock
-        ? equipamentoPorId.get(stock.equipamento_id)
-        : undefined;
+      const equipamento = stock ? equipamentoPorId.get(stock.equipamento_id) : undefined;
 
       return {
         "Data / hora": new Intl.DateTimeFormat("pt-BR", {
           dateStyle: "short",
           timeStyle: "short",
         }).format(new Date(mov.criado_em)),
-        "Movimentação": tipoLabels[mov.tipo],
-        "Equipamento": equipamento?.nome ?? "Equipamento removido",
-        "Identificação": stock
+        Movimentação: tipoLabels[mov.tipo],
+        Equipamento: equipamento?.nome ?? "Equipamento removido",
+        Identificação: stock
           ? detalhesRegistroFisico(stock, equipamento, empresaPorId, equipePorId)
           : "—",
-        "Origem": nomeParte(
+        Origem: nomeParte(
           mov.tipo_origem,
           mov.origem_id,
           empresaPorId,
           equipePorId,
           funcionarioPorId,
         ),
-        "Destino": nomeParte(
+        Destino: nomeParte(
           mov.tipo_destino,
           mov.destino_id,
           empresaPorId,
           equipePorId,
           funcionarioPorId,
         ),
-        "Quantidade": mov.quantidade,
-        "Documento": mov.referencia_documento ?? "",
-        "Observações": mov.observacoes ?? "",
+        Quantidade: mov.quantidade,
+        Documento: mov.referencia_documento ?? "",
+        Observações: mov.observacoes ?? "",
       };
     });
   }, [
@@ -1504,7 +1560,9 @@ function MovimentacoesEquipamentosPage() {
 
     const janela = window.open("", "_blank", "width=1200,height=800");
     if (!janela) {
-      toast.error("Não foi possível abrir a janela de impressão. Verifique o bloqueador de pop-ups.");
+      toast.error(
+        "Não foi possível abrir a janela de impressão. Verifique o bloqueador de pop-ups.",
+      );
       return;
     }
 
@@ -1597,14 +1655,17 @@ function MovimentacoesEquipamentosPage() {
     if (!projetoId) return;
     const origem = estoquePorId.get(formularioSubstituicao.estoqueOrigemId);
     const equipamentoOrigem = origem ? equipamentoPorId.get(origem.equipamento_id) : undefined;
-    const equipamentoSubstituto = equipamentoPorId.get(formularioSubstituicao.equipamentoSubstitutoId);
+    const equipamentoSubstituto = equipamentoPorId.get(
+      formularioSubstituicao.equipamentoSubstitutoId,
+    );
     if (!origem || !equipamentoOrigem || !equipamentoSubstituto) {
       toast.error("Selecione o equipamento devolvido e o cadastro do substituto.");
       return;
     }
-    const quantidade = equipamentoOrigem.tipo_controle === "INDIVIDUAL"
-      ? 1
-      : Number(formularioSubstituicao.quantidade);
+    const quantidade =
+      equipamentoOrigem.tipo_controle === "INDIVIDUAL"
+        ? 1
+        : Number(formularioSubstituicao.quantidade);
     if (!Number.isInteger(quantidade) || quantidade <= 0) {
       toast.error("Informe uma quantidade inteira maior que zero.");
       return;
@@ -1633,7 +1694,9 @@ function MovimentacoesEquipamentosPage() {
       setSubstituicaoAberta(false);
       toast.success("Substituição concluída: devolução, entrada e herança de consumo registradas.");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Não foi possível registrar a substituição.");
+      toast.error(
+        error instanceof Error ? error.message : "Não foi possível registrar a substituição.",
+      );
     } finally {
       setSalvandoSubstituicao(false);
     }
@@ -1645,9 +1708,7 @@ function MovimentacoesEquipamentosPage() {
       tipo,
       equipamentoId: "",
       estoqueEquipamentoId: "",
-      origemId: tipo === "SINALIZAR_MANUTENCAO"
-        ? equipesOperacionais.almoxarifado?.id ?? ""
-        : "",
+      origemId: tipo === "SINALIZAR_MANUTENCAO" ? (equipesOperacionais.almoxarifado?.id ?? "") : "",
       destinoId: "",
       origemParte: tipo === "SINALIZAR_MANUTENCAO" ? "EQUIPE" : "",
       quantidade: "1",
@@ -1668,11 +1729,11 @@ function MovimentacoesEquipamentosPage() {
       formulario.tipo === "RETORNO_MANUTENCAO"
         ? (estado?.empresa ?? 0) > 0
           ? "__EMPRESA_MANUTENCAO__"
-          : equipesOperacionais.manutencao?.id ?? ""
+          : (equipesOperacionais.manutencao?.id ?? "")
         : formulario.tipo === "DEVOLUCAO_FORNECEDOR"
           ? (estado?.manutencao ?? 0) > 0
-            ? equipesOperacionais.manutencao?.id ?? ""
-            : equipesOperacionais.almoxarifado?.id ?? ""
+            ? (equipesOperacionais.manutencao?.id ?? "")
+            : (equipesOperacionais.almoxarifado?.id ?? "")
           : undefined;
 
     setFormulario((atual) => ({
@@ -1680,21 +1741,20 @@ function MovimentacoesEquipamentosPage() {
       estoqueEquipamentoId: id,
       // Para retorno da manutenção e devolução ao fornecedor a origem é
       // determinada pelo estado atual do registro físico.
-      origemId: origemAutomatica ?? (
-        atual.tipo === "DEVOLUCAO" ||
+      origemId:
+        origemAutomatica ??
+        (atual.tipo === "DEVOLUCAO" ||
         atual.tipo === "TRANSFERENCIA" ||
         atual.tipo === "SINALIZAR_MANUTENCAO" ||
         atual.tipo === "ENVIO" ||
         atual.tipo === "BAIXA"
           ? atual.origemId
-          : ""
-      ),
-      origemParte: origemAutomatica
-        ? "EQUIPE"
-        : atual.origemParte,
-      destinoId: atual.tipo === "REENTRADA"
-        ? (atual.destinoId || equipesOperacionais.almoxarifado?.id || "")
-        : "",
+          : ""),
+      origemParte: origemAutomatica ? "EQUIPE" : atual.origemParte,
+      destinoId:
+        atual.tipo === "REENTRADA"
+          ? atual.destinoId || equipesOperacionais.almoxarifado?.id || ""
+          : "",
       quantidade: "1",
       empresaId: stock?.empresa_id ?? "",
     }));
@@ -1746,7 +1806,8 @@ function MovimentacoesEquipamentosPage() {
           return;
         }
 
-        const quantidade = equipamento.tipo_controle === "INDIVIDUAL" ? 1 : Number(formulario.quantidade);
+        const quantidade =
+          equipamento.tipo_controle === "INDIVIDUAL" ? 1 : Number(formulario.quantidade);
         if (!Number.isFinite(quantidade) || quantidade <= 0) {
           toast.error("Informe uma quantidade válida.");
           return;
@@ -1827,6 +1888,12 @@ function MovimentacoesEquipamentosPage() {
         toast.error("Equipamentos próprios não podem ser devolvidos ao fornecedor.");
         return;
       }
+      if (tipo === "BAIXA" && stock.vinculo !== "PROPRIO") {
+        toast.error(
+          "Equipamentos alugados ou emprestados devem ser devolvidos ao fornecedor, não baixados.",
+        );
+        return;
+      }
       if (tipo === "REENTRADA" && !pendenciasReentrada.has(stock.id)) {
         toast.error("Este equipamento não possui uma devolução ou baixa pendente para reentrada.");
         return;
@@ -1840,7 +1907,8 @@ function MovimentacoesEquipamentosPage() {
         toast.error("Informe o motivo da baixa.");
         return;
       }
-      const quantidade = equipamento.tipo_controle === "INDIVIDUAL" ? 1 : Number(formulario.quantidade);
+      const quantidade =
+        equipamento.tipo_controle === "INDIVIDUAL" ? 1 : Number(formulario.quantidade);
       if (!Number.isFinite(quantidade) || quantidade <= 0) {
         toast.error("Informe uma quantidade válida.");
         return;
@@ -1852,11 +1920,12 @@ function MovimentacoesEquipamentosPage() {
 
       if (tipo === "BAIXA") {
         const origemIdBaixa = formulario.origemId || equipesOperacionais.almoxarifado?.id || "";
-        const quantidadeNaOrigem = origemIdBaixa === equipesOperacionais.manutencao?.id
-          ? estado.manutencao
-          : origemIdBaixa === equipesOperacionais.almoxarifado?.id
-            ? estado.almoxarifado
-            : 0;
+        const quantidadeNaOrigem =
+          origemIdBaixa === equipesOperacionais.manutencao?.id
+            ? estado.manutencao
+            : origemIdBaixa === equipesOperacionais.almoxarifado?.id
+              ? estado.almoxarifado
+              : 0;
         if (estado.saldo <= 0 || quantidadeNaOrigem <= 0 || quantidade > quantidadeNaOrigem) {
           toast.error("Não há quantidade suficiente na origem selecionada para baixa.");
           return;
@@ -1888,13 +1957,18 @@ function MovimentacoesEquipamentosPage() {
           return;
         }
         if (quantidade > apropriadoAoFuncionario) {
-          toast.error(`O funcionário possui apenas ${apropriadoAoFuncionario} unidade(s) deste equipamento.`);
+          toast.error(
+            `O funcionário possui apenas ${apropriadoAoFuncionario} unidade(s) deste equipamento.`,
+          );
           return;
         }
       }
 
       if (tipo === "SINALIZAR_MANUTENCAO") {
-        if (formulario.origemParte !== "EQUIPE" || formulario.origemId !== equipesOperacionais.almoxarifado?.id) {
+        if (
+          formulario.origemParte !== "EQUIPE" ||
+          formulario.origemId !== equipesOperacionais.almoxarifado?.id
+        ) {
           toast.error("A origem por equipe deve ser o Almoxarifado.");
           return;
         }
@@ -1919,9 +1993,10 @@ function MovimentacoesEquipamentosPage() {
 
       if (tipo === "DEVOLUCAO_FORNECEDOR") {
         origemParte = "EQUIPE";
-        origemId = estado.manutencao > 0
-          ? equipesOperacionais.manutencao?.id ?? ""
-          : equipesOperacionais.almoxarifado.id;
+        origemId =
+          estado.manutencao > 0
+            ? (equipesOperacionais.manutencao?.id ?? "")
+            : equipesOperacionais.almoxarifado.id;
         destinoParte = "EMPRESA";
         destinoId = stock.empresa_id;
       }
@@ -1936,7 +2011,9 @@ function MovimentacoesEquipamentosPage() {
         }
 
         if (stock.vinculo !== "PROPRIO" && destinoId !== stock.empresa_id) {
-          toast.error("Equipamentos alugados ou emprestados devem ser enviados para a empresa do vínculo.");
+          toast.error(
+            "Equipamentos alugados ou emprestados devem ser enviados para a empresa do vínculo.",
+          );
           return;
         }
 
@@ -1953,7 +2030,11 @@ function MovimentacoesEquipamentosPage() {
         }
       }
 
-      if (tipo === "SINALIZAR_MANUTENCAO" && (formulario.origemParte !== "EQUIPE" || formulario.origemId !== equipesOperacionais.almoxarifado?.id)) {
+      if (
+        tipo === "SINALIZAR_MANUTENCAO" &&
+        (formulario.origemParte !== "EQUIPE" ||
+          formulario.origemId !== equipesOperacionais.almoxarifado?.id)
+      ) {
         toast.error("A sinalização deve partir do Almoxarifado.");
         return;
       }
@@ -1961,7 +2042,11 @@ function MovimentacoesEquipamentosPage() {
         toast.error("Selecione o Almoxarifado ou a Manutenção como origem.");
         return;
       }
-      if (tipo === "BAIXA" && formulario.origemId !== equipesOperacionais.almoxarifado?.id && formulario.origemId !== equipesOperacionais.manutencao?.id) {
+      if (
+        tipo === "BAIXA" &&
+        formulario.origemId !== equipesOperacionais.almoxarifado?.id &&
+        formulario.origemId !== equipesOperacionais.manutencao?.id
+      ) {
         toast.error("Selecione o Almoxarifado ou a Manutenção como origem da baixa.");
         return;
       }
@@ -1989,28 +2074,11 @@ function MovimentacoesEquipamentosPage() {
         destino_id: destinoId,
         data: formulario.data,
         referencia_documento: formulario.referenciaDocumento.trim() || null,
-        observacoes: tipo === "BAIXA" ? formulario.motivoBaixa.trim() : observacoesDigitadas().trim() || null,
+        observacoes:
+          tipo === "BAIXA" ? formulario.motivoBaixa.trim() : observacoesDigitadas().trim() || null,
       };
 
-      try {
-        await movimentacoesEquipamentosRepo.salvar(dadosMovimentacao);
-      } catch (error) {
-        // Bancos criados antes da inclusão da baixa podem não possuir a
-        // object store opcional usada pelo repositório para esse tipo. A
-        // baixa é apenas um lançamento de histórico, portanto pode ser
-        // persistida diretamente na store principal sem perder a operação.
-        const mensagem = error instanceof Error ? error.message : String(error);
-        if (tipo !== "BAIXA" || !/object.?store|objectStore/i.test(mensagem)) throw error;
-
-        const db = getDB() as any;
-        const tabela = db.movimentacoes_equipamentos;
-        if (!tabela) throw error;
-        await tabela.add({
-          id: crypto.randomUUID(),
-          criado_em: new Date().toISOString(),
-          ...dadosMovimentacao,
-        });
-      }
+      await movimentacoesEquipamentosRepo.salvar(dadosMovimentacao);
 
       await carregar();
       setDialogAberto(false);
@@ -2019,34 +2087,42 @@ function MovimentacoesEquipamentosPage() {
       toast.success("Movimentação registrada.");
       return;
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Não foi possível registrar a movimentação.");
+      toast.error(
+        error instanceof Error ? error.message : "Não foi possível registrar a movimentação.",
+      );
     } finally {
       setSalvando(false);
     }
   }
 
   if (!projetoId) {
-    return <Card><CardContent className="py-10 text-center text-sm text-muted-foreground">Nenhum projeto ativo selecionado.</CardContent></Card>;
+    return (
+      <Card>
+        <CardContent className="py-10 text-center text-sm text-muted-foreground">
+          Nenhum projeto ativo selecionado.
+        </CardContent>
+      </Card>
+    );
   }
 
   const renderEstoqueSelect = () => {
     const porFuncionario = formulario.tipo === "DEVOLUCAO" || formulario.tipo === "TRANSFERENCIA";
     const listaBase = porFuncionario ? estoquesDoFuncionario : estoquesDisponiveis;
-    const lista = formulario.tipo === "DEVOLUCAO_FORNECEDOR"
-      ? estoquesParaDevolucaoFornecedor
-      : listaBase;
+    const lista =
+      formulario.tipo === "DEVOLUCAO_FORNECEDOR" ? estoquesParaDevolucaoFornecedor : listaBase;
 
     const opcoes = [...lista]
       .map((stock) => {
         const equipamento = equipamentoPorId.get(stock.equipamento_id);
         const estado = estados.get(stock.id);
-        const quantidadeDisponivel = formulario.tipo === "DEVOLUCAO_FORNECEDOR"
-          ? (estado?.manutencao ?? 0) > 0
-            ? estado?.manutencao ?? 0
-            : estado?.almoxarifado ?? 0
-          : porFuncionario
-            ? estado?.funcionarios.get(formulario.origemId) ?? 0
-            : estado?.almoxarifado ?? 0;
+        const quantidadeDisponivel =
+          formulario.tipo === "DEVOLUCAO_FORNECEDOR"
+            ? (estado?.manutencao ?? 0) > 0
+              ? (estado?.manutencao ?? 0)
+              : (estado?.almoxarifado ?? 0)
+            : porFuncionario
+              ? (estado?.funcionarios.get(formulario.origemId) ?? 0)
+              : (estado?.almoxarifado ?? 0);
 
         return {
           value: stock.id,
@@ -2086,10 +2162,14 @@ function MovimentacoesEquipamentosPage() {
     return stock.ativo !== false && (estado?.almoxarifado ?? 0) > 0;
   });
   const equipamentoOrigemSubstituicao = formularioSubstituicao.estoqueOrigemId
-    ? equipamentoPorId.get(estoquePorId.get(formularioSubstituicao.estoqueOrigemId)?.equipamento_id ?? "")
+    ? equipamentoPorId.get(
+        estoquePorId.get(formularioSubstituicao.estoqueOrigemId)?.equipamento_id ?? "",
+      )
     : undefined;
-  const equipamentosSubstitutos = equipamentosAtivos.filter((equipamento) =>
-    !equipamentoOrigemSubstituicao || equipamento.tipo_controle === equipamentoOrigemSubstituicao.tipo_controle,
+  const equipamentosSubstitutos = equipamentosAtivos.filter(
+    (equipamento) =>
+      !equipamentoOrigemSubstituicao ||
+      equipamento.tipo_controle === equipamentoOrigemSubstituicao.tipo_controle,
   );
 
   return (
@@ -2101,16 +2181,35 @@ function MovimentacoesEquipamentosPage() {
               <ArrowRightLeft className="h-5 w-5" />
             </div>
             <div>
-              <h1 className="text-2xl font-semibold tracking-tight">Movimentações de equipamentos</h1>
-              <p className="text-sm text-muted-foreground">Controle a entrada, saída, devolução, transferência e manutenção.</p>
+              <h1 className="text-2xl font-semibold tracking-tight">
+                Movimentações de equipamentos
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                Controle a entrada, saída, devolução, transferência e manutenção.
+              </p>
             </div>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row">
-            <Button onClick={acessarHistoricoSubstituicoes} variant="secondary" className="shadow-sm" title="Ir para o histórico de substituições">
-              <ArrowRightLeft className="mr-2 h-4 w-4" />Histórico de substituições <Badge variant="outline" className="ml-1">{substituicoes.length}</Badge>
+            <Button
+              onClick={acessarHistoricoSubstituicoes}
+              variant="secondary"
+              className="shadow-sm"
+              title="Ir para o histórico de substituições"
+            >
+              <ArrowRightLeft className="mr-2 h-4 w-4" />
+              Histórico de substituições{" "}
+              <Badge variant="outline" className="ml-1">
+                {substituicoes.length}
+              </Badge>
             </Button>
-            <Button onClick={abrirSubstituicao} variant="outline" className="shadow-sm"><ArrowRightLeft className="mr-2 h-4 w-4" />Substituir equipamento</Button>
-            <Button onClick={abrirNovo} className="shadow-sm"><Plus className="mr-2 h-4 w-4" />Nova movimentação</Button>
+            <Button onClick={abrirSubstituicao} variant="outline" className="shadow-sm">
+              <ArrowRightLeft className="mr-2 h-4 w-4" />
+              Substituir equipamento
+            </Button>
+            <Button onClick={abrirNovo} className="shadow-sm">
+              <Plus className="mr-2 h-4 w-4" />
+              Nova movimentação
+            </Button>
           </div>
         </div>
 
@@ -2133,9 +2232,7 @@ function MovimentacoesEquipamentosPage() {
                   placeholder="Todas"
                   options={opcoesFiltros.tipos}
                   selected={filtroTipos}
-                  onChange={(values) =>
-                    setFiltroTipos(values as MovimentacaoEquipamentoTipo[])
-                  }
+                  onChange={(values) => setFiltroTipos(values as MovimentacaoEquipamentoTipo[])}
                 />
                 <MultiSelectFiltro
                   label="Origem"
@@ -2212,72 +2309,139 @@ function MovimentacoesEquipamentosPage() {
                 <tbody>
                   {movimentacoesFiltradas.map((mov) => {
                     const stock = estoquePorId.get(mov.estoque_equipamento_id);
-                    const equipamento = stock ? equipamentoPorId.get(stock.equipamento_id) : undefined;
-                    const origem = nomeParte(mov.tipo_origem, mov.origem_id, empresaPorId, equipePorId, funcionarioPorId);
-                    const destino = nomeParte(mov.tipo_destino, mov.destino_id, empresaPorId, equipePorId, funcionarioPorId);
+                    const equipamento = stock
+                      ? equipamentoPorId.get(stock.equipamento_id)
+                      : undefined;
+                    const origem = nomeParte(
+                      mov.tipo_origem,
+                      mov.origem_id,
+                      empresaPorId,
+                      equipePorId,
+                      funcionarioPorId,
+                    );
+                    const destino = nomeParte(
+                      mov.tipo_destino,
+                      mov.destino_id,
+                      empresaPorId,
+                      equipePorId,
+                      funcionarioPorId,
+                    );
                     const visual = movimentoVisual[mov.tipo];
                     const MovimentoIcon = visual.icon;
                     const OrigemIcon = iconeParte(mov.tipo_origem);
                     const DestinoIcon = iconeParte(mov.tipo_destino);
                     return (
-                      <tr key={mov.id} className={`border-b last:border-0 transition-colors ${visual.rowClass}`}>
+                      <tr
+                        key={mov.id}
+                        className={`border-b last:border-0 transition-colors ${visual.rowClass}`}
+                      >
                         <td className="whitespace-nowrap px-3 py-3 align-middle">
                           <div className="flex items-center gap-2 text-sm">
-                            <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${visual.iconClass}`}>
+                            <span
+                              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${visual.iconClass}`}
+                            >
                               <MovimentoIcon className="h-4 w-4" />
                             </span>
-                            <span>{new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(mov.criado_em))}</span>
+                            <span>
+                              {new Intl.DateTimeFormat("pt-BR", {
+                                dateStyle: "short",
+                                timeStyle: "short",
+                              }).format(new Date(mov.criado_em))}
+                            </span>
                           </div>
                         </td>
                         <td className="px-3 py-3 align-middle">
-                          <Badge variant="outline" className={`gap-1.5 font-medium ${visual.badgeClass}`}>
+                          <Badge
+                            variant="outline"
+                            className={`gap-1.5 font-medium ${visual.badgeClass}`}
+                          >
                             <MovimentoIcon className="h-3.5 w-3.5" />
                             {tipoLabels[mov.tipo]}
                           </Badge>
                         </td>
                         <td className="px-3 py-3 align-middle">
-                          <div className="font-medium">{equipamento?.nome ?? "Equipamento removido"}</div>
-                          {stock && <div className="mt-0.5 max-w-[22rem] break-words text-xs leading-5 text-slate-600 dark:text-slate-300">{detalhesRegistroFisico(stock, equipamento, empresaPorId, equipePorId)}</div>}
+                          <div className="font-medium">
+                            {equipamento?.nome ?? "Equipamento removido"}
+                          </div>
+                          {stock && (
+                            <div className="mt-0.5 max-w-[22rem] break-words text-xs leading-5 text-slate-600 dark:text-slate-300">
+                              {detalhesRegistroFisico(
+                                stock,
+                                equipamento,
+                                empresaPorId,
+                                equipePorId,
+                              )}
+                            </div>
+                          )}
                         </td>
                         <td className="px-3 py-3 align-middle">
                           <div className="flex min-w-[15rem] items-center gap-2">
                             <div className="flex min-w-0 items-center gap-1.5 rounded-md border bg-background px-2 py-1.5">
                               <OrigemIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                              <span className="truncate" title={origem}>{origem}</span>
+                              <span className="truncate" title={origem}>
+                                {origem}
+                              </span>
                             </div>
                             <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />
                             <div className="flex min-w-0 items-center gap-1.5 rounded-md border bg-background px-2 py-1.5">
                               <DestinoIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                              <span className="truncate" title={destino}>{destino}</span>
+                              <span className="truncate" title={destino}>
+                                {destino}
+                              </span>
                             </div>
                           </div>
                         </td>
                         <td className="px-3 py-3 align-middle">
-                          <span className={`inline-flex min-w-10 justify-center rounded-md border px-2 py-1 text-xs font-semibold ${visual.badgeClass}`}>{mov.quantidade}</span>
+                          <span
+                            className={`inline-flex min-w-10 justify-center rounded-md border px-2 py-1 text-xs font-semibold ${visual.badgeClass}`}
+                          >
+                            {mov.quantidade}
+                          </span>
                         </td>
                         <td className="px-3 py-3 text-right align-middle">
-                          <Button variant="ghost" size="icon" className="rounded-lg" onClick={() => setDetalhe(mov)} aria-label="Ver detalhes">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="rounded-lg"
+                            onClick={() => setDetalhe(mov)}
+                            aria-label="Ver detalhes"
+                          >
                             <Eye className="h-4 w-4" />
                           </Button>
                         </td>
                       </tr>
                     );
                   })}
-                  {movimentacoesFiltradas.length === 0 && <tr><td colSpan={6} className="py-10 text-center text-sm text-muted-foreground">Nenhuma movimentação encontrada.</td></tr>}
+                  {movimentacoesFiltradas.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="py-10 text-center text-sm text-muted-foreground">
+                        Nenhuma movimentação encontrada.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
           </CardContent>
         </Card>
 
-        <Card ref={historicoSubstituicoesRef} id="historico-substituicoes" tabIndex={-1} className="scroll-mt-4 overflow-hidden outline-none focus-visible:ring-2 focus-visible:ring-primary">
+        <Card
+          ref={historicoSubstituicoesRef}
+          id="historico-substituicoes"
+          tabIndex={-1}
+          className="scroll-mt-4 overflow-hidden outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
           <CardHeader className="border-b bg-muted/20">
             <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h2 className="font-semibold">Histórico de substituições</h2>
-                <p className="text-sm text-muted-foreground">Relação entre o equipamento devolvido, o substituto e as regras herdadas.</p>
+                <p className="text-sm text-muted-foreground">
+                  Relação entre o equipamento devolvido, o substituto e as regras herdadas.
+                </p>
               </div>
-              <Badge variant="outline" className="w-fit">{substituicoes.length} registro(s)</Badge>
+              <Badge variant="outline" className="w-fit">
+                {substituicoes.length} registro(s)
+              </Badge>
             </div>
           </CardHeader>
           <CardContent>
@@ -2297,26 +2461,82 @@ function MovimentacoesEquipamentosPage() {
                   {substituicoes.map((substituicao) => {
                     const estoqueOrigem = estoquePorId.get(substituicao.estoque_origem_id);
                     const estoqueSubstituto = estoquePorId.get(substituicao.estoque_substituto_id);
-                    const equipamentoOrigem = equipamentoPorId.get(substituicao.equipamento_origem_id);
-                    const equipamentoSubstituto = equipamentoPorId.get(substituicao.equipamento_substituto_id);
+                    const equipamentoOrigem = equipamentoPorId.get(
+                      substituicao.equipamento_origem_id,
+                    );
+                    const equipamentoSubstituto = equipamentoPorId.get(
+                      substituicao.equipamento_substituto_id,
+                    );
                     return (
-                      <tr key={substituicao.id} className="border-b last:border-0 hover:bg-muted/30">
-                        <td className="whitespace-nowrap px-3 py-3">{new Intl.DateTimeFormat("pt-BR", { dateStyle: "short" }).format(new Date(`${substituicao.data}T00:00:00`))}</td>
-                        <td className="px-3 py-3">
-                          <div className="font-medium">{equipamentoOrigem?.nome ?? "Equipamento removido"}</div>
-                          <div className="max-w-[16rem] truncate text-xs text-muted-foreground">{estoqueOrigem ? detalhesRegistroFisico(estoqueOrigem, equipamentoOrigem, empresaPorId, equipePorId) : "Registro físico não encontrado"}</div>
+                      <tr
+                        key={substituicao.id}
+                        className="border-b last:border-0 hover:bg-muted/30"
+                      >
+                        <td className="whitespace-nowrap px-3 py-3">
+                          {new Intl.DateTimeFormat("pt-BR", { dateStyle: "short" }).format(
+                            new Date(`${substituicao.data}T00:00:00`),
+                          )}
                         </td>
                         <td className="px-3 py-3">
-                          <div className="flex items-center gap-2 font-medium"><ArrowRight className="size-3.5 shrink-0 text-muted-foreground" />{equipamentoSubstituto?.nome ?? "Equipamento removido"}</div>
-                          <div className="max-w-[16rem] truncate text-xs text-muted-foreground">{estoqueSubstituto ? detalhesRegistroFisico(estoqueSubstituto, equipamentoSubstituto, empresaPorId, equipePorId) : "Registro físico não encontrado"}</div>
+                          <div className="font-medium">
+                            {equipamentoOrigem?.nome ?? "Equipamento removido"}
+                          </div>
+                          <div className="max-w-[16rem] truncate text-xs text-muted-foreground">
+                            {estoqueOrigem
+                              ? detalhesRegistroFisico(
+                                  estoqueOrigem,
+                                  equipamentoOrigem,
+                                  empresaPorId,
+                                  equipePorId,
+                                )
+                              : "Registro físico não encontrado"}
+                          </div>
                         </td>
-                        <td className="px-3 py-3"><Badge variant="outline">{substituicao.quantidade}</Badge></td>
-                        <td className="px-3 py-3"><Badge variant="secondary">{substituicao.regras_substituto_ids.length}</Badge></td>
-                        <td className="px-3 py-3 text-right"><Button variant="ghost" size="icon" className="rounded-lg" onClick={() => setDetalheSubstituicao(substituicao)} aria-label="Ver detalhes da substituição"><Eye className="size-4" /></Button></td>
+                        <td className="px-3 py-3">
+                          <div className="flex items-center gap-2 font-medium">
+                            <ArrowRight className="size-3.5 shrink-0 text-muted-foreground" />
+                            {equipamentoSubstituto?.nome ?? "Equipamento removido"}
+                          </div>
+                          <div className="max-w-[16rem] truncate text-xs text-muted-foreground">
+                            {estoqueSubstituto
+                              ? detalhesRegistroFisico(
+                                  estoqueSubstituto,
+                                  equipamentoSubstituto,
+                                  empresaPorId,
+                                  equipePorId,
+                                )
+                              : "Registro físico não encontrado"}
+                          </div>
+                        </td>
+                        <td className="px-3 py-3">
+                          <Badge variant="outline">{substituicao.quantidade}</Badge>
+                        </td>
+                        <td className="px-3 py-3">
+                          <Badge variant="secondary">
+                            {substituicao.regras_substituto_ids.length}
+                          </Badge>
+                        </td>
+                        <td className="px-3 py-3 text-right">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="rounded-lg"
+                            onClick={() => setDetalheSubstituicao(substituicao)}
+                            aria-label="Ver detalhes da substituição"
+                          >
+                            <Eye className="size-4" />
+                          </Button>
+                        </td>
                       </tr>
                     );
                   })}
-                  {substituicoes.length === 0 && <tr><td colSpan={6} className="py-10 text-center text-sm text-muted-foreground">Nenhuma substituição registrada.</td></tr>}
+                  {substituicoes.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="py-10 text-center text-sm text-muted-foreground">
+                        Nenhuma substituição registrada.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -2334,7 +2554,10 @@ function MovimentacoesEquipamentosPage() {
             <div className="space-y-2">
               <Label>Tipo de movimentação</Label>
               <Combobox
-                opcoes={tiposMovimentacaoVisiveis.map((value) => ({ value, label: tipoLabels[value] }))}
+                opcoes={tiposMovimentacaoVisiveis.map((value) => ({
+                  value,
+                  label: tipoLabels[value],
+                }))}
                 value={formulario.tipo}
                 onChange={(value) => value && alterarTipo(value as MovimentacaoEquipamentoTipo)}
                 placeholder="Selecione o tipo de movimentação"
@@ -2348,48 +2571,171 @@ function MovimentacoesEquipamentosPage() {
                 <div className="space-y-2">
                   <Label>Equipamento do cadastro</Label>
                   <Combobox
-                    opcoes={equipamentosAtivos.map((equipamento) => {
-                      const registros = estoquePorEquipamento.get(equipamento.id) ?? [];
-                      const total = registros.reduce((soma, item) => soma + item.quantidade, 0);
-                      return {
-                        value: equipamento.id,
-                        label: `${equipamento.nome}${total > 0 ? ` · já no estoque: ${total}` : ""}`,
-                        hint: equipamento.modelo || (equipamento.tipo_controle === "INDIVIDUAL" ? "Individual" : "Quantitativo"),
-                      };
-                    }).sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))}
+                    opcoes={equipamentosAtivos
+                      .map((equipamento) => {
+                        const registros = estoquePorEquipamento.get(equipamento.id) ?? [];
+                        const total = registros.reduce((soma, item) => soma + item.quantidade, 0);
+                        return {
+                          value: equipamento.id,
+                          label: `${equipamento.nome}${total > 0 ? ` · já no estoque: ${total}` : ""}`,
+                          hint:
+                            equipamento.modelo ||
+                            (equipamento.tipo_controle === "INDIVIDUAL"
+                              ? "Individual"
+                              : "Quantitativo"),
+                        };
+                      })
+                      .sort((a, b) =>
+                        a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }),
+                      )}
                     value={formulario.equipamentoId}
                     onChange={(value) => value && selecionarEquipamentoEntrada(value)}
                     placeholder="Selecione o equipamento que será recebido"
                     vazio="Nenhum equipamento ativo cadastrado"
                   />
-                  <p className="text-xs text-muted-foreground">A entrada cria um novo registro físico no estoque. Os registros que já estão no estoque não são reutilizados.</p>
+                  <p className="text-xs text-muted-foreground">
+                    A entrada cria um novo registro físico no estoque. Os registros que já estão no
+                    estoque não são reutilizados.
+                  </p>
                 </div>
 
                 {equipamentoSelecionado && (
                   <div className="grid grid-cols-2 gap-3 rounded-lg border bg-muted/30 p-4 text-sm sm:grid-cols-4">
-                    <div><div className="text-muted-foreground">Controle</div><strong>{equipamentoSelecionado.tipo_controle === "INDIVIDUAL" ? "Individual" : "Quantitativo"}</strong></div>
-                    <div><div className="text-muted-foreground">Em estoque</div><strong>{estoquePorEquipamento.get(equipamentoSelecionado.id)?.reduce((soma, item) => soma + item.quantidade, 0) ?? 0}</strong></div>
-                    <div><div className="text-muted-foreground">Marca</div><strong>{equipamentoSelecionado.marca || "—"}</strong></div>
-                    <div><div className="text-muted-foreground">Modelo</div><strong>{equipamentoSelecionado.modelo || "—"}</strong></div>
+                    <div>
+                      <div className="text-muted-foreground">Controle</div>
+                      <strong>
+                        {equipamentoSelecionado.tipo_controle === "INDIVIDUAL"
+                          ? "Individual"
+                          : "Quantitativo"}
+                      </strong>
+                    </div>
+                    <div>
+                      <div className="text-muted-foreground">Em estoque</div>
+                      <strong>
+                        {estoquePorEquipamento
+                          .get(equipamentoSelecionado.id)
+                          ?.reduce((soma, item) => soma + item.quantidade, 0) ?? 0}
+                      </strong>
+                    </div>
+                    <div>
+                      <div className="text-muted-foreground">Marca</div>
+                      <strong>{equipamentoSelecionado.marca || "—"}</strong>
+                    </div>
+                    <div>
+                      <div className="text-muted-foreground">Modelo</div>
+                      <strong>{equipamentoSelecionado.modelo || "—"}</strong>
+                    </div>
                   </div>
                 )}
 
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2"><Label>Empresa proprietária</Label><Combobox opcoes={empresas.map((empresa) => ({ value: empresa.id, label: empresa.nome, hint: empresa.tipo || undefined })).sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))} value={formulario.empresaId} onChange={(value) => atualizar("empresaId", value ?? "")} placeholder="Selecione a empresa" vazio="Nenhuma empresa disponível" /></div>
-                  <div className="space-y-2"><Label>Vínculo</Label><Combobox opcoes={[{ value: "PROPRIO", label: "Próprio" }, { value: "ALUGADO", label: "Alugado" }, { value: "EMPRESTIMO", label: "Empréstimo" }]} value={formulario.vinculo} onChange={(value) => value && atualizar("vinculo", value as Formulario["vinculo"])} placeholder="Selecione o vínculo" vazio="Nenhum vínculo disponível" allowClear={false} /></div>
+                  <div className="space-y-2">
+                    <Label>Empresa proprietária</Label>
+                    <Combobox
+                      opcoes={empresas
+                        .map((empresa) => ({
+                          value: empresa.id,
+                          label: empresa.nome,
+                          hint: empresa.tipo || undefined,
+                        }))
+                        .sort((a, b) =>
+                          a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }),
+                        )}
+                      value={formulario.empresaId}
+                      onChange={(value) => atualizar("empresaId", value ?? "")}
+                      placeholder="Selecione a empresa"
+                      vazio="Nenhuma empresa disponível"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Vínculo</Label>
+                    <Combobox
+                      opcoes={[
+                        { value: "PROPRIO", label: "Próprio" },
+                        { value: "ALUGADO", label: "Alugado" },
+                        { value: "EMPRESTIMO", label: "Empréstimo" },
+                      ]}
+                      value={formulario.vinculo}
+                      onChange={(value) =>
+                        value && atualizar("vinculo", value as Formulario["vinculo"])
+                      }
+                      placeholder="Selecione o vínculo"
+                      vazio="Nenhum vínculo disponível"
+                      allowClear={false}
+                    />
+                  </div>
                 </div>
 
-                  <div className="space-y-2"><Label>Equipe proprietária (opcional)</Label><Combobox opcoes={[{ value: "__nenhuma__", label: "Todo o projeto", hint: "Sem equipe proprietária específica" }, ...equipes.map((equipe) => ({ value: equipe.id, label: equipe.nome, hint: "Origem proprietária deste lote" }))].sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))} value={formulario.equipeId || "__nenhuma__"} onChange={(value) => atualizar("equipeId", !value || value === "__nenhuma__" ? "" : value)} placeholder="Todo o projeto" vazio="Nenhuma equipe disponível" /></div>
+                <div className="space-y-2">
+                  <Label>Equipe proprietária (opcional)</Label>
+                  <Combobox
+                    opcoes={[
+                      {
+                        value: "__nenhuma__",
+                        label: "Todo o projeto",
+                        hint: "Sem equipe proprietária específica",
+                      },
+                      ...equipes.map((equipe) => ({
+                        value: equipe.id,
+                        label: equipe.nome,
+                        hint: "Origem proprietária deste lote",
+                      })),
+                    ].sort((a, b) =>
+                      a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }),
+                    )}
+                    value={formulario.equipeId || "__nenhuma__"}
+                    onChange={(value) =>
+                      atualizar("equipeId", !value || value === "__nenhuma__" ? "" : value)
+                    }
+                    placeholder="Todo o projeto"
+                    vazio="Nenhuma equipe disponível"
+                  />
+                </div>
 
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2"><Label>Quantidade</Label><Input type="number" min={1} step={equipamentoSelecionado?.tipo_controle === "INDIVIDUAL" ? 1 : 1} disabled={equipamentoSelecionado?.tipo_controle === "INDIVIDUAL"} value={formulario.quantidade} onChange={(event) => atualizar("quantidade", event.target.value)} /></div>
-                  <div className="space-y-2"><Label>Data</Label><Input type="date" value={formulario.data} onChange={(event) => atualizar("data", event.target.value)} /></div>
+                  <div className="space-y-2">
+                    <Label>Quantidade</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      step={equipamentoSelecionado?.tipo_controle === "INDIVIDUAL" ? 1 : 1}
+                      disabled={equipamentoSelecionado?.tipo_controle === "INDIVIDUAL"}
+                      value={formulario.quantidade}
+                      onChange={(event) => atualizar("quantidade", event.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Data</Label>
+                    <Input
+                      type="date"
+                      value={formulario.data}
+                      onChange={(event) => atualizar("data", event.target.value)}
+                    />
+                  </div>
                 </div>
 
                 <div className="grid gap-4 sm:grid-cols-3">
-                  <div className="space-y-2"><Label>Patrimônio</Label><Input value={formulario.patrimonio} onChange={(event) => atualizar("patrimonio", event.target.value)} /></div>
-                  <div className="space-y-2"><Label>Identificação</Label><Input value={formulario.identificacao} onChange={(event) => atualizar("identificacao", event.target.value)} /></div>
-                  <div className="space-y-2"><Label>Serial</Label><Input value={formulario.serial} onChange={(event) => atualizar("serial", event.target.value)} /></div>
+                  <div className="space-y-2">
+                    <Label>Patrimônio</Label>
+                    <Input
+                      value={formulario.patrimonio}
+                      onChange={(event) => atualizar("patrimonio", event.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Identificação</Label>
+                    <Input
+                      value={formulario.identificacao}
+                      onChange={(event) => atualizar("identificacao", event.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Serial</Label>
+                    <Input
+                      value={formulario.serial}
+                      onChange={(event) => atualizar("serial", event.target.value)}
+                    />
+                  </div>
                 </div>
               </>
             ) : (
@@ -2398,7 +2744,11 @@ function MovimentacoesEquipamentosPage() {
                   <div className="space-y-2">
                     <Label>Funcionário origem</Label>
                     <Combobox
-                      opcoes={funcionariosComApropriacoes.map((f) => ({ value: f.id, label: nomePessoa(f) })).sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))}
+                      opcoes={funcionariosComApropriacoes
+                        .map((f) => ({ value: f.id, label: nomePessoa(f) }))
+                        .sort((a, b) =>
+                          a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }),
+                        )}
                       value={formulario.origemId}
                       onChange={(value) => {
                         if (!value) return;
@@ -2417,7 +2767,11 @@ function MovimentacoesEquipamentosPage() {
                   <div className="space-y-2">
                     <Label>Funcionário origem</Label>
                     <Combobox
-                      opcoes={funcionariosComApropriacoes.map((f) => ({ value: f.id, label: nomePessoa(f) })).sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))}
+                      opcoes={funcionariosComApropriacoes
+                        .map((f) => ({ value: f.id, label: nomePessoa(f) }))
+                        .sort((a, b) =>
+                          a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }),
+                        )}
                       value={formulario.origemId}
                       onChange={(value) => {
                         if (!value) return;
@@ -2431,14 +2785,23 @@ function MovimentacoesEquipamentosPage() {
                   </div>
                 )}
 
-                {!['SINALIZAR_MANUTENCAO', 'ENVIO', 'RETORNO_MANUTENCAO', 'BAIXA', 'REENTRADA'].includes(formulario.tipo) && renderEstoqueSelect()}
+                {![
+                  "SINALIZAR_MANUTENCAO",
+                  "ENVIO",
+                  "RETORNO_MANUTENCAO",
+                  "BAIXA",
+                  "REENTRADA",
+                ].includes(formulario.tipo) && renderEstoqueSelect()}
 
                 {formulario.tipo === "ENVIO" && (
                   <>
                     <div className="space-y-2">
                       <Label>Origem do equipamento</Label>
                       <Combobox
-                        opcoes={origensDisponiveisParaEnvio.map((origem) => ({ value: origem.id, label: origem.label }))}
+                        opcoes={origensDisponiveisParaEnvio.map((origem) => ({
+                          value: origem.id,
+                          label: origem.label,
+                        }))}
                         value={formulario.origemId}
                         onChange={(value) => {
                           if (!value) return;
@@ -2458,18 +2821,40 @@ function MovimentacoesEquipamentosPage() {
                     <div className="space-y-2">
                       <Label>Equipamento em estoque</Label>
                       <Combobox
-                        opcoes={estoquesDaOrigemEnvio.map((stock) => {
-                    const equipamento = equipamentoPorId.get(stock.equipamento_id);
-                    const estado = estados.get(stock.id);
-                            const quantidadeDisponivel = formulario.origemId === equipesOperacionais.manutencao?.id
-                              ? Math.max(0, (estado?.manutencao ?? 0) - (estado?.empresa ?? 0))
-                              : estado?.almoxarifado ?? 0;
-                            return { value: stock.id, label: `${equipamento?.nome ?? "Equipamento"} · disponível: ${quantidadeDisponivel}`, hint: detalhesRegistroFisico(stock, equipamento, empresaPorId, equipePorId) };
-                          }).sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))}
+                        opcoes={estoquesDaOrigemEnvio
+                          .map((stock) => {
+                            const equipamento = equipamentoPorId.get(stock.equipamento_id);
+                            const estado = estados.get(stock.id);
+                            const quantidadeDisponivel =
+                              formulario.origemId === equipesOperacionais.manutencao?.id
+                                ? Math.max(0, (estado?.manutencao ?? 0) - (estado?.empresa ?? 0))
+                                : (estado?.almoxarifado ?? 0);
+                            return {
+                              value: stock.id,
+                              label: `${equipamento?.nome ?? "Equipamento"} · disponível: ${quantidadeDisponivel}`,
+                              hint: detalhesRegistroFisico(
+                                stock,
+                                equipamento,
+                                empresaPorId,
+                                equipePorId,
+                              ),
+                            };
+                          })
+                          .sort((a, b) =>
+                            a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }),
+                          )}
                         value={formulario.estoqueEquipamentoId}
                         onChange={(value) => value && selecionarEstoque(value)}
-                        placeholder={!formulario.origemId ? "Selecione primeiro a origem" : "Selecione o equipamento"}
-                        vazio={formulario.origemId ? "Nenhum equipamento disponível nesta origem" : "Selecione primeiro a origem"}
+                        placeholder={
+                          !formulario.origemId
+                            ? "Selecione primeiro a origem"
+                            : "Selecione o equipamento"
+                        }
+                        vazio={
+                          formulario.origemId
+                            ? "Nenhum equipamento disponível nesta origem"
+                            : "Selecione primeiro a origem"
+                        }
                         disabled={!formulario.origemId}
                       />
                     </div>
@@ -2478,7 +2863,15 @@ function MovimentacoesEquipamentosPage() {
                       <div className="space-y-2">
                         <Label>Empresa de manutenção</Label>
                         <Combobox
-                          opcoes={empresas.map((empresa) => ({ value: empresa.id, label: empresa.nome, hint: empresa.tipo || undefined })).sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))}
+                          opcoes={empresas
+                            .map((empresa) => ({
+                              value: empresa.id,
+                              label: empresa.nome,
+                              hint: empresa.tipo || undefined,
+                            }))
+                            .sort((a, b) =>
+                              a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }),
+                            )}
                           value={formulario.destinoId}
                           onChange={(value) => atualizar("destinoId", value ?? "")}
                           placeholder="Selecione a empresa que fará a manutenção"
@@ -2489,9 +2882,11 @@ function MovimentacoesEquipamentosPage() {
                     ) : (
                       <div className="rounded-lg border bg-muted/20 p-3 text-sm">
                         <span className="font-medium">Destino:</span>{" "}
-                        {empresaPorId.get(estoqueSelecionado?.empresa_id ?? "")?.nome ?? "Empresa do vínculo"}
+                        {empresaPorId.get(estoqueSelecionado?.empresa_id ?? "")?.nome ??
+                          "Empresa do vínculo"}
                         <p className="mt-1 text-xs text-muted-foreground">
-                          Equipamentos alugados ou emprestados usam automaticamente a empresa do vínculo.
+                          Equipamentos alugados ou emprestados usam automaticamente a empresa do
+                          vínculo.
                         </p>
                       </div>
                     )}
@@ -2501,25 +2896,43 @@ function MovimentacoesEquipamentosPage() {
                 {formulario.tipo === "RETORNO_MANUTENCAO" && (
                   <div className="space-y-3">
                     <div className="rounded-lg border bg-muted/30 p-4 text-sm">
-                      <strong>{(estadoSelecionado?.empresa ?? 0) > 0 ? "Empresa de manutenção" : "Manutenção"}</strong>
+                      <strong>
+                        {(estadoSelecionado?.empresa ?? 0) > 0
+                          ? "Empresa de manutenção"
+                          : "Manutenção"}
+                      </strong>
                       <ArrowRight className="mx-2 inline h-4 w-4" />
                       <strong>Almoxarifado</strong>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        A origem e o destino são determinados automaticamente pelo histórico do equipamento.
+                        A origem e o destino são determinados automaticamente pelo histórico do
+                        equipamento.
                       </p>
                     </div>
                     <div className="space-y-2">
                       <Label>Equipamento em manutenção</Label>
                       <Combobox
-                        opcoes={estoquesParaRetornoManutencao.map((stock) => {
+                        opcoes={estoquesParaRetornoManutencao
+                          .map((stock) => {
                             const equipamento = equipamentoPorId.get(stock.equipamento_id);
                             const estado = estados.get(stock.id);
                             const externo = (estado?.empresa ?? 0) > 0;
                             const quantidadeDisponivel = externo
-                              ? estado?.empresa ?? 0
-                              : estado?.manutencao ?? 0;
-                            return { value: stock.id, label: `${equipamento?.nome ?? "Equipamento"} · ${externo ? "Empresa de manutenção" : "Manutenção"} · disponível: ${quantidadeDisponivel}`, hint: detalhesRegistroFisico(stock, equipamento, empresaPorId, equipePorId) };
-                          }).sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))}
+                              ? (estado?.empresa ?? 0)
+                              : (estado?.manutencao ?? 0);
+                            return {
+                              value: stock.id,
+                              label: `${equipamento?.nome ?? "Equipamento"} · ${externo ? "Empresa de manutenção" : "Manutenção"} · disponível: ${quantidadeDisponivel}`,
+                              hint: detalhesRegistroFisico(
+                                stock,
+                                equipamento,
+                                empresaPorId,
+                                equipePorId,
+                              ),
+                            };
+                          })
+                          .sort((a, b) =>
+                            a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }),
+                          )}
                         value={formulario.estoqueEquipamentoId}
                         onChange={(value) => value && selecionarEstoque(value)}
                         placeholder="Selecione o equipamento"
@@ -2531,18 +2944,36 @@ function MovimentacoesEquipamentosPage() {
                 {formulario.tipo === "REENTRADA" && (
                   <div className="space-y-3">
                     <div className="rounded-lg border bg-muted/30 p-4 text-sm">
-                      <strong>Empresa</strong> <ArrowRight className="mx-2 inline h-4 w-4" /> <strong>Almoxarifado</strong>
-                      <p className="mt-1 text-xs text-muted-foreground">A empresa de origem e o destino são determinados automaticamente. A reentrada retorna por padrão ao Almoxarifado.</p>
+                      <strong>Empresa</strong> <ArrowRight className="mx-2 inline h-4 w-4" />{" "}
+                      <strong>Almoxarifado</strong>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        A empresa de origem e o destino são determinados automaticamente. A
+                        reentrada retorna por padrão ao Almoxarifado.
+                      </p>
                     </div>
                     <div className="space-y-2">
                       <Label>Equipamento para reentrada</Label>
                       <Combobox
-                        opcoes={estoquesParaReentrada.map((stock) => {
+                        opcoes={estoquesParaReentrada
+                          .map((stock) => {
                             const equipamento = equipamentoPorId.get(stock.equipamento_id);
                             const pendencia = pendenciasReentrada.get(stock.id);
-                            const origem = pendencia?.tipo === "BAIXA" ? "Baixa" : "Devolução ao fornecedor";
-                            return { value: stock.id, label: `${equipamento?.nome ?? "Equipamento"} · ${origem} · disponível: ${pendencia?.restante ?? 0}`, hint: detalhesRegistroFisico(stock, equipamento, empresaPorId, equipePorId) };
-                          }).sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))}
+                            const origem =
+                              pendencia?.tipo === "BAIXA" ? "Baixa" : "Devolução ao fornecedor";
+                            return {
+                              value: stock.id,
+                              label: `${equipamento?.nome ?? "Equipamento"} · ${origem} · disponível: ${pendencia?.restante ?? 0}`,
+                              hint: detalhesRegistroFisico(
+                                stock,
+                                equipamento,
+                                empresaPorId,
+                                equipePorId,
+                              ),
+                            };
+                          })
+                          .sort((a, b) =>
+                            a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }),
+                          )}
                         value={formulario.estoqueEquipamentoId}
                         onChange={(value) => value && selecionarEstoque(value)}
                         placeholder="Selecione o equipamento que retornou ao projeto"
@@ -2551,7 +2982,10 @@ function MovimentacoesEquipamentosPage() {
                     </div>
                     <div className="rounded-lg border bg-background p-3 text-sm">
                       <span className="font-medium">Destino padrão:</span> Almoxarifado
-                      <p className="mt-1 text-xs text-muted-foreground">Não é necessário selecionar uma equipe. O sistema utiliza o Almoxarifado como destino padrão.</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Não é necessário selecionar uma equipe. O sistema utiliza o Almoxarifado
+                        como destino padrão.
+                      </p>
                     </div>
                   </div>
                 )}
@@ -2559,13 +2993,21 @@ function MovimentacoesEquipamentosPage() {
                 {formulario.tipo === "BAIXA" && (
                   <>
                     <div className="rounded-lg border bg-muted/30 p-4 text-sm">
-                      <strong>Almoxarifado / Manutenção</strong> <ArrowRight className="mx-2 inline h-4 w-4" /> <strong>Baixa definitiva</strong>
-                      <p className="mt-1 text-xs text-muted-foreground">A baixa pode ser registrada para equipamentos que estejam no Almoxarifado ou na Manutenção.</p>
+                      <strong>Almoxarifado / Manutenção</strong>{" "}
+                      <ArrowRight className="mx-2 inline h-4 w-4" />{" "}
+                      <strong>Baixa definitiva</strong>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        A baixa pode ser registrada para equipamentos que estejam no Almoxarifado ou
+                        na Manutenção.
+                      </p>
                     </div>
                     <div className="space-y-2">
                       <Label>Origem da baixa</Label>
                       <Combobox
-                        opcoes={origensDisponiveisParaBaixa.map((origem) => ({ value: origem.id, label: origem.label }))}
+                        opcoes={origensDisponiveisParaBaixa.map((origem) => ({
+                          value: origem.id,
+                          label: origem.label,
+                        }))}
                         value={formulario.origemId}
                         onChange={(value) => {
                           if (!value) return;
@@ -2580,16 +3022,29 @@ function MovimentacoesEquipamentosPage() {
                     <div className="space-y-2">
                       <Label>Equipamento em estoque</Label>
                       <Combobox
-                        opcoes={estoquesParaBaixa.map((stock) => {
+                        opcoes={estoquesParaBaixa
+                          .map((stock) => {
                             const equipamento = equipamentoPorId.get(stock.equipamento_id);
                             const estado = estados.get(stock.id);
-                            return { value: stock.id, label: `${equipamento?.nome ?? "Equipamento"} · disponível: ${Math.min(
-                                    formulario.origemId === equipesOperacionais.manutencao?.id
-                                      ? (estado?.manutencao ?? 0)
-                                      : (estado?.almoxarifado ?? 0),
-                                    estado?.saldo ?? 0,
-                                  )}`, hint: detalhesRegistroFisico(stock, equipamento, empresaPorId, equipePorId) };
-                          }).sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))}
+                            return {
+                              value: stock.id,
+                              label: `${equipamento?.nome ?? "Equipamento"} · disponível: ${Math.min(
+                                formulario.origemId === equipesOperacionais.manutencao?.id
+                                  ? (estado?.manutencao ?? 0)
+                                  : (estado?.almoxarifado ?? 0),
+                                estado?.saldo ?? 0,
+                              )}`,
+                              hint: detalhesRegistroFisico(
+                                stock,
+                                equipamento,
+                                empresaPorId,
+                                equipePorId,
+                              ),
+                            };
+                          })
+                          .sort((a, b) =>
+                            a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }),
+                          )}
                         value={formulario.estoqueEquipamentoId}
                         onChange={(value) => value && selecionarEstoque(value)}
                         placeholder="Selecione o equipamento para baixa"
@@ -2598,7 +3053,12 @@ function MovimentacoesEquipamentosPage() {
                     </div>
                     <div className="space-y-2">
                       <Label>Motivo da baixa *</Label>
-                      <textarea className="min-h-24 w-full rounded-md border bg-background px-3 py-2 text-sm" value={formulario.motivoBaixa} onChange={(event) => atualizar("motivoBaixa", event.target.value)} placeholder="Informe o motivo da baixa definitiva..." />
+                      <textarea
+                        className="min-h-24 w-full rounded-md border bg-background px-3 py-2 text-sm"
+                        value={formulario.motivoBaixa}
+                        onChange={(event) => atualizar("motivoBaixa", event.target.value)}
+                        placeholder="Informe o motivo da baixa definitiva..."
+                      />
                     </div>
                   </>
                 )}
@@ -2618,16 +3078,37 @@ function MovimentacoesEquipamentosPage() {
                     <div className="space-y-2">
                       <Label>Equipamento em estoque</Label>
                       <Combobox
-                        opcoes={estoquesDaOrigemManutencao.map((stock) => {
+                        opcoes={estoquesDaOrigemManutencao
+                          .map((stock) => {
                             const equipamento = equipamentoPorId.get(stock.equipamento_id);
                             const estado = estados.get(stock.id);
                             const quantidadeDisponivel = estado?.almoxarifado ?? 0;
-                            return { value: stock.id, label: `${equipamento?.nome ?? "Equipamento"} · disponível: ${quantidadeDisponivel}`, hint: detalhesRegistroFisico(stock, equipamento, empresaPorId, equipePorId) };
-                          }).sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))}
+                            return {
+                              value: stock.id,
+                              label: `${equipamento?.nome ?? "Equipamento"} · disponível: ${quantidadeDisponivel}`,
+                              hint: detalhesRegistroFisico(
+                                stock,
+                                equipamento,
+                                empresaPorId,
+                                equipePorId,
+                              ),
+                            };
+                          })
+                          .sort((a, b) =>
+                            a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }),
+                          )}
                         value={formulario.estoqueEquipamentoId}
                         onChange={(value) => value && selecionarEstoque(value)}
-                        placeholder={!formulario.origemId ? "Selecione primeiro a origem" : "Selecione o equipamento que será sinalizado para manutenção"}
-                        vazio={formulario.origemId ? "Nenhum equipamento disponível nesta origem" : "Selecione primeiro a origem"}
+                        placeholder={
+                          !formulario.origemId
+                            ? "Selecione primeiro a origem"
+                            : "Selecione o equipamento que será sinalizado para manutenção"
+                        }
+                        vazio={
+                          formulario.origemId
+                            ? "Nenhum equipamento disponível nesta origem"
+                            : "Selecione primeiro a origem"
+                        }
                         disabled={!equipesOperacionais.almoxarifado || !formulario.origemId}
                       />
                     </div>
@@ -2636,7 +3117,20 @@ function MovimentacoesEquipamentosPage() {
 
                 {formulario.tipo === "SAIDA" && (
                   <>
-                    <div className="space-y-2"><Label>Funcionário destino</Label><Combobox opcoes={funcionarios.map((f) => ({ value: f.id, label: nomePessoa(f) })).sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))} value={formulario.destinoId} onChange={(value) => atualizar("destinoId", value ?? "")} placeholder="Selecione o funcionário" vazio="Nenhum funcionário disponível" /></div>
+                    <div className="space-y-2">
+                      <Label>Funcionário destino</Label>
+                      <Combobox
+                        opcoes={funcionarios
+                          .map((f) => ({ value: f.id, label: nomePessoa(f) }))
+                          .sort((a, b) =>
+                            a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }),
+                          )}
+                        value={formulario.destinoId}
+                        onChange={(value) => atualizar("destinoId", value ?? "")}
+                        placeholder="Selecione o funcionário"
+                        vazio="Nenhum funcionário disponível"
+                      />
+                    </div>
                   </>
                 )}
 
@@ -2644,10 +3138,19 @@ function MovimentacoesEquipamentosPage() {
                   <div className="space-y-2">
                     <Label>Funcionário destino</Label>
                     <Combobox
-                      opcoes={funcionarios.filter((f) => f.id !== formulario.origemId).map((f) => ({ value: f.id, label: nomePessoa(f) })).sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))}
+                      opcoes={funcionarios
+                        .filter((f) => f.id !== formulario.origemId)
+                        .map((f) => ({ value: f.id, label: nomePessoa(f) }))
+                        .sort((a, b) =>
+                          a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }),
+                        )}
                       value={formulario.destinoId}
                       onChange={(value) => atualizar("destinoId", value ?? "")}
-                      placeholder={formulario.estoqueEquipamentoId ? "Selecione o funcionário destino" : "Selecione primeiro o equipamento"}
+                      placeholder={
+                        formulario.estoqueEquipamentoId
+                          ? "Selecione o funcionário destino"
+                          : "Selecione primeiro o equipamento"
+                      }
                       vazio="Nenhum funcionário disponível"
                       disabled={!formulario.estoqueEquipamentoId}
                     />
@@ -2657,40 +3160,126 @@ function MovimentacoesEquipamentosPage() {
                 {estadoSelecionado && (
                   <div className="space-y-3 rounded-lg border bg-slate-50/70 p-4 text-sm dark:bg-slate-900/20">
                     <div className="grid gap-3 sm:grid-cols-2">
-                      <div><div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Equipe proprietária</div><strong>{equipePorId.get(estoqueSelecionado?.equipe_id ?? "")?.nome ?? "Projeto inteiro"}</strong></div>
-                      <div><div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Proprietário</div><strong>{empresaPorId.get(estoqueSelecionado?.empresa_id ?? "")?.nome ?? "Não informado"}</strong></div>
+                      <div>
+                        <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                          Equipe proprietária
+                        </div>
+                        <strong>
+                          {equipePorId.get(estoqueSelecionado?.equipe_id ?? "")?.nome ??
+                            "Projeto inteiro"}
+                        </strong>
+                      </div>
+                      <div>
+                        <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                          Proprietário
+                        </div>
+                        <strong>
+                          {empresaPorId.get(estoqueSelecionado?.empresa_id ?? "")?.nome ??
+                            "Não informado"}
+                        </strong>
+                      </div>
                     </div>
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                    <div><div className="text-muted-foreground">Almoxarifado</div><strong>{estadoSelecionado.almoxarifado}</strong></div>
-                    <div><div className="text-muted-foreground">Manutenção</div><strong>{estadoSelecionado.manutencao}</strong></div>
-                    <div><div className="text-muted-foreground">Em uso</div><strong>{[...estadoSelecionado.funcionarios.values()].reduce((a, b) => a + b, 0)}</strong></div>
-                    <div><div className="text-muted-foreground">Saldo</div><strong>{estadoSelecionado.saldo}</strong></div>
+                      <div>
+                        <div className="text-muted-foreground">Almoxarifado</div>
+                        <strong>{estadoSelecionado.almoxarifado}</strong>
+                      </div>
+                      <div>
+                        <div className="text-muted-foreground">Manutenção</div>
+                        <strong>{estadoSelecionado.manutencao}</strong>
+                      </div>
+                      <div>
+                        <div className="text-muted-foreground">Em uso</div>
+                        <strong>
+                          {[...estadoSelecionado.funcionarios.values()].reduce((a, b) => a + b, 0)}
+                        </strong>
+                      </div>
+                      <div>
+                        <div className="text-muted-foreground">Saldo</div>
+                        <strong>{estadoSelecionado.saldo}</strong>
+                      </div>
                     </div>
-                    <div className="text-xs text-slate-600 dark:text-slate-300">{detalhesRegistroFisico(estoqueSelecionado!, equipamentoSelecionado, empresaPorId, equipePorId)}</div>
+                    <div className="text-xs text-slate-600 dark:text-slate-300">
+                      {detalhesRegistroFisico(
+                        estoqueSelecionado!,
+                        equipamentoSelecionado,
+                        empresaPorId,
+                        equipePorId,
+                      )}
+                    </div>
                   </div>
                 )}
 
-                <div className="rounded-lg border bg-muted/20 p-3 text-sm"><span className="font-medium">Fluxo:</span> {fluxo.origemLabel} <ArrowRight className="mx-2 inline h-4 w-4" /> {fluxo.destinoLabel}</div>
+                <div className="rounded-lg border bg-muted/20 p-3 text-sm">
+                  <span className="font-medium">Fluxo:</span> {fluxo.origemLabel}{" "}
+                  <ArrowRight className="mx-2 inline h-4 w-4" /> {fluxo.destinoLabel}
+                </div>
 
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2"><Label>Quantidade</Label><Input type="number" min={1} max={Number.isFinite(maxQuantidade) ? maxQuantidade : undefined} step={1} disabled={equipamentoSelecionado?.tipo_controle === "INDIVIDUAL"} value={formulario.quantidade} onChange={(event) => atualizar("quantidade", event.target.value)} /><p className="text-xs text-muted-foreground">Máximo nesta operação: {Number.isFinite(maxQuantidade) ? maxQuantidade : "sem limite"}.</p></div>
-                  <div className="space-y-2"><Label>Data</Label><Input type="date" value={formulario.data} onChange={(event) => atualizar("data", event.target.value)} /></div>
+                  <div className="space-y-2">
+                    <Label>Quantidade</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={Number.isFinite(maxQuantidade) ? maxQuantidade : undefined}
+                      step={1}
+                      disabled={equipamentoSelecionado?.tipo_controle === "INDIVIDUAL"}
+                      value={formulario.quantidade}
+                      onChange={(event) => atualizar("quantidade", event.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Máximo nesta operação:{" "}
+                      {Number.isFinite(maxQuantidade) ? maxQuantidade : "sem limite"}.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Data</Label>
+                    <Input
+                      type="date"
+                      value={formulario.data}
+                      onChange={(event) => atualizar("data", event.target.value)}
+                    />
+                  </div>
                 </div>
               </>
             )}
 
-            <div className="space-y-2"><Label>Documento de referência</Label><Input value={formulario.referenciaDocumento} onChange={(event) => atualizar("referenciaDocumento", event.target.value)} placeholder="NF, OS, termo, romaneio..." /></div>
-            {formulario.tipo !== "BAIXA" && <div className="space-y-2"><Label>Observações</Label><textarea ref={observacoesRef} defaultValue={formulario.observacoes} className="min-h-24 w-full rounded-md border bg-background px-3 py-2 text-sm" placeholder="Defeito, sintoma, serviço, advertências ou outras informações..." /></div>}
+            <div className="space-y-2">
+              <Label>Documento de referência</Label>
+              <Input
+                value={formulario.referenciaDocumento}
+                onChange={(event) => atualizar("referenciaDocumento", event.target.value)}
+                placeholder="NF, OS, termo, romaneio..."
+              />
+            </div>
+            {formulario.tipo !== "BAIXA" && (
+              <div className="space-y-2">
+                <Label>Observações</Label>
+                <textarea
+                  ref={observacoesRef}
+                  defaultValue={formulario.observacoes}
+                  className="min-h-24 w-full rounded-md border bg-background px-3 py-2 text-sm"
+                  placeholder="Defeito, sintoma, serviço, advertências ou outras informações..."
+                />
+              </div>
+            )}
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogAberto(false)} disabled={salvando}>Cancelar</Button>
-            <Button onClick={() => void salvar()} disabled={salvando}>{salvando ? "Registrando..." : "Registrar movimentação"}</Button>
+            <Button variant="outline" onClick={() => setDialogAberto(false)} disabled={salvando}>
+              Cancelar
+            </Button>
+            <Button onClick={() => void salvar()} disabled={salvando}>
+              {salvando ? "Registrando..." : "Registrar movimentação"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={substituicaoAberta} onOpenChange={(open) => !salvandoSubstituicao && setSubstituicaoAberta(open)}>
+      <Dialog
+        open={substituicaoAberta}
+        onOpenChange={(open) => !salvandoSubstituicao && setSubstituicaoAberta(open)}
+      >
         <DialogContent className="w-[calc(100vw-1rem)] max-w-2xl max-h-[calc(100dvh-1rem)] overflow-y-auto overscroll-contain p-4 sm:w-[calc(100vw-2rem)] sm:max-h-[calc(100dvh-2rem)] sm:p-6">
           <DialogHeader>
             <DialogTitle>Substituir equipamento</DialogTitle>
@@ -2698,28 +3287,33 @@ function MovimentacoesEquipamentosPage() {
 
           <div className="space-y-5">
             <div className="rounded-lg border bg-muted/20 p-3 text-sm text-muted-foreground">
-              A operação registra, na mesma transação, a devolução do equipamento antigo ao fornecedor, a entrada do novo registro físico e a herança das regras de consumo.
+              A operação registra, na mesma transação, a devolução do equipamento antigo ao
+              fornecedor, a entrada do novo registro físico e a herança das regras de consumo.
             </div>
 
             <div className="space-y-2">
               <Label>Equipamento devolvido</Label>
               <Combobox
-                opcoes={estoquesParaSubstituicao.map((stock) => {
-                  const equipamento = equipamentoPorId.get(stock.equipamento_id);
-                  const estado = estados.get(stock.id);
-                  return {
-                    value: stock.id,
-                    label: `${equipamento?.nome ?? "Equipamento"} · disponível: ${estado?.almoxarifado ?? 0}`,
-                    hint: detalhesRegistroFisico(stock, equipamento, empresaPorId, equipePorId),
-                  };
-                }).sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))}
+                opcoes={estoquesParaSubstituicao
+                  .map((stock) => {
+                    const equipamento = equipamentoPorId.get(stock.equipamento_id);
+                    const estado = estados.get(stock.id);
+                    return {
+                      value: stock.id,
+                      label: `${equipamento?.nome ?? "Equipamento"} · disponível: ${estado?.almoxarifado ?? 0}`,
+                      hint: detalhesRegistroFisico(stock, equipamento, empresaPorId, equipePorId),
+                    };
+                  })
+                  .sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))}
                 value={formularioSubstituicao.estoqueOrigemId}
-                onChange={(value) => setFormularioSubstituicao((atual) => ({
-                  ...atual,
-                  estoqueOrigemId: value ?? "",
-                  equipamentoSubstitutoId: "",
-                  quantidade: "1",
-                }))}
+                onChange={(value) =>
+                  setFormularioSubstituicao((atual) => ({
+                    ...atual,
+                    estoqueOrigemId: value ?? "",
+                    equipamentoSubstitutoId: "",
+                    quantidade: "1",
+                  }))
+                }
                 placeholder="Selecione o equipamento disponível no Almoxarifado"
                 vazio="Nenhum equipamento disponível no Almoxarifado"
               />
@@ -2727,9 +3321,15 @@ function MovimentacoesEquipamentosPage() {
 
             {equipamentoOrigemSubstituicao && (
               <div className="rounded-lg border bg-muted/30 p-3 text-sm">
-                <div className="font-medium">Equipamento atual: {equipamentoOrigemSubstituicao.nome}</div>
+                <div className="font-medium">
+                  Equipamento atual: {equipamentoOrigemSubstituicao.nome}
+                </div>
                 <div className="mt-1 text-xs text-muted-foreground">
-                  Controle {equipamentoOrigemSubstituicao.tipo_controle === "INDIVIDUAL" ? "individual" : "quantitativo"}. O substituto deve manter o mesmo tipo de controle.
+                  Controle{" "}
+                  {equipamentoOrigemSubstituicao.tipo_controle === "INDIVIDUAL"
+                    ? "individual"
+                    : "quantitativo"}
+                  . O substituto deve manter o mesmo tipo de controle.
                 </div>
               </div>
             )}
@@ -2737,15 +3337,28 @@ function MovimentacoesEquipamentosPage() {
             <div className="space-y-2">
               <Label>Cadastro do equipamento substituto</Label>
               <Combobox
-                opcoes={equipamentosSubstitutos.map((equipamento) => ({
-                  value: equipamento.id,
-                  label: `${equipamento.nome}${equipamento.marca ? ` · ${equipamento.marca}` : ""}`,
-                  hint: equipamento.modelo || (equipamento.tipo_controle === "INDIVIDUAL" ? "Individual" : "Quantitativo"),
-                })).sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))}
+                opcoes={equipamentosSubstitutos
+                  .map((equipamento) => ({
+                    value: equipamento.id,
+                    label: `${equipamento.nome}${equipamento.marca ? ` · ${equipamento.marca}` : ""}`,
+                    hint:
+                      equipamento.modelo ||
+                      (equipamento.tipo_controle === "INDIVIDUAL" ? "Individual" : "Quantitativo"),
+                  }))
+                  .sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))}
                 value={formularioSubstituicao.equipamentoSubstitutoId}
-                onChange={(value) => setFormularioSubstituicao((atual) => ({ ...atual, equipamentoSubstitutoId: value ?? "" }))}
+                onChange={(value) =>
+                  setFormularioSubstituicao((atual) => ({
+                    ...atual,
+                    equipamentoSubstitutoId: value ?? "",
+                  }))
+                }
                 placeholder="Selecione o cadastro que entrará no estoque"
-                vazio={equipamentoOrigemSubstituicao ? "Nenhum cadastro com o mesmo tipo de controle" : "Nenhum equipamento ativo cadastrado"}
+                vazio={
+                  equipamentoOrigemSubstituicao
+                    ? "Nenhum cadastro com o mesmo tipo de controle"
+                    : "Nenhum equipamento ativo cadastrado"
+                }
                 disabled={!equipamentoOrigemSubstituicao}
               />
             </div>
@@ -2759,141 +3372,406 @@ function MovimentacoesEquipamentosPage() {
                   step={1}
                   disabled={equipamentoOrigemSubstituicao?.tipo_controle === "INDIVIDUAL"}
                   value={formularioSubstituicao.quantidade}
-                  onChange={(event) => setFormularioSubstituicao((atual) => ({ ...atual, quantidade: event.target.value }))}
+                  onChange={(event) =>
+                    setFormularioSubstituicao((atual) => ({
+                      ...atual,
+                      quantidade: event.target.value,
+                    }))
+                  }
                 />
-                <p className="text-xs text-muted-foreground">A quantidade não pode ultrapassar o saldo físico no Almoxarifado.</p>
+                <p className="text-xs text-muted-foreground">
+                  A quantidade não pode ultrapassar o saldo físico no Almoxarifado.
+                </p>
               </div>
-              <div className="space-y-2"><Label>Data</Label><Input type="date" value={formularioSubstituicao.data} onChange={(event) => setFormularioSubstituicao((atual) => ({ ...atual, data: event.target.value }))} /></div>
+              <div className="space-y-2">
+                <Label>Data</Label>
+                <Input
+                  type="date"
+                  value={formularioSubstituicao.data}
+                  onChange={(event) =>
+                    setFormularioSubstituicao((atual) => ({ ...atual, data: event.target.value }))
+                  }
+                />
+              </div>
             </div>
 
             {equipamentoOrigemSubstituicao?.tipo_controle === "INDIVIDUAL" && (
               <div className="grid gap-4 sm:grid-cols-3">
-                <div className="space-y-2"><Label>Patrimônio</Label><Input value={formularioSubstituicao.patrimonio} onChange={(event) => setFormularioSubstituicao((atual) => ({ ...atual, patrimonio: event.target.value }))} /></div>
-                <div className="space-y-2"><Label>Identificação</Label><Input value={formularioSubstituicao.identificacao} onChange={(event) => setFormularioSubstituicao((atual) => ({ ...atual, identificacao: event.target.value }))} /></div>
-                <div className="space-y-2"><Label>Serial</Label><Input value={formularioSubstituicao.serial} onChange={(event) => setFormularioSubstituicao((atual) => ({ ...atual, serial: event.target.value }))} /></div>
+                <div className="space-y-2">
+                  <Label>Patrimônio</Label>
+                  <Input
+                    value={formularioSubstituicao.patrimonio}
+                    onChange={(event) =>
+                      setFormularioSubstituicao((atual) => ({
+                        ...atual,
+                        patrimonio: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Identificação</Label>
+                  <Input
+                    value={formularioSubstituicao.identificacao}
+                    onChange={(event) =>
+                      setFormularioSubstituicao((atual) => ({
+                        ...atual,
+                        identificacao: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Serial</Label>
+                  <Input
+                    value={formularioSubstituicao.serial}
+                    onChange={(event) =>
+                      setFormularioSubstituicao((atual) => ({
+                        ...atual,
+                        serial: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
               </div>
             )}
 
-            <div className="space-y-2"><Label>Documento de referência</Label><Input value={formularioSubstituicao.referenciaDocumento} onChange={(event) => setFormularioSubstituicao((atual) => ({ ...atual, referenciaDocumento: event.target.value }))} placeholder="NF, termo de troca, OS..." /></div>
-            <div className="space-y-2"><Label>Motivo da substituição</Label><Input value={formularioSubstituicao.motivo} onChange={(event) => setFormularioSubstituicao((atual) => ({ ...atual, motivo: event.target.value }))} placeholder="Defeito, garantia, troca contratual..." /></div>
-            <div className="space-y-2"><Label>Observações</Label><textarea value={formularioSubstituicao.observacoes} onChange={(event) => setFormularioSubstituicao((atual) => ({ ...atual, observacoes: event.target.value }))} className="min-h-24 w-full rounded-md border bg-background px-3 py-2 text-sm" /></div>
+            <div className="space-y-2">
+              <Label>Documento de referência</Label>
+              <Input
+                value={formularioSubstituicao.referenciaDocumento}
+                onChange={(event) =>
+                  setFormularioSubstituicao((atual) => ({
+                    ...atual,
+                    referenciaDocumento: event.target.value,
+                  }))
+                }
+                placeholder="NF, termo de troca, OS..."
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Motivo da substituição</Label>
+              <Input
+                value={formularioSubstituicao.motivo}
+                onChange={(event) =>
+                  setFormularioSubstituicao((atual) => ({ ...atual, motivo: event.target.value }))
+                }
+                placeholder="Defeito, garantia, troca contratual..."
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Observações</Label>
+              <textarea
+                value={formularioSubstituicao.observacoes}
+                onChange={(event) =>
+                  setFormularioSubstituicao((atual) => ({
+                    ...atual,
+                    observacoes: event.target.value,
+                  }))
+                }
+                className="min-h-24 w-full rounded-md border bg-background px-3 py-2 text-sm"
+              />
+            </div>
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setSubstituicaoAberta(false)} disabled={salvandoSubstituicao}>Cancelar</Button>
-            <Button onClick={() => void salvarSubstituicao()} disabled={salvandoSubstituicao}>{salvandoSubstituicao ? "Concluindo..." : "Concluir substituição"}</Button>
+            <Button
+              variant="outline"
+              onClick={() => setSubstituicaoAberta(false)}
+              disabled={salvandoSubstituicao}
+            >
+              Cancelar
+            </Button>
+            <Button onClick={() => void salvarSubstituicao()} disabled={salvandoSubstituicao}>
+              {salvandoSubstituicao ? "Concluindo..." : "Concluir substituição"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!detalheSubstituicao} onOpenChange={(open) => !open && setDetalheSubstituicao(null)}>
+      <Dialog
+        open={!!detalheSubstituicao}
+        onOpenChange={(open) => !open && setDetalheSubstituicao(null)}
+      >
         <DialogContent className="w-[calc(100vw-1rem)] max-w-xl max-h-[calc(100dvh-1rem)] overflow-y-auto overscroll-contain p-4 sm:w-[calc(100vw-2rem)] sm:max-h-[calc(100dvh-2rem)] sm:p-6">
-          <DialogHeader><DialogTitle>Detalhes da substituição</DialogTitle></DialogHeader>
-          {detalheSubstituicao && (() => {
-            const origem = estoquePorId.get(detalheSubstituicao.estoque_origem_id);
-            const substituto = estoquePorId.get(detalheSubstituicao.estoque_substituto_id);
-            const equipamentoOrigem = equipamentoPorId.get(detalheSubstituicao.equipamento_origem_id);
-            const equipamentoSubstituto = equipamentoPorId.get(detalheSubstituicao.equipamento_substituto_id);
-            const movimentoDevolucao = movimentacoes.find((movimentacao) => movimentacao.id === detalheSubstituicao.movimentacao_devolucao_id);
-            const movimentoEntrada = movimentacoes.find((movimentacao) => movimentacao.id === detalheSubstituicao.movimentacao_entrada_id);
-            return (
-              <div className="space-y-4 text-sm">
-                <div className="rounded-xl border bg-muted/20 p-4">
-                  <div className="flex items-center gap-2 font-semibold"><ArrowRightLeft className="size-4 text-primary" />Substituição concluída</div>
-                  <div className="mt-1 text-muted-foreground">{new Intl.DateTimeFormat("pt-BR", { dateStyle: "full" }).format(new Date(`${detalheSubstituicao.data}T00:00:00`))}</div>
+          <DialogHeader>
+            <DialogTitle>Detalhes da substituição</DialogTitle>
+          </DialogHeader>
+          {detalheSubstituicao &&
+            (() => {
+              const origem = estoquePorId.get(detalheSubstituicao.estoque_origem_id);
+              const substituto = estoquePorId.get(detalheSubstituicao.estoque_substituto_id);
+              const equipamentoOrigem = equipamentoPorId.get(
+                detalheSubstituicao.equipamento_origem_id,
+              );
+              const equipamentoSubstituto = equipamentoPorId.get(
+                detalheSubstituicao.equipamento_substituto_id,
+              );
+              const movimentoDevolucao = movimentacoes.find(
+                (movimentacao) => movimentacao.id === detalheSubstituicao.movimentacao_devolucao_id,
+              );
+              const movimentoEntrada = movimentacoes.find(
+                (movimentacao) => movimentacao.id === detalheSubstituicao.movimentacao_entrada_id,
+              );
+              return (
+                <div className="space-y-4 text-sm">
+                  <div className="rounded-xl border bg-muted/20 p-4">
+                    <div className="flex items-center gap-2 font-semibold">
+                      <ArrowRightLeft className="size-4 text-primary" />
+                      Substituição concluída
+                    </div>
+                    <div className="mt-1 text-muted-foreground">
+                      {new Intl.DateTimeFormat("pt-BR", { dateStyle: "full" }).format(
+                        new Date(`${detalheSubstituicao.data}T00:00:00`),
+                      )}
+                    </div>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-xl border p-3">
+                      <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        Equipamento devolvido
+                      </div>
+                      <div className="mt-1 font-semibold">
+                        {equipamentoOrigem?.nome ?? "Equipamento removido"}
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {origem
+                          ? detalhesRegistroFisico(
+                              origem,
+                              equipamentoOrigem,
+                              empresaPorId,
+                              equipePorId,
+                            )
+                          : "Registro físico não encontrado"}
+                      </div>
+                    </div>
+                    <div className="rounded-xl border p-3">
+                      <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        Equipamento substituto
+                      </div>
+                      <div className="mt-1 font-semibold">
+                        {equipamentoSubstituto?.nome ?? "Equipamento removido"}
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {substituto
+                          ? detalhesRegistroFisico(
+                              substituto,
+                              equipamentoSubstituto,
+                              empresaPorId,
+                              equipePorId,
+                            )
+                          : "Registro físico não encontrado"}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-xl border p-3">
+                      <div className="text-xs text-muted-foreground">Quantidade</div>
+                      <div className="mt-1 text-lg font-bold">{detalheSubstituicao.quantidade}</div>
+                    </div>
+                    <div className="rounded-xl border p-3">
+                      <div className="text-xs text-muted-foreground">Regras herdadas</div>
+                      <div className="mt-1 text-lg font-bold">
+                        {detalheSubstituicao.regras_substituto_ids.length}
+                      </div>
+                    </div>
+                    <div className="rounded-xl border p-3">
+                      <div className="text-xs text-muted-foreground">Relação auditável</div>
+                      <div className="mt-1 font-medium">Registrada</div>
+                    </div>
+                  </div>
+                  {(detalheSubstituicao.motivo ||
+                    detalheSubstituicao.referencia_documento ||
+                    detalheSubstituicao.observacoes) && (
+                    <div className="space-y-2 rounded-xl border bg-muted/20 p-3">
+                      {detalheSubstituicao.motivo && (
+                        <div>
+                          <span className="font-medium">Motivo:</span> {detalheSubstituicao.motivo}
+                        </div>
+                      )}
+                      {detalheSubstituicao.referencia_documento && (
+                        <div>
+                          <span className="font-medium">Documento:</span>{" "}
+                          {detalheSubstituicao.referencia_documento}
+                        </div>
+                      )}
+                      {detalheSubstituicao.observacoes && (
+                        <div>
+                          <span className="font-medium">Observações:</span>{" "}
+                          <span className="whitespace-pre-wrap">
+                            {detalheSubstituicao.observacoes}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setDetalheSubstituicao(null);
+                        if (movimentoDevolucao) setDetalhe(movimentoDevolucao);
+                      }}
+                      disabled={!movimentoDevolucao}
+                    >
+                      Ver devolução ao fornecedor
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setDetalheSubstituicao(null);
+                        if (movimentoEntrada) setDetalhe(movimentoEntrada);
+                      }}
+                      disabled={!movimentoEntrada}
+                    >
+                      Ver entrada do substituto
+                    </Button>
+                  </div>
                 </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-xl border p-3"><div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Equipamento devolvido</div><div className="mt-1 font-semibold">{equipamentoOrigem?.nome ?? "Equipamento removido"}</div><div className="mt-1 text-xs text-muted-foreground">{origem ? detalhesRegistroFisico(origem, equipamentoOrigem, empresaPorId, equipePorId) : "Registro físico não encontrado"}</div></div>
-                  <div className="rounded-xl border p-3"><div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Equipamento substituto</div><div className="mt-1 font-semibold">{equipamentoSubstituto?.nome ?? "Equipamento removido"}</div><div className="mt-1 text-xs text-muted-foreground">{substituto ? detalhesRegistroFisico(substituto, equipamentoSubstituto, empresaPorId, equipePorId) : "Registro físico não encontrado"}</div></div>
-                </div>
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <div className="rounded-xl border p-3"><div className="text-xs text-muted-foreground">Quantidade</div><div className="mt-1 text-lg font-bold">{detalheSubstituicao.quantidade}</div></div>
-                  <div className="rounded-xl border p-3"><div className="text-xs text-muted-foreground">Regras herdadas</div><div className="mt-1 text-lg font-bold">{detalheSubstituicao.regras_substituto_ids.length}</div></div>
-                  <div className="rounded-xl border p-3"><div className="text-xs text-muted-foreground">Relação auditável</div><div className="mt-1 font-medium">Registrada</div></div>
-                </div>
-                {(detalheSubstituicao.motivo || detalheSubstituicao.referencia_documento || detalheSubstituicao.observacoes) && <div className="space-y-2 rounded-xl border bg-muted/20 p-3">
-                  {detalheSubstituicao.motivo && <div><span className="font-medium">Motivo:</span> {detalheSubstituicao.motivo}</div>}
-                  {detalheSubstituicao.referencia_documento && <div><span className="font-medium">Documento:</span> {detalheSubstituicao.referencia_documento}</div>}
-                  {detalheSubstituicao.observacoes && <div><span className="font-medium">Observações:</span> <span className="whitespace-pre-wrap">{detalheSubstituicao.observacoes}</span></div>}
-                </div>}
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <Button variant="outline" onClick={() => { setDetalheSubstituicao(null); if (movimentoDevolucao) setDetalhe(movimentoDevolucao); }} disabled={!movimentoDevolucao}>Ver devolução ao fornecedor</Button>
-                  <Button variant="outline" onClick={() => { setDetalheSubstituicao(null); if (movimentoEntrada) setDetalhe(movimentoEntrada); }} disabled={!movimentoEntrada}>Ver entrada do substituto</Button>
-                </div>
-              </div>
-            );
-          })()}
+              );
+            })()}
         </DialogContent>
       </Dialog>
 
       <Dialog open={!!detalhe} onOpenChange={(open) => !open && setDetalhe(null)}>
         <DialogContent className="sm:max-w-xl">
-          <DialogHeader><DialogTitle>Detalhes da movimentação</DialogTitle></DialogHeader>
-          {detalhe && (() => {
-            const stock = estoquePorId.get(detalhe.estoque_equipamento_id);
-            const equipamento = stock ? equipamentoPorId.get(stock.equipamento_id) : undefined;
-            const visual = movimentoVisual[detalhe.tipo];
-            const MovimentoIcon = visual.icon;
-            const OrigemIcon = iconeParte(detalhe.tipo_origem);
-            const DestinoIcon = iconeParte(detalhe.tipo_destino);
-            const origem = nomeParte(detalhe.tipo_origem, detalhe.origem_id, empresaPorId, equipePorId, funcionarioPorId);
-            const destino = nomeParte(detalhe.tipo_destino, detalhe.destino_id, empresaPorId, equipePorId, funcionarioPorId);
-            return (
-              <div className="space-y-5 text-sm">
-                <div className={`flex items-center gap-3 rounded-xl border p-3 ${visual.badgeClass}`}>
-                  <span className={`flex h-10 w-10 items-center justify-center rounded-xl ${visual.iconClass}`}>
-                    <MovimentoIcon className="h-5 w-5" />
-                  </span>
+          <DialogHeader>
+            <DialogTitle>Detalhes da movimentação</DialogTitle>
+          </DialogHeader>
+          {detalhe &&
+            (() => {
+              const stock = estoquePorId.get(detalhe.estoque_equipamento_id);
+              const equipamento = stock ? equipamentoPorId.get(stock.equipamento_id) : undefined;
+              const visual = movimentoVisual[detalhe.tipo];
+              const MovimentoIcon = visual.icon;
+              const OrigemIcon = iconeParte(detalhe.tipo_origem);
+              const DestinoIcon = iconeParte(detalhe.tipo_destino);
+              const origem = nomeParte(
+                detalhe.tipo_origem,
+                detalhe.origem_id,
+                empresaPorId,
+                equipePorId,
+                funcionarioPorId,
+              );
+              const destino = nomeParte(
+                detalhe.tipo_destino,
+                detalhe.destino_id,
+                empresaPorId,
+                equipePorId,
+                funcionarioPorId,
+              );
+              return (
+                <div className="space-y-5 text-sm">
+                  <div
+                    className={`flex items-center gap-3 rounded-xl border p-3 ${visual.badgeClass}`}
+                  >
+                    <span
+                      className={`flex h-10 w-10 items-center justify-center rounded-xl ${visual.iconClass}`}
+                    >
+                      <MovimentoIcon className="h-5 w-5" />
+                    </span>
+                    <div>
+                      <div className="text-xs font-medium uppercase tracking-wide opacity-70">
+                        Movimentação
+                      </div>
+                      <div className="font-semibold">{tipoLabels[detalhe.tipo]}</div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border bg-muted/20 p-3">
+                    <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Equipamento
+                    </div>
+                    <div className="mt-1 font-semibold">
+                      {equipamento?.nome ?? "Equipamento removido"}
+                    </div>
+                    {stock && (
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {detalhesRegistroFisico(stock, equipamento, empresaPorId, equipePorId)}
+                      </div>
+                    )}
+                  </div>
+
                   <div>
-                    <div className="text-xs font-medium uppercase tracking-wide opacity-70">Movimentação</div>
-                    <div className="font-semibold">{tipoLabels[detalhe.tipo]}</div>
-                  </div>
-                </div>
-
-                <div className="rounded-xl border bg-muted/20 p-3">
-                  <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Equipamento</div>
-                  <div className="mt-1 font-semibold">{equipamento?.nome ?? "Equipamento removido"}</div>
-                  {stock && <div className="mt-1 text-xs text-muted-foreground">{detalhesRegistroFisico(stock, equipamento, empresaPorId, equipePorId)}</div>}
-                </div>
-
-                <div>
-                  <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Fluxo</div>
-                  <div className="flex items-center gap-2 rounded-xl border p-3">
-                    <div className="flex min-w-0 flex-1 items-center gap-2">
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
-                        <OrigemIcon className="h-4 w-4" />
-                      </span>
-                      <span className="truncate font-medium" title={origem}>{origem}</span>
+                    <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Fluxo
                     </div>
-                    <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-                    <div className="flex min-w-0 flex-1 items-center gap-2">
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
-                        <DestinoIcon className="h-4 w-4" />
-                      </span>
-                      <span className="truncate font-medium" title={destino}>{destino}</span>
+                    <div className="flex items-center gap-2 rounded-xl border p-3">
+                      <div className="flex min-w-0 flex-1 items-center gap-2">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
+                          <OrigemIcon className="h-4 w-4" />
+                        </span>
+                        <span className="truncate font-medium" title={origem}>
+                          {origem}
+                        </span>
+                      </div>
+                      <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      <div className="flex min-w-0 flex-1 items-center gap-2">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
+                          <DestinoIcon className="h-4 w-4" />
+                        </span>
+                        <span className="truncate font-medium" title={destino}>
+                          {destino}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-xl border p-3">
-                    <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Quantidade</div>
-                    <div className={`mt-1 inline-flex rounded-md border px-2.5 py-1 text-lg font-bold ${visual.badgeClass}`}>{detalhe.quantidade}</div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-xl border p-3">
+                      <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        Quantidade
+                      </div>
+                      <div
+                        className={`mt-1 inline-flex rounded-md border px-2.5 py-1 text-lg font-bold ${visual.badgeClass}`}
+                      >
+                        {detalhe.quantidade}
+                      </div>
+                    </div>
+                    <div className="rounded-xl border p-3">
+                      <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        Data da movimentação
+                      </div>
+                      <div className="mt-1 font-medium">
+                        {new Intl.DateTimeFormat("pt-BR", { dateStyle: "short" }).format(
+                          new Date(`${detalhe.data}T00:00:00`),
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  <div className="rounded-xl border p-3">
-                    <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Data da movimentação</div>
-                    <div className="mt-1 font-medium">{new Intl.DateTimeFormat("pt-BR", { dateStyle: "short" }).format(new Date(`${detalhe.data}T00:00:00`))}</div>
-                  </div>
-                </div>
 
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div><span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Registrada em</span><div className="mt-1">{new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "medium" }).format(new Date(detalhe.criado_em))}</div></div>
-                  {detalhe.referencia_documento && <div><span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Documento</span><div className="mt-1">{detalhe.referencia_documento}</div></div>}
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        Registrada em
+                      </span>
+                      <div className="mt-1">
+                        {new Intl.DateTimeFormat("pt-BR", {
+                          dateStyle: "short",
+                          timeStyle: "medium",
+                        }).format(new Date(detalhe.criado_em))}
+                      </div>
+                    </div>
+                    {detalhe.referencia_documento && (
+                      <div>
+                        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                          Documento
+                        </span>
+                        <div className="mt-1">{detalhe.referencia_documento}</div>
+                      </div>
+                    )}
+                  </div>
+                  {detalhe.observacoes && (
+                    <div className="rounded-xl border bg-muted/20 p-3">
+                      <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        Observações
+                      </div>
+                      <div className="mt-1 whitespace-pre-wrap">{detalhe.observacoes}</div>
+                    </div>
+                  )}
                 </div>
-                {detalhe.observacoes && <div className="rounded-xl border bg-muted/20 p-3"><div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Observações</div><div className="mt-1 whitespace-pre-wrap">{detalhe.observacoes}</div></div>}
-              </div>
-            );
-          })()}
+              );
+            })()}
         </DialogContent>
       </Dialog>
     </>
