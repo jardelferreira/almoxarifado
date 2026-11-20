@@ -238,17 +238,24 @@ export const substituicoesEquipamentosRepo = {
         const origemAtual = await db.estoque_equipamentos.get(origem.id);
         if (!origemAtual) throw new Error("O registro físico de origem não foi encontrado.");
 
-        const devolvido = origemAtual.devolvido + dados.quantidade;
-        if (devolvido > origemAtual.quantidade) {
-          throw new Error("A quantidade devolvida ultrapassa o saldo físico do equipamento.");
+        const devolvido =
+          origem.vinculo === "PROPRIO"
+            ? origemAtual.devolvido
+            : origemAtual.devolvido + dados.quantidade;
+        const baixado =
+          origem.vinculo === "PROPRIO"
+            ? (origemAtual.baixado ?? 0) + dados.quantidade
+            : (origemAtual.baixado ?? 0);
+        if (devolvido + baixado > origemAtual.quantidade) {
+          throw new Error("A quantidade encerrada ultrapassa o saldo físico do equipamento.");
         }
 
         await db.estoque_equipamentos.put({
           ...origemAtual,
           devolvido,
-          status:
-            devolvido + (origemAtual.baixado ?? 0) < origemAtual.quantidade ? "ATIVO" : "ENCERRADO",
-          ativo: devolvido + (origemAtual.baixado ?? 0) < origemAtual.quantidade,
+          baixado,
+          status: devolvido + baixado < origemAtual.quantidade ? "ATIVO" : "ENCERRADO",
+          ativo: devolvido + baixado < origemAtual.quantidade,
           atualizado_em: agora,
         });
         await db.estoque_equipamentos.add(novoEstoque);
