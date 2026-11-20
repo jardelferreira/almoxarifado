@@ -3,12 +3,16 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { useMemo, useState, type ReactNode } from "react";
 import {
   ClipboardSignature,
+  ArrowRightLeft,
+  Ban,
+  ChevronDown,
   FileDown,
   PackageCheck,
   Search,
   UserRound,
   UserRoundMinus,
   UserRoundPlus,
+  Wrench,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -25,7 +29,15 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import { getDB } from "@/db/db";
 import { useProjetoAtivoId } from "@/hooks/useAppData";
 import { estadoEquipamentosRepo } from "@/services/equipamentos/estado-repo";
@@ -47,7 +59,7 @@ type ItemPainel = {
   identificacao: string;
 };
 
-type AcaoPainel = "APROPRIAR" | "DEVOLVER";
+type AcaoPainel = "APROPRIAR" | "DEVOLVER" | "TRANSFERIR" | "SINALIZAR_MANUTENCAO" | "BAIXA";
 type ModoPainel = "ATENDIMENTO" | "CONSULTA";
 
 type ProprietarioConsulta = {
@@ -74,6 +86,10 @@ export function PainelApropriacoesPage() {
   const [acao, setAcao] = useState<AcaoPainel>("APROPRIAR");
   const [estoqueId, setEstoqueId] = useState<string | null>(null);
   const [quantidade, setQuantidade] = useState("1");
+  const [observacoes, setObservacoes] = useState("");
+  const [destinoFuncionarioId, setDestinoFuncionarioId] = useState<string | null>(null);
+  const [menuOpcoesAberto, setMenuOpcoesAberto] = useState<string | null>(null);
+  const [dialogConfirmacao, setDialogConfirmacao] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [buscaEquipamento, setBuscaEquipamento] = useState("");
   const [modo, setModo] = useState<ModoPainel>("ATENDIMENTO");
@@ -200,13 +216,30 @@ export function PainelApropriacoesPage() {
     setAcao("APROPRIAR");
     setEstoqueId(null);
     setQuantidade("1");
+    setObservacoes("");
+    setDestinoFuncionarioId(null);
     setDialogAcao(true);
   };
 
   const abrirDevolucao = (item: ItemPainel) => {
     setAcao("DEVOLVER");
     setEstoqueId(item.estoque.id);
-    setQuantidade(item.equipamento.tipo_controle === "INDIVIDUAL" ? "1" : "1");
+    setQuantidade("1");
+    setObservacoes("");
+    setDestinoFuncionarioId(null);
+    setDialogAcao(true);
+  };
+
+  const abrirAcaoAdicional = (
+    item: ItemPainel,
+    proximaAcao: Exclude<AcaoPainel, "APROPRIAR" | "DEVOLVER">,
+  ) => {
+    setMenuOpcoesAberto(null);
+    setAcao(proximaAcao);
+    setEstoqueId(item.estoque.id);
+    setQuantidade("1");
+    setObservacoes("");
+    setDestinoFuncionarioId(null);
     setDialogAcao(true);
   };
 
@@ -219,6 +252,197 @@ export function PainelApropriacoesPage() {
           .trim()
           .toLowerCase() === "almoxarifado",
     )?.id;
+
+  const manutencaoId = () =>
+    dados?.equipes.find(
+      (item) =>
+        item.nome
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .trim()
+          .toLowerCase() === "manutencao",
+    )?.id;
+
+  const descricaoAcao = (valor: AcaoPainel) =>
+    ({
+      APROPRIAR: "Apropriar equipamento",
+      DEVOLVER: "Desapropriar equipamento",
+      TRANSFERIR: "Transferir equipamento",
+      SINALIZAR_MANUTENCAO: "Sinalizar para manutenção",
+      BAIXA: "Registrar baixa definitiva",
+    })[valor];
+
+  const exigeConfirmacao = (valor: AcaoPainel) => valor !== "APROPRIAR";
+
+  const executarAcao = async () => {
+    if (!projetoId || !funcionarioId || !funcionario || !estoqueId) {
+      toast.error("Selecione o funcionário e o equipamento.");
+      return;
+    }
+
+    const item = acao === "APROPRIAR" ? estoqueSelecionado : itemDevolucao;
+    if (!item) return;
+    const quantidadeNumero =
+      item.equipamento.tipo_controle === "INDIVIDUAL" ? 1 : Number(quantidade);
+    if (!Number.isInteger(quantidadeNumero) || quantidadeNumero <= 0) {
+      toast.error("Informe uma quantidade inteira maior que zero.");
+      return;
+    }
+    const equipeAlmoxarifado = almoxarifadoId();
+    if (!equipeAlmoxarifado) {
+      toast.error("A equipe Almoxarifado não foi encontrada neste projeto.");
+      return;
+    }
+    if (acao === "SINALIZAR_MANUTENCAO" && !manutencaoId()) {
+      toast.error("A equipe Manutenção não foi encontrada neste projeto.");
+      return;
+    }
+    if (
+      acao === "TRANSFERIR" &&
+      (!destinoFuncionarioId || destinoFuncionarioId === funcionarioId)
+    ) {
+      toast.error("Selecione um funcionário de destino diferente do atual.");
+      return;
+    }
+
+    setSalvando(true);
+    try {
+      const estado = await estadoEquipamentosRepo.calcular(projetoId, estoqueId);
+      const observacaoInformada = observacoes.trim();
+      const data = new Date().toISOString().slice(0, 10);
+      const salvarMovimentacao = (
+        dadosMovimentacao: Parameters<typeof movimentacoesEquipamentosRepo.salvar>[0],
+      ) => movimentacoesEquipamentosRepo.salvar(dadosMovimentacao);
+
+      if (acao === "APROPRIAR") {
+        if (estado.disponivel < quantidadeNumero)
+          throw new Error(`Quantidade disponível: ${estado.disponivel}.`);
+        await salvarMovimentacao({
+          projeto_id: projetoId,
+          estoque_equipamento_id: estoqueId,
+          tipo: "SAIDA",
+          quantidade: quantidadeNumero,
+          tipo_origem: "EQUIPE",
+          origem_id: equipeAlmoxarifado,
+          tipo_destino: "FUNCIONARIO",
+          destino_id: funcionarioId,
+          data,
+          referencia_documento: null,
+          observacoes: observacaoInformada || "Apropriação realizada pelo Painel de Atendimento.",
+        });
+        toast.success(`Equipamento apropriado para ${funcionario.nome}.`);
+      } else {
+        const atual = estado.funcionarios.get(funcionarioId) ?? 0;
+        if (atual < quantidadeNumero)
+          throw new Error(`Quantidade apropriada atualmente: ${atual}.`);
+        if (acao === "SINALIZAR_MANUTENCAO" && estado.manutencao > 0) {
+          throw new Error(
+            "Este registro já possui quantidade sinalizada para manutenção. Conclua o fluxo de manutenção antes de sinalizar novamente.",
+          );
+        }
+
+        if (acao === "DEVOLVER") {
+          await salvarMovimentacao({
+            projeto_id: projetoId,
+            estoque_equipamento_id: estoqueId,
+            tipo: "DEVOLUCAO",
+            quantidade: quantidadeNumero,
+            tipo_origem: "FUNCIONARIO",
+            origem_id: funcionarioId,
+            tipo_destino: "EQUIPE",
+            destino_id: equipeAlmoxarifado,
+            data,
+            referencia_documento: null,
+            observacoes:
+              observacaoInformada || "Desapropriação realizada pelo Painel de Atendimento.",
+          });
+          toast.success("Equipamento devolvido ao Almoxarifado.");
+        } else if (acao === "TRANSFERIR") {
+          await salvarMovimentacao({
+            projeto_id: projetoId,
+            estoque_equipamento_id: estoqueId,
+            tipo: "TRANSFERENCIA",
+            quantidade: quantidadeNumero,
+            tipo_origem: "FUNCIONARIO",
+            origem_id: funcionarioId,
+            tipo_destino: "FUNCIONARIO",
+            destino_id: destinoFuncionarioId!,
+            data,
+            referencia_documento: null,
+            observacoes:
+              observacaoInformada || "Transferência realizada pelo Painel de Atendimento.",
+          });
+          toast.success("Equipamento transferido com sucesso.");
+        } else if (acao === "SINALIZAR_MANUTENCAO") {
+          await salvarMovimentacao({
+            projeto_id: projetoId,
+            estoque_equipamento_id: estoqueId,
+            tipo: "DEVOLUCAO",
+            quantidade: quantidadeNumero,
+            tipo_origem: "FUNCIONARIO",
+            origem_id: funcionarioId,
+            tipo_destino: "EQUIPE",
+            destino_id: equipeAlmoxarifado,
+            data,
+            referencia_documento: null,
+            observacoes: observacaoInformada || "Devolução para sinalização de manutenção.",
+          });
+          await salvarMovimentacao({
+            projeto_id: projetoId,
+            estoque_equipamento_id: estoqueId,
+            tipo: "SINALIZAR_MANUTENCAO",
+            quantidade: quantidadeNumero,
+            tipo_origem: "EQUIPE",
+            origem_id: equipeAlmoxarifado,
+            tipo_destino: "EQUIPE",
+            destino_id: manutencaoId()!,
+            data,
+            referencia_documento: null,
+            observacoes:
+              observacaoInformada || "Sinalização para manutenção pelo Painel de Atendimento.",
+          });
+          toast.success("Equipamento devolvido e sinalizado para manutenção.");
+        } else {
+          await salvarMovimentacao({
+            projeto_id: projetoId,
+            estoque_equipamento_id: estoqueId,
+            tipo: "DEVOLUCAO",
+            quantidade: quantidadeNumero,
+            tipo_origem: "FUNCIONARIO",
+            origem_id: funcionarioId,
+            tipo_destino: "EQUIPE",
+            destino_id: equipeAlmoxarifado,
+            data,
+            referencia_documento: null,
+            observacoes: observacaoInformada || "Devolução para baixa definitiva.",
+          });
+          await salvarMovimentacao({
+            projeto_id: projetoId,
+            estoque_equipamento_id: estoqueId,
+            tipo: "BAIXA",
+            quantidade: quantidadeNumero,
+            tipo_origem: "EQUIPE",
+            origem_id: equipeAlmoxarifado,
+            tipo_destino: "EMPRESA",
+            destino_id: item.estoque.empresa_id,
+            data,
+            referencia_documento: null,
+            observacoes:
+              observacaoInformada || "Baixa definitiva realizada pelo Painel de Atendimento.",
+          });
+          toast.success("Equipamento devolvido e baixado definitivamente.");
+        }
+      }
+      setDialogAcao(false);
+      setDialogConfirmacao(false);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Não foi possível concluir o atendimento.",
+      );
+    } finally {
+      setSalvando(false);
+    }
+  };
 
   const salvarAcao = async () => {
     if (!projetoId || !funcionarioId || !funcionario || !estoqueId) {
@@ -238,54 +462,11 @@ export function PainelApropriacoesPage() {
       toast.error("A equipe Almoxarifado não foi encontrada neste projeto.");
       return;
     }
-
-    setSalvando(true);
-    try {
-      const estado = await estadoEquipamentosRepo.calcular(projetoId, estoqueId);
-      if (acao === "APROPRIAR") {
-        if (estado.disponivel < quantidadeNumero)
-          throw new Error(`Quantidade disponível: ${estado.disponivel}.`);
-        await movimentacoesEquipamentosRepo.salvar({
-          projeto_id: projetoId,
-          estoque_equipamento_id: estoqueId,
-          tipo: "SAIDA",
-          quantidade: quantidadeNumero,
-          tipo_origem: "EQUIPE",
-          origem_id: equipeAlmoxarifado,
-          tipo_destino: "FUNCIONARIO",
-          destino_id: funcionarioId,
-          data: new Date().toISOString().slice(0, 10),
-          referencia_documento: null,
-          observacoes: "Apropriação realizada pelo Painel de Atendimento.",
-        });
-        toast.success(`Equipamento apropriado para ${funcionario.nome}.`);
-      } else {
-        const atual = estado.funcionarios.get(funcionarioId) ?? 0;
-        if (atual < quantidadeNumero)
-          throw new Error(`Quantidade apropriada atualmente: ${atual}.`);
-        await movimentacoesEquipamentosRepo.salvar({
-          projeto_id: projetoId,
-          estoque_equipamento_id: estoqueId,
-          tipo: "DEVOLUCAO",
-          quantidade: quantidadeNumero,
-          tipo_origem: "FUNCIONARIO",
-          origem_id: funcionarioId,
-          tipo_destino: "EQUIPE",
-          destino_id: equipeAlmoxarifado,
-          data: new Date().toISOString().slice(0, 10),
-          referencia_documento: null,
-          observacoes: "Desapropriação realizada pelo Painel de Atendimento.",
-        });
-        toast.success("Equipamento devolvido ao Almoxarifado.");
-      }
-      setDialogAcao(false);
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Não foi possível concluir o atendimento.",
-      );
-    } finally {
-      setSalvando(false);
+    if (exigeConfirmacao(acao)) {
+      setDialogConfirmacao(true);
+      return;
     }
+    await executarAcao();
   };
 
   if (!projetoId)
@@ -465,10 +646,12 @@ export function PainelApropriacoesPage() {
                         </p>
                         <div className="mt-2 flex flex-wrap gap-2 text-xs">
                           <Badge variant="outline">
-                            Equipe proprietária: {origemEquipamento(item.estoque, dados.equipes, dados.empresas).equipe}
+                            Equipe proprietária:{" "}
+                            {origemEquipamento(item.estoque, dados.equipes, dados.empresas).equipe}
                           </Badge>
                           <Badge variant="outline">
-                            Proprietário: {origemEquipamento(item.estoque, dados.equipes, dados.empresas).empresa}
+                            Proprietário:{" "}
+                            {origemEquipamento(item.estoque, dados.equipes, dados.empresas).empresa}
                           </Badge>
                         </div>
                       </div>
@@ -565,7 +748,13 @@ export function PainelApropriacoesPage() {
                     variant="outline"
                     size="sm"
                     onClick={() =>
-                        imprimirAtendimento(funcionario, equipe?.nome ?? "Sem equipe", dados.itens, dados.equipes, dados.empresas)
+                      imprimirAtendimento(
+                        funcionario,
+                        equipe?.nome ?? "Sem equipe",
+                        dados.itens,
+                        dados.equipes,
+                        dados.empresas,
+                      )
                     }
                   >
                     <FileDown className="mr-2 size-4" />
@@ -615,23 +804,77 @@ export function PainelApropriacoesPage() {
                               </div>
                             </td>
                             <td className="px-4 py-3">
-                              <p className="font-medium">{origemEquipamento(item.estoque, dados.equipes, dados.empresas).equipe}</p>
-                              <p className="text-xs text-muted-foreground">{origemEquipamento(item.estoque, dados.equipes, dados.empresas).empresa}</p>
+                              <p className="font-medium">
+                                {
+                                  origemEquipamento(item.estoque, dados.equipes, dados.empresas)
+                                    .equipe
+                                }
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {
+                                  origemEquipamento(item.estoque, dados.equipes, dados.empresas)
+                                    .empresa
+                                }
+                              </p>
                             </td>
                             <td className="px-4 py-3 text-right font-semibold">
                               {num(item.quantidade)}
                             </td>
                             <td className="px-4 py-3 text-right">
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                onClick={() => abrirDevolucao(item)}
-                              >
-                                <UserRoundMinus className="mr-1.5 size-4" />
-                                Desapropriar
-                              </Button>
+                              <div className="flex flex-wrap justify-end gap-2">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                  onClick={() => abrirDevolucao(item)}
+                                >
+                                  <UserRoundMinus className="mr-1.5 size-4" />
+                                  Desapropriar
+                                </Button>
+                                <DropdownMenu
+                                  open={menuOpcoesAberto === item.estoque.id}
+                                  onOpenChange={(open) =>
+                                    setMenuOpcoesAberto(open ? item.estoque.id : null)
+                                  }
+                                >
+                                  <DropdownMenuTrigger asChild>
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="outline"
+                                      className="gap-1"
+                                    >
+                                      Opções
+                                      <ChevronDown className="size-4" aria-hidden="true" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end" className="w-64">
+                                    <DropdownMenuItem
+                                      onSelect={() => abrirAcaoAdicional(item, "TRANSFERIR")}
+                                    >
+                                      <ArrowRightLeft className="size-4" />
+                                      Transferir para funcionário
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onSelect={() =>
+                                        abrirAcaoAdicional(item, "SINALIZAR_MANUTENCAO")
+                                      }
+                                    >
+                                      <Wrench className="size-4" />
+                                      Sinalizar para manutenção
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                      className="text-destructive focus:text-destructive"
+                                      onSelect={() => abrirAcaoAdicional(item, "BAIXA")}
+                                    >
+                                      <Ban className="size-4" />
+                                      Baixa definitiva
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -659,9 +902,7 @@ export function PainelApropriacoesPage() {
       <Dialog open={dialogAcao} onOpenChange={(open) => !salvando && setDialogAcao(open)}>
         <DialogContent className="w-[calc(100vw-1rem)] max-w-3xl sm:max-w-4xl lg:max-w-5xl xl:max-w-6xl">
           <DialogHeader>
-            <DialogTitle>
-              {acao === "APROPRIAR" ? "Apropriar equipamento" : "Desapropriar equipamento"}
-            </DialogTitle>
+            <DialogTitle>{descricaoAcao(acao)}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="rounded-lg border bg-muted/20 p-3 text-sm">
@@ -712,7 +953,13 @@ export function PainelApropriacoesPage() {
                         {referenciasEquipamento(estoqueSelecionado)}
                       </p>
                       <p className="mt-1 text-sm font-medium text-foreground">
-                        {origemEquipamento(estoqueSelecionado.estoque, dados.equipes, dados.empresas).texto}
+                        {
+                          origemEquipamento(
+                            estoqueSelecionado.estoque,
+                            dados.equipes,
+                            dados.empresas,
+                          ).texto
+                        }
                       </p>
                       <p className="mt-1 text-xs text-muted-foreground">
                         {referenciasFisicas(
@@ -733,6 +980,41 @@ export function PainelApropriacoesPage() {
                     {origemEquipamento(itemDevolucao.estoque, dados.equipes, dados.empresas).texto}
                   </p>
                 )}
+              </div>
+            )}
+            {acao === "TRANSFERIR" && (
+              <div className="space-y-2">
+                <Label>Funcionário de destino</Label>
+                <Combobox
+                  opcoes={dados.funcionarios
+                    .filter((item) => item.id !== funcionarioId)
+                    .map((item) => ({
+                      value: item.id,
+                      label: item.nome,
+                      hint: [
+                        item.matricula && `Matrícula: ${item.matricula}`,
+                        item.cpf && `CPF: ${formatarCpf(item.cpf)}`,
+                      ]
+                        .filter(Boolean)
+                        .join(" · "),
+                    }))}
+                  value={destinoFuncionarioId}
+                  onChange={setDestinoFuncionarioId}
+                  placeholder="Pesquisar funcionário de destino…"
+                  vazio="Nenhum outro funcionário ativo encontrado."
+                />
+              </div>
+            )}
+            {acao === "SINALIZAR_MANUTENCAO" && (
+              <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+                O sistema registrará a devolução ao Almoxarifado e, em seguida, a sinalização para a
+                equipe Manutenção.
+              </div>
+            )}
+            {acao === "BAIXA" && (
+              <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+                A baixa é definitiva: a quantidade será retirada do saldo físico após a devolução ao
+                Almoxarifado e não poderá ser recuperada por uma simples desapropriação.
               </div>
             )}
             {estoqueSelecionado?.equipamento.tipo_controle === "QUANTITATIVO" ||
@@ -756,6 +1038,18 @@ export function PainelApropriacoesPage() {
                 </p>
               </div>
             ) : null}
+            {acao !== "APROPRIAR" && (
+              <div className="space-y-2">
+                <Label htmlFor="observacoes-painel">Observações</Label>
+                <Textarea
+                  id="observacoes-painel"
+                  value={observacoes}
+                  onChange={(event) => setObservacoes(event.target.value)}
+                  placeholder="Informe motivo, condição do equipamento ou outras observações…"
+                  className="min-h-24 text-base"
+                />
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button
@@ -769,13 +1063,63 @@ export function PainelApropriacoesPage() {
             <Button
               type="button"
               onClick={() => void salvarAcao()}
-              disabled={salvando || !estoqueId}
+              disabled={salvando || !estoqueId || (acao === "TRANSFERIR" && !destinoFuncionarioId)}
             >
               {salvando
                 ? "Registrando…"
                 : acao === "APROPRIAR"
                   ? "Confirmar apropriação"
-                  : "Confirmar devolução"}
+                  : `Continuar: ${descricaoAcao(acao).toLowerCase()}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={dialogConfirmacao}
+        onOpenChange={(open) => !salvando && setDialogConfirmacao(open)}
+      >
+        <DialogContent className="w-[calc(100vw-1rem)] max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Ban className="size-5 text-destructive" aria-hidden="true" />
+              Confirmar {descricaoAcao(acao).toLowerCase()}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <p>
+              Esta ação altera a posse e será registrada no histórico do equipamento. Confirme
+              somente depois de revisar a quantidade e as observações.
+            </p>
+            {acao === "BAIXA" && (
+              <p className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 font-semibold text-destructive">
+                Atenção: a baixa definitiva reduz o saldo físico e não é desfeita por uma simples
+                devolução.
+              </p>
+            )}
+            {acao === "SINALIZAR_MANUTENCAO" && (
+              <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-950">
+                Serão criados dois registros: devolução ao Almoxarifado e sinalização para
+                Manutenção.
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setDialogConfirmacao(false)}
+              disabled={salvando}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              variant={acao === "BAIXA" ? "destructive" : "default"}
+              onClick={() => void executarAcao()}
+              disabled={salvando}
+            >
+              {salvando ? "Registrando…" : "Confirmar e registrar"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -837,7 +1181,8 @@ function origemEquipamento(
   empresas: Empresa[],
 ): { equipe: string; empresa: string; texto: string } {
   const equipe = equipes.find((item) => item.id === estoque.equipe_id)?.nome ?? "Projeto inteiro";
-  const empresa = empresas.find((item) => item.id === estoque.empresa_id)?.nome ?? "Proprietário não localizado";
+  const empresa =
+    empresas.find((item) => item.id === estoque.empresa_id)?.nome ?? "Proprietário não localizado";
   return {
     equipe,
     empresa,
@@ -895,3 +1240,4 @@ function imprimirAtendimento(
   janela.document.close();
   janela.focus();
 }
+
