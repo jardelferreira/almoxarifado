@@ -8,6 +8,7 @@ import {
   ChevronDown,
   FileDown,
   PackageCheck,
+  PackageX,
   Search,
   UserRound,
   UserRoundMinus,
@@ -59,7 +60,13 @@ type ItemPainel = {
   identificacao: string;
 };
 
-type AcaoPainel = "APROPRIAR" | "DEVOLVER" | "TRANSFERIR" | "SINALIZAR_MANUTENCAO" | "BAIXA";
+type AcaoPainel =
+  | "APROPRIAR"
+  | "DEVOLVER"
+  | "TRANSFERIR"
+  | "SINALIZAR_MANUTENCAO"
+  | "DEVOLVER_FORNECEDOR"
+  | "BAIXA";
 type ModoPainel = "ATENDIMENTO" | "CONSULTA";
 
 type ProprietarioConsulta = {
@@ -269,6 +276,7 @@ export function PainelApropriacoesPage() {
       DEVOLVER: "Desapropriar equipamento",
       TRANSFERIR: "Transferir equipamento",
       SINALIZAR_MANUTENCAO: "Sinalizar para manutenção",
+      DEVOLVER_FORNECEDOR: "Devolver ao fornecedor",
       BAIXA: "Registrar baixa definitiva",
     })[valor];
 
@@ -402,7 +410,46 @@ export function PainelApropriacoesPage() {
               observacaoInformada || "Sinalização para manutenção pelo Painel de Atendimento.",
           });
           toast.success("Equipamento devolvido e sinalizado para manutenção.");
+        } else if (acao === "DEVOLVER_FORNECEDOR") {
+          if (item.estoque.vinculo === "PROPRIO") {
+            throw new Error("Equipamentos próprios devem seguir o fluxo de baixa definitiva.");
+          }
+          await salvarMovimentacao({
+            projeto_id: projetoId,
+            estoque_equipamento_id: estoqueId,
+            tipo: "DEVOLUCAO",
+            quantidade: quantidadeNumero,
+            tipo_origem: "FUNCIONARIO",
+            origem_id: funcionarioId,
+            tipo_destino: "EQUIPE",
+            destino_id: equipeAlmoxarifado,
+            data,
+            referencia_documento: null,
+            observacoes:
+              observacaoInformada || "Devolução ao Almoxarifado para retorno ao fornecedor.",
+          });
+          await salvarMovimentacao({
+            projeto_id: projetoId,
+            estoque_equipamento_id: estoqueId,
+            tipo: "DEVOLUCAO_FORNECEDOR",
+            quantidade: quantidadeNumero,
+            tipo_origem: "EQUIPE",
+            origem_id: equipeAlmoxarifado,
+            tipo_destino: "EMPRESA",
+            destino_id: item.estoque.empresa_id,
+            data,
+            referencia_documento: null,
+            observacoes:
+              observacaoInformada ||
+              "Devolução ao fornecedor realizada pelo Painel de Atendimento.",
+          });
+          toast.success("Equipamento devolvido ao fornecedor.");
         } else {
+          if (item.estoque.vinculo !== "PROPRIO") {
+            throw new Error(
+              "Equipamentos alugados ou emprestados devem ser devolvidos ao fornecedor.",
+            );
+          }
           await salvarMovimentacao({
             projeto_id: projetoId,
             estoque_equipamento_id: estoqueId,
@@ -865,13 +912,25 @@ export function PainelApropriacoesPage() {
                                       Sinalizar para manutenção
                                     </DropdownMenuItem>
                                     <DropdownMenuSeparator />
-                                    <DropdownMenuItem
-                                      className="text-destructive focus:text-destructive"
-                                      onSelect={() => abrirAcaoAdicional(item, "BAIXA")}
-                                    >
-                                      <Ban className="size-4" />
-                                      Baixa definitiva
-                                    </DropdownMenuItem>
+                                    {item.estoque.vinculo === "PROPRIO" ? (
+                                      <DropdownMenuItem
+                                        className="text-destructive focus:text-destructive"
+                                        onSelect={() => abrirAcaoAdicional(item, "BAIXA")}
+                                      >
+                                        <Ban className="size-4" />
+                                        Baixa definitiva
+                                      </DropdownMenuItem>
+                                    ) : (
+                                      <DropdownMenuItem
+                                        className="text-rose-700 focus:text-rose-700"
+                                        onSelect={() =>
+                                          abrirAcaoAdicional(item, "DEVOLVER_FORNECEDOR")
+                                        }
+                                      >
+                                        <PackageX className="size-4" />
+                                        Devolver ao fornecedor
+                                      </DropdownMenuItem>
+                                    )}
                                   </DropdownMenuContent>
                                 </DropdownMenu>
                               </div>
@@ -1011,6 +1070,12 @@ export function PainelApropriacoesPage() {
                 equipe Manutenção.
               </div>
             )}
+            {acao === "DEVOLVER_FORNECEDOR" && (
+              <div className="rounded-lg border border-rose-300 bg-rose-50 p-3 text-sm text-rose-950">
+                Como este equipamento não é próprio, ele será devolvido ao Almoxarifado e depois ao
+                proprietário cadastrado. Essa operação não registra baixa definitiva.
+              </div>
+            )}
             {acao === "BAIXA" && (
               <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
                 A baixa é definitiva: a quantidade será retirada do saldo físico após a devolução ao
@@ -1101,6 +1166,12 @@ export function PainelApropriacoesPage() {
               <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-950">
                 Serão criados dois registros: devolução ao Almoxarifado e sinalização para
                 Manutenção.
+              </p>
+            )}
+            {acao === "DEVOLVER_FORNECEDOR" && (
+              <p className="rounded-lg border border-rose-300 bg-rose-50 p-3 text-rose-950">
+                Serão criados dois registros: devolução ao Almoxarifado e devolução ao proprietário
+                do equipamento.
               </p>
             )}
           </div>
