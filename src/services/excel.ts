@@ -105,11 +105,11 @@ const ABA_PARA_TABELA: Record<string, string> = {
   "REF. DOCUMENTOS": "documento_referencias",
   "ITENS INVENTÁRIO": "inventario_itens",
   "APROPRIAÇÕES FINANCEIRAS": "apropriacoes_financeiras_equipamentos",
-  "CONSUMOS": "consumos_equipamentos",
+  CONSUMOS: "consumos_equipamentos",
   "REGRAS DE CONSUMO": "regras_consumo_equipamentos",
   "PERFIS DE PARÂMETROS": "perfis_parametros_custos",
-  "INTELIGÊNCIA": "inteligencia_acoes",
-  "MANUTENÇÕES": "manutencoes_equipamentos",
+  INTELIGÊNCIA: "inteligencia_acoes",
+  MANUTENÇÕES: "manutencoes_equipamentos",
   "DOCUMENTOS DE MANUTENÇÃO": "manutencao_documentos",
 };
 
@@ -150,9 +150,7 @@ const B = (valor: unknown): boolean => {
 
   const s = S(valor).toUpperCase();
 
-  return ["1", "SIM", "TRUE", "VERDADEIRO", "ATIVO", "S", "YES"].includes(
-    s,
-  );
+  return ["1", "SIM", "TRUE", "VERDADEIRO", "ATIVO", "S", "YES"].includes(s);
 };
 
 const N = (valor: unknown): number => {
@@ -178,10 +176,7 @@ const D = (valor: unknown): string => {
     const d = XLSX.SSF.parse_date_code(valor);
 
     if (d) {
-      return `${d.y}-${String(d.m).padStart(2, "0")}-${String(d.d).padStart(
-        2,
-        "0",
-      )}`;
+      return `${d.y}-${String(d.m).padStart(2, "0")}-${String(d.d).padStart(2, "0")}`;
     }
   }
 
@@ -200,13 +195,7 @@ const D = (valor: unknown): string => {
   return "";
 };
 
-const CAMPOS_JSON = new Set([
-  "modulos",
-  "documentos",
-  "estoque",
-  "inventario",
-  "equipamentos",
-]);
+const CAMPOS_JSON = new Set(["modulos", "documentos", "estoque", "inventario", "equipamentos"]);
 
 const CAMPOS_BOOLEANOS = new Set([
   "ativo",
@@ -224,10 +213,7 @@ const CAMPOS_BOOLEANOS = new Set([
   "ajustar_automaticamente",
 ]);
 
-function normalizarValorCampo(
-  campo: string,
-  valor: unknown,
-): unknown {
+function normalizarValorCampo(campo: string, valor: unknown): unknown {
   const nome = campo.toLowerCase();
 
   if (valor === "" || valor === undefined) {
@@ -252,42 +238,42 @@ function normalizarValorCampo(
 const ROTULOS_IMPORTACAO: Record<string, string> = {
   "ID do sistema": "id",
   "ID projeto": "projeto_id",
-  "Código": "codigo",
-  "Nome": "nome",
-  "Descrição": "descricao",
+  Código: "codigo",
+  Nome: "nome",
+  Descrição: "descricao",
   "ID empresa": "empresa_id",
-  "Empresa": "empresa",
+  Empresa: "empresa",
   "ID funcionário": "funcionario_id",
-  "Funcionário": "funcionario",
+  Funcionário: "funcionario",
   "ID encarregado": "encarregado_id",
-  "Encarregado": "encarregado",
+  Encarregado: "encarregado",
   "ID equipe": "equipe_id",
-  "Equipe": "equipe",
+  Equipe: "equipe",
   "ID equipe raiz": "equipe_raiz_id",
   "Equipe raiz": "equipe_raiz",
   "ID produto": "produto_id",
-  "Produto": "produto",
+  Produto: "produto",
   "ID categoria": "categoria_id",
-  "Categoria": "categoria",
+  Categoria: "categoria",
   "ID unidade": "unidade_id",
-  "Unidade": "unidade",
+  Unidade: "unidade",
   "ID local": "local_id",
-  "Local": "local",
+  Local: "local",
   "ID local destino": "local_destino_id",
   "Local destino": "local_destino",
-  "Observação": "observacao",
-  "Observações": "observacoes",
-  "Matrícula": "matricula",
-  "CPF": "cpf",
-  "Função": "funcao",
-  "Marca": "marca",
-  "Modelo": "modelo",
+  Observação: "observacao",
+  Observações: "observacoes",
+  Matrícula: "matricula",
+  CPF: "cpf",
+  Função: "funcao",
+  Marca: "marca",
+  Modelo: "modelo",
   "Estoque mínimo": "estoque_minimo",
-  "Sinal": "sinal",
+  Sinal: "sinal",
   "ID documento": "documento_id",
   "ID item documento": "documento_item_id",
-  "Número": "numero",
-  "Série": "serie",
+  Número: "numero",
+  Série: "serie",
   "Data emissão": "data_emissao",
   "Data entrada": "data_entrada",
   "Valor total": "valor_total",
@@ -297,11 +283,11 @@ const ROTULOS_IMPORTACAO: Record<string, string> = {
   "ID inventário": "inventario_id",
   "Quantidade sistema": "quantidade_sistema",
   "Quantidade contada": "quantidade_contada",
-  "Patrimônio": "patrimonio",
-  "Serial": "serial",
-  "Identificação": "identificacao",
-  "Devolvido": "devolvido",
-  "Baixado": "baixado",
+  Patrimônio: "patrimonio",
+  Serial: "serial",
+  Identificação: "identificacao",
+  Devolvido: "devolvido",
+  Baixado: "baixado",
   "Tipo de controle": "tipo_controle",
   "ID estoque equipamento": "estoque_equipamento_id",
   "Tipo origem": "tipo_origem",
@@ -314,12 +300,12 @@ const ROTULOS_IMPORTACAO: Record<string, string> = {
   "Nome original": "nome_original",
   "Chave de armazenamento": "chave_r2",
   "Casas decimais": "casas_decimais",
-  "Fator": "fator",
+  Fator: "fator",
   "Custo unitário": "custo_unitario",
   "Custo total": "custo_total",
   "ID perfil": "perfil_id",
-  "Versão": "versao",
-  "Ativo": "ativo",
+  Versão: "versao",
+  Ativo: "ativo",
 };
 
 function snakeCaseCabecalho(campo: string): string {
@@ -373,26 +359,24 @@ function normalizarCabecalhoImportacao(
   return ROTULOS_IMPORTACAO[bruto] ?? snakeCaseCabecalho(bruto);
 }
 
-function lerAba(
-  workbook: XLSX.WorkBook,
-  nomeAba: string,
-): Linha[] {
+function lerAba(workbook: XLSX.WorkBook, nomeAba: string): Linha[] {
   const worksheet = workbook.Sheets[nomeAba];
 
   if (!worksheet) {
     return [];
   }
 
-  const primeiraLinha = XLSX.utils.sheet_to_json<unknown[]>(worksheet, {
-    header: 1,
-    defval: "",
-    raw: true,
-  })[0] ?? [];
+  const primeiraLinha =
+    XLSX.utils.sheet_to_json<unknown[]>(worksheet, {
+      header: 1,
+      defval: "",
+      raw: true,
+    })[0] ?? [];
 
   let ocorrenciaStatus = 0;
   const cabecalhos = primeiraLinha.map((campo, indice) => {
-    const ehStatusLegado = S(campo) === "Status" &&
-      normalizarNomeAba(nomeAba) === "ESTOQUE_EQUIPAMENTOS";
+    const ehStatusLegado =
+      S(campo) === "Status" && normalizarNomeAba(nomeAba) === "ESTOQUE_EQUIPAMENTOS";
     const mapeado = normalizarCabecalhoImportacao(
       campo,
       nomeAba,
@@ -424,11 +408,7 @@ function lerAba(
 
       return resultado;
     })
-    .filter((linha) =>
-      Object.values(linha).some(
-        (valor) => valor !== null && valor !== "",
-      ),
-    );
+    .filter((linha) => Object.values(linha).some((valor) => valor !== null && valor !== ""));
 }
 
 function normalizarNomeAba(nome: string): string {
@@ -439,10 +419,7 @@ function normalizarNomeAba(nome: string): string {
     .toUpperCase();
 }
 
-function obterAba(
-  workbook: XLSX.WorkBook,
-  tabela: string,
-): Linha[] {
+function obterAba(workbook: XLSX.WorkBook, tabela: string): Linha[] {
   const candidatos = new Set<string>([
     normalizarNomeAba(tabela),
     ...Object.entries(ABA_PARA_TABELA)
@@ -461,14 +438,9 @@ function projetoDeLinha(linha: Linha): Projeto {
   return {
     id: S(linha["id"]) || uid(),
     codigo: S(linha["codigo"]),
-    nome:
-      S(linha["nome"]) ||
-      S(linha["codigo"]) ||
-      "Projeto importado",
+    nome: S(linha["nome"]) || S(linha["codigo"]) || "Projeto importado",
     empresa_id: S(linha["empresa_id"]) || null,
-    status: (
-      S(linha["status"]).toUpperCase() || "ATIVO"
-    ) as Projeto["status"],
+    status: (S(linha["status"]).toUpperCase() || "ATIVO") as Projeto["status"],
     data_inicio: D(linha["data_inicio"]) || null,
     data_fim: D(linha["data_fim"]) || null,
     observacao: S(linha["observacao"]) || null,
@@ -497,13 +469,11 @@ function empresaDeLinha(linha: Linha): Empresa {
     id: S(linha["id"]) || uid(),
     projeto_id: S(linha["projeto_id"]),
     nome: S(linha["nome"]),
-    tipo: (
-      S(linha["tipo"]).toUpperCase().startsWith("PR")
-        ? "PROPRIA"
-        : S(linha["tipo"]).toUpperCase().startsWith("FO")
-          ? "FORNECEDOR"
-          : "TERCEIRA"
-    ) as Empresa["tipo"],
+    tipo: (S(linha["tipo"]).toUpperCase().startsWith("PR")
+      ? "PROPRIA"
+      : S(linha["tipo"]).toUpperCase().startsWith("FO")
+        ? "FORNECEDOR"
+        : "TERCEIRA") as Empresa["tipo"],
     ativo: B(linha["ativo"]),
   };
 }
@@ -519,11 +489,9 @@ function funcionarioDeLinha(linha: Linha): Funcionario {
     encarregado_id: S(linha["encarregado_id"]) || null,
     empresa_id: S(linha["empresa_id"]) || null,
     equipe_raiz_id: S(linha["equipe_raiz_id"]) || null,
-    status: (
-      S(linha["status"]).toUpperCase() === "INATIVO"
-        ? "INATIVO"
-        : "ATIVO"
-    ) as Funcionario["status"],
+    status: (S(linha["status"]).toUpperCase() === "INATIVO"
+      ? "INATIVO"
+      : "ATIVO") as Funcionario["status"],
   };
 }
 
@@ -576,19 +544,18 @@ function equipeMembroDeLinha(linha: Linha): EquipeMembro {
 function movimentacaoDeLinha(linha: Linha): Movimentacao {
   const quantidadeOriginal = N(linha["quantidade"]);
   const sinalInformado = N(linha["sinal"]);
-  const sinal = sinalInformado === -1 || sinalInformado === 1
-    ? (sinalInformado as 1 | -1)
-    : quantidadeOriginal < 0
-      ? -1
-      : 1;
+  const sinal =
+    sinalInformado === -1 || sinalInformado === 1
+      ? (sinalInformado as 1 | -1)
+      : quantidadeOriginal < 0
+        ? -1
+        : 1;
 
   return {
     id: S(linha["id"]) || uid(),
     projeto_id: S(linha["projeto_id"]),
     data: D(linha["data"]),
-    tipo: (
-      S(linha["tipo"]).toUpperCase() || "SAIDA"
-    ) as Movimentacao["tipo"],
+    tipo: (S(linha["tipo"]).toUpperCase() || "SAIDA") as Movimentacao["tipo"],
     produto_id: S(linha["produto_id"]),
     quantidade: Math.abs(quantidadeOriginal),
     sinal,
@@ -599,16 +566,15 @@ function movimentacaoDeLinha(linha: Linha): Movimentacao {
     observacao: S(linha["observacao"]) || null,
     equipe_id: S(linha["equipe_id"]),
     ...(S(linha["local_destino_id"]) ? { local_destino_id: S(linha["local_destino_id"]) } : {}),
-    ...(S(linha["movimentacao_origem_id"]) ? { movimentacao_origem_id: S(linha["movimentacao_origem_id"]) } : {}),
+    ...(S(linha["movimentacao_origem_id"])
+      ? { movimentacao_origem_id: S(linha["movimentacao_origem_id"]) }
+      : {}),
     ...(S(linha["documento_id"]) ? { documento_id: S(linha["documento_id"]) } : {}),
     ...(S(linha["documento_item_id"]) ? { documento_item_id: S(linha["documento_item_id"]) } : {}),
   };
 }
 
-function validarDuplicados(
-  problemas: string[],
-  tabelas: Record<string, Linha[]>,
-): void {
+function validarDuplicados(problemas: string[], tabelas: Record<string, Linha[]>): void {
   for (const [tabela, linhas] of Object.entries(tabelas)) {
     const ids = new Set<string>();
 
@@ -660,9 +626,7 @@ function validarEscopoProjeto(
     for (const [index, linha] of (tabelas[tabela] ?? []).entries()) {
       const registroProjetoId = S(linha["projeto_id"]);
       if (registroProjetoId !== projetoId) {
-        problemas.push(
-          `${tabela}[${index}]: projeto_id deve ser ${projetoId}`,
-        );
+        problemas.push(`${tabela}[${index}]: projeto_id deve ser ${projetoId}`);
       }
     }
   }
@@ -672,14 +636,15 @@ function serializarEstavel(valor: unknown): string {
   if (Array.isArray(valor)) return `[${valor.map(serializarEstavel).join(",")}]`;
   if (valor && typeof valor === "object") {
     const objeto = valor as Record<string, unknown>;
-    return `{${Object.keys(objeto).sort().map((chave) => `${JSON.stringify(chave)}:${serializarEstavel(objeto[chave])}`).join(",")}}`;
+    return `{${Object.keys(objeto)
+      .sort()
+      .map((chave) => `${JSON.stringify(chave)}:${serializarEstavel(objeto[chave])}`)
+      .join(",")}}`;
   }
   return JSON.stringify(valor);
 }
 
-export async function verificarCompatibilidadeImportacao(
-  dataset: DatasetImportado,
-): Promise<{
+export async function verificarCompatibilidadeImportacao(dataset: DatasetImportado): Promise<{
   compativel: boolean;
   motivo?: string;
 }> {
@@ -718,7 +683,7 @@ async function validarConflitosInterprojetos(
 
   const verificarTabela = async (tabela: string) => {
     if (!getDB().tables.some((item) => item.name === tabela)) return;
-    const existentes = await db.table(tabela).toArray() as Linha[];
+    const existentes = (await db.table(tabela).toArray()) as Linha[];
     const porId = new Map(existentes.map((item) => [S(item["id"]), item]));
 
     for (const linha of tabelas[tabela] ?? []) {
@@ -750,7 +715,10 @@ async function validarConflitosInterprojetos(
   for (const [tabela, campoPai, tabelaPai] of relacionamentos) {
     if (!getDB().tables.some((item) => item.name === tabela)) continue;
     const pais = new Map(
-      ((await db.table(tabelaPai).toArray()) as Linha[]).map((item) => [S(item["id"]), S(item["projeto_id"]) ]),
+      ((await db.table(tabelaPai).toArray()) as Linha[]).map((item) => [
+        S(item["id"]),
+        S(item["projeto_id"]),
+      ]),
     );
     const existentes = (await db.table(tabela).toArray()) as Linha[];
     const idsNovos = new Set((tabelas[tabela] ?? []).map((item) => S(item["id"])).filter(Boolean));
@@ -782,16 +750,9 @@ async function validarConflitosInterprojetos(
   }
 }
 
-function validarReferencias(
-  problemas: string[],
-  tabelas: Record<string, Linha[]>,
-): void {
+function validarReferencias(problemas: string[], tabelas: Record<string, Linha[]>): void {
   const ids = (tabela: string) =>
-    new Set(
-      (tabelas[tabela] ?? [])
-        .map((linha) => S(linha["id"]))
-        .filter(Boolean),
-    );
+    new Set((tabelas[tabela] ?? []).map((linha) => S(linha["id"])).filter(Boolean));
 
   const produtos = ids("produtos");
   const funcionarios = ids("funcionarios");
@@ -800,6 +761,9 @@ function validarReferencias(
   const locais = ids("locais");
   const equipamentos = ids("equipamentos");
   const estoquesEquipamentos = ids("estoque_equipamentos");
+  const estoquesEquipamentosPorId = new Map(
+    (tabelas["estoque_equipamentos"] ?? []).map((linha) => [S(linha["id"]), linha]),
+  );
   const documentos = ids("documentos");
   const documentoItens = ids("documento_itens");
   const inventarios = ids("inventarios");
@@ -809,137 +773,70 @@ function validarReferencias(
   const unidades = ids("unidades");
   const categoriasEquipamentos = ids("categorias_equipamentos");
 
-  for (const [index, linha] of (
-    tabelas["movimentacoes"] ?? []
-  ).entries()) {
+  for (const [index, linha] of (tabelas["movimentacoes"] ?? []).entries()) {
     if (!produtos.has(S(linha["produto_id"]))) {
-      problemas.push(
-        `movimentacoes[${index}]: produto_id inexistente`,
-      );
+      problemas.push(`movimentacoes[${index}]: produto_id inexistente`);
     }
 
-    if (
-      S(linha["funcionario_id"]) &&
-      !funcionarios.has(S(linha["funcionario_id"]))
-    ) {
-      problemas.push(
-        `movimentacoes[${index}]: funcionario_id inexistente`,
-      );
+    if (S(linha["funcionario_id"]) && !funcionarios.has(S(linha["funcionario_id"]))) {
+      problemas.push(`movimentacoes[${index}]: funcionario_id inexistente`);
     }
 
-    if (
-      S(linha["empresa_id"]) &&
-      !empresas.has(S(linha["empresa_id"]))
-    ) {
-      problemas.push(
-        `movimentacoes[${index}]: empresa_id inexistente`,
-      );
+    if (S(linha["empresa_id"]) && !empresas.has(S(linha["empresa_id"]))) {
+      problemas.push(`movimentacoes[${index}]: empresa_id inexistente`);
     }
 
-    if (
-      S(linha["equipe_id"]) &&
-      !equipes.has(S(linha["equipe_id"]))
-    ) {
-      problemas.push(
-        `movimentacoes[${index}]: equipe_id inexistente`,
-      );
+    if (S(linha["equipe_id"]) && !equipes.has(S(linha["equipe_id"]))) {
+      problemas.push(`movimentacoes[${index}]: equipe_id inexistente`);
     }
 
-    if (
-      S(linha["local_id"]) &&
-      !locais.has(S(linha["local_id"]))
-    ) {
-      problemas.push(
-        `movimentacoes[${index}]: local_id inexistente`,
-      );
+    if (S(linha["local_id"]) && !locais.has(S(linha["local_id"]))) {
+      problemas.push(`movimentacoes[${index}]: local_id inexistente`);
     }
 
-    if (
-      S(linha["local_destino_id"]) &&
-      !locais.has(S(linha["local_destino_id"]))
-    ) {
-      problemas.push(
-        `movimentacoes[${index}]: local_destino_id inexistente`,
-      );
+    if (S(linha["local_destino_id"]) && !locais.has(S(linha["local_destino_id"]))) {
+      problemas.push(`movimentacoes[${index}]: local_destino_id inexistente`);
     }
 
-    if (
-      S(linha["documento_id"]) &&
-      !documentos.has(S(linha["documento_id"]))
-    ) {
-      problemas.push(
-        `movimentacoes[${index}]: documento_id inexistente`,
-      );
+    if (S(linha["documento_id"]) && !documentos.has(S(linha["documento_id"]))) {
+      problemas.push(`movimentacoes[${index}]: documento_id inexistente`);
     }
 
-    if (
-      S(linha["documento_item_id"]) &&
-      !documentoItens.has(S(linha["documento_item_id"]))
-    ) {
-      problemas.push(
-        `movimentacoes[${index}]: documento_item_id inexistente`,
-      );
+    if (S(linha["documento_item_id"]) && !documentoItens.has(S(linha["documento_item_id"]))) {
+      problemas.push(`movimentacoes[${index}]: documento_item_id inexistente`);
     }
 
     if (
       S(linha["movimentacao_origem_id"]) &&
       !movimentacoesMateriais.has(S(linha["movimentacao_origem_id"]))
     ) {
-      problemas.push(
-        `movimentacoes[${index}]: movimentacao_origem_id inexistente`,
-      );
+      problemas.push(`movimentacoes[${index}]: movimentacao_origem_id inexistente`);
     }
   }
 
-  for (const [index, linha] of (
-    tabelas["equipamentos"] ?? []
-  ).entries()) {
-    if (
-      S(linha["categoria_id"]) &&
-      !categoriasEquipamentos.has(S(linha["categoria_id"]))
-    ) {
-      problemas.push(
-        `equipamentos[${index}]: categoria_id inexistente`,
-      );
+  for (const [index, linha] of (tabelas["equipamentos"] ?? []).entries()) {
+    if (S(linha["categoria_id"]) && !categoriasEquipamentos.has(S(linha["categoria_id"]))) {
+      problemas.push(`equipamentos[${index}]: categoria_id inexistente`);
     }
   }
 
-  for (const [index, linha] of (
-    tabelas["estoque_equipamentos"] ?? []
-  ).entries()) {
+  for (const [index, linha] of (tabelas["estoque_equipamentos"] ?? []).entries()) {
     if (!equipamentos.has(S(linha["equipamento_id"]))) {
-      problemas.push(
-        `estoque_equipamentos[${index}]: equipamento_id inexistente`,
-      );
+      problemas.push(`estoque_equipamentos[${index}]: equipamento_id inexistente`);
     }
 
     if (!empresas.has(S(linha["empresa_id"]))) {
-      problemas.push(
-        `estoque_equipamentos[${index}]: empresa_id inexistente`,
-      );
+      problemas.push(`estoque_equipamentos[${index}]: empresa_id inexistente`);
     }
 
-    if (
-      S(linha["equipe_id"]) &&
-      !equipes.has(S(linha["equipe_id"]))
-    ) {
-      problemas.push(
-        `estoque_equipamentos[${index}]: equipe_id inexistente`,
-      );
+    if (S(linha["equipe_id"]) && !equipes.has(S(linha["equipe_id"]))) {
+      problemas.push(`estoque_equipamentos[${index}]: equipe_id inexistente`);
     }
   }
 
-  for (const [index, linha] of (
-    tabelas["movimentacoes_equipamentos"] ?? []
-  ).entries()) {
-    if (
-      !estoquesEquipamentos.has(
-        S(linha["estoque_equipamento_id"]),
-      )
-    ) {
-      problemas.push(
-        `movimentacoes_equipamentos[${index}]: estoque_equipamento_id inexistente`,
-      );
+  for (const [index, linha] of (tabelas["movimentacoes_equipamentos"] ?? []).entries()) {
+    if (!estoquesEquipamentos.has(S(linha["estoque_equipamento_id"]))) {
+      problemas.push(`movimentacoes_equipamentos[${index}]: estoque_equipamento_id inexistente`);
     }
 
     const tipo = S(linha["tipo"]).toUpperCase();
@@ -947,71 +844,75 @@ function validarReferencias(
     const destino = S(linha["tipo_destino"]).toUpperCase();
     const origemId = S(linha["origem_id"]);
     const destinoId = S(linha["destino_id"]);
+    const estoque = estoquesEquipamentosPorId.get(S(linha["estoque_equipamento_id"]));
+    const vinculo = normalizar(S(estoque?.["vinculo"]));
 
     if (
-      !["ENTRADA", "SAIDA", "DEVOLUCAO", "TRANSFERENCIA",
-        "SINALIZAR_MANUTENCAO", "MANUTENCAO", "ENVIO",
-        "RETIRADA_MANUTENCAO", "RETORNO_MANUTENCAO",
-        "BAIXA", "DEVOLUCAO_FORNECEDOR", "REENTRADA"].includes(
-        tipo,
-      )
+      ![
+        "ENTRADA",
+        "SAIDA",
+        "DEVOLUCAO",
+        "TRANSFERENCIA",
+        "SINALIZAR_MANUTENCAO",
+        "MANUTENCAO",
+        "ENVIO",
+        "RETIRADA_MANUTENCAO",
+        "RETORNO_MANUTENCAO",
+        "BAIXA",
+        "DEVOLUCAO_FORNECEDOR",
+        "REENTRADA",
+      ].includes(tipo)
     ) {
-      problemas.push(
-        `movimentacoes_equipamentos[${index}]: tipo inválido (${tipo})`,
-      );
+      problemas.push(`movimentacoes_equipamentos[${index}]: tipo inválido (${tipo})`);
       continue;
     }
 
     if (!["EMPRESA", "EQUIPE", "FUNCIONARIO"].includes(origem)) {
-      problemas.push(
-        `movimentacoes_equipamentos[${index}]: tipo_origem inválido (${origem})`,
-      );
+      problemas.push(`movimentacoes_equipamentos[${index}]: tipo_origem inválido (${origem})`);
     }
 
     if (!["EMPRESA", "EQUIPE", "FUNCIONARIO"].includes(destino)) {
-      problemas.push(
-        `movimentacoes_equipamentos[${index}]: tipo_destino inválido (${destino})`,
-      );
+      problemas.push(`movimentacoes_equipamentos[${index}]: tipo_destino inválido (${destino})`);
     }
 
-
     if (origem && origemId) {
-      const existe = origem === "EMPRESA"
-        ? empresas.has(origemId)
-        : origem === "EQUIPE"
-          ? equipes.has(origemId)
-          : funcionarios.has(origemId);
+      const existe =
+        origem === "EMPRESA"
+          ? empresas.has(origemId)
+          : origem === "EQUIPE"
+            ? equipes.has(origemId)
+            : funcionarios.has(origemId);
       if (!existe) problemas.push(`movimentacoes_equipamentos[${index}]: origem_id inexistente`);
     } else {
       problemas.push(`movimentacoes_equipamentos[${index}]: origem e origem_id são obrigatórios`);
     }
 
     if (destino && destinoId) {
-      const existe = destino === "EMPRESA"
-        ? empresas.has(destinoId)
-        : destino === "EQUIPE"
-          ? equipes.has(destinoId)
-          : funcionarios.has(destinoId);
+      const existe =
+        destino === "EMPRESA"
+          ? empresas.has(destinoId)
+          : destino === "EQUIPE"
+            ? equipes.has(destinoId)
+            : funcionarios.has(destinoId);
       if (!existe) problemas.push(`movimentacoes_equipamentos[${index}]: destino_id inexistente`);
     } else {
       problemas.push(`movimentacoes_equipamentos[${index}]: destino e destino_id são obrigatórios`);
     }
     if (tipo === "BAIXA") {
-      if (origem !== "EQUIPE") {
+      if (vinculo !== "PROPRIO") {
         problemas.push(
-          `movimentacoes_equipamentos[${index}]: BAIXA deve partir de uma equipe`,
+          `movimentacoes_equipamentos[${index}]: BAIXA só é permitida para equipamentos próprios; equipamentos alugados ou emprestados devem ser devolvidos ao fornecedor`,
         );
+      }
+      if (origem !== "EQUIPE") {
+        problemas.push(`movimentacoes_equipamentos[${index}]: BAIXA deve partir de uma equipe`);
       }
 
       const equipesAlmox = (tabelas["equipes"] ?? []).filter(
-        (equipe) =>
-          normalizar(S(equipe["nome"])) === "ALMOXARIFADO",
+        (equipe) => normalizar(S(equipe["nome"])) === "ALMOXARIFADO",
       );
-      const equipesManutencao = (
-        tabelas["equipes"] ?? []
-      ).filter(
-        (equipe) =>
-          normalizar(S(equipe["nome"])) === "MANUTENCAO",
+      const equipesManutencao = (tabelas["equipes"] ?? []).filter(
+        (equipe) => normalizar(S(equipe["nome"])) === "MANUTENCAO",
       );
 
       const idsPermitidos = new Set([
@@ -1032,31 +933,17 @@ function validarReferencias(
       }
     }
 
-    if (
-      tipo === "ENTRADA" &&
-      (origem !== "EMPRESA" ||
-        destino !== "EQUIPE")
-    ) {
-      problemas.push(
-        `movimentacoes_equipamentos[${index}]: ENTRADA deve ser Empresa → Equipe`,
-      );
+    if (tipo === "ENTRADA" && (origem !== "EMPRESA" || destino !== "EQUIPE")) {
+      problemas.push(`movimentacoes_equipamentos[${index}]: ENTRADA deve ser Empresa → Equipe`);
     }
 
-    if (
-      tipo === "SAIDA" &&
-      (origem !== "EQUIPE" ||
-        destino !== "FUNCIONARIO")
-    ) {
+    if (tipo === "SAIDA" && (origem !== "EQUIPE" || destino !== "FUNCIONARIO")) {
       problemas.push(
         `movimentacoes_equipamentos[${index}]: SAIDA deve ser Almoxarifado → Funcionário`,
       );
     }
 
-    if (
-      tipo === "DEVOLUCAO" &&
-      (origem !== "FUNCIONARIO" ||
-        destino !== "EQUIPE")
-    ) {
+    if (tipo === "DEVOLUCAO" && (origem !== "FUNCIONARIO" || destino !== "EQUIPE")) {
       problemas.push(
         `movimentacoes_equipamentos[${index}]: DEVOLUCAO deve ser Funcionário → Equipe`,
       );
@@ -1064,138 +951,90 @@ function validarReferencias(
 
     if (
       tipo === "TRANSFERENCIA" &&
-      (origem !== "FUNCIONARIO" ||
-        destino !== "FUNCIONARIO" ||
-        origemId === destinoId)
+      (origem !== "FUNCIONARIO" || destino !== "FUNCIONARIO" || origemId === destinoId)
     ) {
       problemas.push(
         `movimentacoes_equipamentos[${index}]: TRANSFERENCIA deve ser Funcionário → Funcionário com participantes diferentes`,
       );
     }
 
-    if (
-      tipo === "RETORNO_MANUTENCAO" &&
-      (destino !== "EQUIPE")
-    ) {
+    if (tipo === "RETORNO_MANUTENCAO" && destino !== "EQUIPE") {
       problemas.push(
         `movimentacoes_equipamentos[${index}]: RETORNO_MANUTENCAO deve retornar para uma equipe`,
       );
     }
 
-    if (
-      tipo === "DEVOLUCAO_FORNECEDOR" &&
-      (origem !== "EQUIPE" ||
-        destino !== "EMPRESA")
-    ) {
+    if (tipo === "DEVOLUCAO_FORNECEDOR" && (origem !== "EQUIPE" || destino !== "EMPRESA")) {
       problemas.push(
         `movimentacoes_equipamentos[${index}]: DEVOLUCAO_FORNECEDOR deve ser Equipe → Empresa`,
       );
     }
-  }
-
-  for (const [index, linha] of (
-    tabelas["apropriacoes"] ?? []
-  ).entries()) {
-    if (
-      !estoquesEquipamentos.has(
-        S(linha["estoque_equipamento_id"]),
-      )
-    ) {
+    if (tipo === "DEVOLUCAO_FORNECEDOR" && vinculo === "PROPRIO") {
       problemas.push(
-        `apropriacoes[${index}]: estoque_equipamento_id inexistente`,
+        `movimentacoes_equipamentos[${index}]: DEVOLUCAO_FORNECEDOR não é permitida para equipamentos próprios; use BAIXA`,
       );
     }
-
     if (
-      !funcionarios.has(S(linha["funcionario_id"]))
+      (tipo === "BAIXA" || tipo === "DEVOLUCAO_FORNECEDOR") &&
+      destino === "EMPRESA" &&
+      estoque &&
+      destinoId !== S(estoque["empresa_id"])
     ) {
       problemas.push(
-        `apropriacoes[${index}]: funcionario_id inexistente`,
+        `movimentacoes_equipamentos[${index}]: o destino deve ser a empresa proprietária do registro de estoque`,
       );
     }
   }
 
-  for (const [index, linha] of (
-    tabelas["documento_itens"] ?? []
-  ).entries()) {
+  for (const [index, linha] of (tabelas["apropriacoes"] ?? []).entries()) {
+    if (!estoquesEquipamentos.has(S(linha["estoque_equipamento_id"]))) {
+      problemas.push(`apropriacoes[${index}]: estoque_equipamento_id inexistente`);
+    }
+
+    if (!funcionarios.has(S(linha["funcionario_id"]))) {
+      problemas.push(`apropriacoes[${index}]: funcionario_id inexistente`);
+    }
+  }
+
+  for (const [index, linha] of (tabelas["documento_itens"] ?? []).entries()) {
     if (!documentos.has(S(linha["documento_id"]))) {
-      problemas.push(
-        `documento_itens[${index}]: documento_id inexistente`,
-      );
+      problemas.push(`documento_itens[${index}]: documento_id inexistente`);
     }
 
-    if (
-      S(linha["produto_id"]) &&
-      !produtos.has(S(linha["produto_id"]))
-    ) {
-      problemas.push(
-        `documento_itens[${index}]: produto_id inexistente`,
-      );
+    if (S(linha["produto_id"]) && !produtos.has(S(linha["produto_id"]))) {
+      problemas.push(`documento_itens[${index}]: produto_id inexistente`);
     }
 
-    if (
-      S(linha["equipe_destino_id"]) &&
-      !equipes.has(S(linha["equipe_destino_id"]))
-    ) {
-      problemas.push(
-        `documento_itens[${index}]: equipe_destino_id inexistente`,
-      );
+    if (S(linha["equipe_destino_id"]) && !equipes.has(S(linha["equipe_destino_id"]))) {
+      problemas.push(`documento_itens[${index}]: equipe_destino_id inexistente`);
     }
   }
 
-  for (const [index, linha] of (
-    tabelas["inventario_itens"] ?? []
-  ).entries()) {
+  for (const [index, linha] of (tabelas["inventario_itens"] ?? []).entries()) {
     if (!inventarios.has(S(linha["inventario_id"]))) {
-      problemas.push(
-        `inventario_itens[${index}]: inventario_id inexistente`,
-      );
+      problemas.push(`inventario_itens[${index}]: inventario_id inexistente`);
     }
 
     if (!produtos.has(S(linha["produto_id"]))) {
-      problemas.push(
-        `inventario_itens[${index}]: produto_id inexistente`,
-      );
+      problemas.push(`inventario_itens[${index}]: produto_id inexistente`);
     }
 
-    if (
-      S(linha["equipe_id"]) &&
-      !equipes.has(S(linha["equipe_id"]))
-    ) {
-      problemas.push(
-        `inventario_itens[${index}]: equipe_id inexistente`,
-      );
+    if (S(linha["equipe_id"]) && !equipes.has(S(linha["equipe_id"]))) {
+      problemas.push(`inventario_itens[${index}]: equipe_id inexistente`);
     }
   }
 
-  for (const [index, linha] of (
-    tabelas["manutencoes_equipamentos"] ?? []
-  ).entries()) {
-    if (
-      !estoquesEquipamentos.has(
-        S(linha["estoque_equipamento_id"]),
-      )
-    ) {
-      problemas.push(
-        `manutencoes_equipamentos[${index}]: estoque_equipamento_id inexistente`,
-      );
+  for (const [index, linha] of (tabelas["manutencoes_equipamentos"] ?? []).entries()) {
+    if (!estoquesEquipamentos.has(S(linha["estoque_equipamento_id"]))) {
+      problemas.push(`manutencoes_equipamentos[${index}]: estoque_equipamento_id inexistente`);
     }
 
-    if (
-      !equipamentos.has(S(linha["equipamento_id"]))
-    ) {
-      problemas.push(
-        `manutencoes_equipamentos[${index}]: equipamento_id inexistente`,
-      );
+    if (!equipamentos.has(S(linha["equipamento_id"]))) {
+      problemas.push(`manutencoes_equipamentos[${index}]: equipamento_id inexistente`);
     }
 
-    if (
-      S(linha["empresa_id"]) &&
-      !empresas.has(S(linha["empresa_id"]))
-    ) {
-      problemas.push(
-        `manutencoes_equipamentos[${index}]: empresa_id inexistente`,
-      );
+    if (S(linha["empresa_id"]) && !empresas.has(S(linha["empresa_id"]))) {
+      problemas.push(`manutencoes_equipamentos[${index}]: empresa_id inexistente`);
     }
   }
 
@@ -1205,39 +1044,27 @@ function validarReferencias(
     (mensagem) => problemas.push(mensagem),
   );
 
-  for (const [index, linha] of (
-    tabelas["regras_consumo_equipamentos"] ?? []
-  ).entries()) {
-    if (
-      !equipamentos.has(S(linha["equipamento_id"]))
-    ) {
-      problemas.push(
-        `regras_consumo_equipamentos[${index}]: equipamento_id inexistente`,
-      );
+  for (const [index, linha] of (tabelas["regras_consumo_equipamentos"] ?? []).entries()) {
+    if (!equipamentos.has(S(linha["equipamento_id"]))) {
+      problemas.push(`regras_consumo_equipamentos[${index}]: equipamento_id inexistente`);
     }
 
     if (!produtos.has(S(linha["produto_id"]))) {
-      problemas.push(
-        `regras_consumo_equipamentos[${index}]: produto_id inexistente`,
-      );
+      problemas.push(`regras_consumo_equipamentos[${index}]: produto_id inexistente`);
     }
 
     if (
       !unidades.has(S(linha["unidade_base_id"])) ||
       !unidades.has(S(linha["unidade_consumo_id"]))
     ) {
-      problemas.push(
-        `regras_consumo_equipamentos[${index}]: unidade de referência inexistente`,
-      );
+      problemas.push(`regras_consumo_equipamentos[${index}]: unidade de referência inexistente`);
     }
   }
 
   void manutencoes;
 }
 
-export async function compatibilizarDataset(
-  dataset: DatasetImportado,
-): Promise<DatasetImportado> {
+export async function compatibilizarDataset(dataset: DatasetImportado): Promise<DatasetImportado> {
   if (dataset.projetos.length !== 1) {
     throw new Error("A planilha precisa conter exatamente um projeto para ser compatibilizada.");
   }
@@ -1256,16 +1083,16 @@ export async function compatibilizarDataset(
     ]),
   );
 
-  tabelas["projetos"] = dataset.projetos.map((item) => ({ ...item } as Linha));
-  tabelas["categorias"] = dataset.categorias.map((item) => ({ ...item } as Linha));
-  tabelas["unidades"] = dataset.unidades.map((item) => ({ ...item } as Linha));
-  tabelas["empresas"] = dataset.empresas.map((item) => ({ ...item } as Linha));
-  tabelas["funcionarios"] = dataset.funcionarios.map((item) => ({ ...item } as Linha));
-  tabelas["locais"] = dataset.locais.map((item) => ({ ...item } as Linha));
-  tabelas["produtos"] = dataset.produtos.map((item) => ({ ...item } as Linha));
-  tabelas["equipes"] = dataset.equipes.map((item) => ({ ...item } as Linha));
-  tabelas["equipe_membros"] = dataset.equipeMembros.map((item) => ({ ...item } as Linha));
-  tabelas["movimentacoes"] = dataset.movimentacoes.map((item) => ({ ...item } as Linha));
+  tabelas["projetos"] = dataset.projetos.map((item) => ({ ...item }) as Linha);
+  tabelas["categorias"] = dataset.categorias.map((item) => ({ ...item }) as Linha);
+  tabelas["unidades"] = dataset.unidades.map((item) => ({ ...item }) as Linha);
+  tabelas["empresas"] = dataset.empresas.map((item) => ({ ...item }) as Linha);
+  tabelas["funcionarios"] = dataset.funcionarios.map((item) => ({ ...item }) as Linha);
+  tabelas["locais"] = dataset.locais.map((item) => ({ ...item }) as Linha);
+  tabelas["produtos"] = dataset.produtos.map((item) => ({ ...item }) as Linha);
+  tabelas["equipes"] = dataset.equipes.map((item) => ({ ...item }) as Linha);
+  tabelas["equipe_membros"] = dataset.equipeMembros.map((item) => ({ ...item }) as Linha);
+  tabelas["movimentacoes"] = dataset.movimentacoes.map((item) => ({ ...item }) as Linha);
 
   const mapas = new Map<string, Map<string, string>>();
   let idsGerados = 0;
@@ -1322,10 +1149,7 @@ export async function compatibilizarDataset(
   }
 
   // Todos os registros avançados também têm identidade própria.
-  for (const tabela of [
-    "manutencao_documentos",
-    "apropriacoes_financeiras_equipamentos",
-  ]) {
+  for (const tabela of ["manutencao_documentos", "apropriacoes_financeiras_equipamentos"]) {
     mapearIds(tabela, tabelas[tabela] ?? []);
   }
 
@@ -1434,7 +1258,9 @@ export async function compatibilizarDataset(
     id: novoId("funcionarios", linha["id"]),
     projeto_id: novoProjetoId,
     empresa_id: S(linha["empresa_id"]) ? novoId("empresas", linha["empresa_id"]) : null,
-    encarregado_id: S(linha["encarregado_id"]) ? novoId("funcionarios", linha["encarregado_id"]) : null,
+    encarregado_id: S(linha["encarregado_id"])
+      ? novoId("funcionarios", linha["encarregado_id"])
+      : null,
     equipe_raiz_id: S(linha["equipe_raiz_id"]) ? novoId("equipes", linha["equipe_raiz_id"]) : null,
   }));
 
@@ -1464,15 +1290,27 @@ export async function compatibilizarDataset(
     id: novoId("movimentacoes", linha["id"]),
     projeto_id: novoProjetoId,
     produto_id: novoId("produtos", linha["produto_id"]),
-    funcionario_id: S(linha["funcionario_id"]) ? novoId("funcionarios", linha["funcionario_id"]) : null,
-    encarregado_id: S(linha["encarregado_id"]) ? novoId("funcionarios", linha["encarregado_id"]) : null,
+    funcionario_id: S(linha["funcionario_id"])
+      ? novoId("funcionarios", linha["funcionario_id"])
+      : null,
+    encarregado_id: S(linha["encarregado_id"])
+      ? novoId("funcionarios", linha["encarregado_id"])
+      : null,
     empresa_id: S(linha["empresa_id"]) ? novoId("empresas", linha["empresa_id"]) : null,
     local_id: S(linha["local_id"]) ? novoId("locais", linha["local_id"]) : null,
-    local_destino_id: S(linha["local_destino_id"]) ? novoId("locais", linha["local_destino_id"]) : undefined,
+    local_destino_id: S(linha["local_destino_id"])
+      ? novoId("locais", linha["local_destino_id"])
+      : undefined,
     equipe_id: novoId("equipes", linha["equipe_id"]),
-    documento_id: S(linha["documento_id"]) ? novoId("documentos", linha["documento_id"]) : undefined,
-    documento_item_id: S(linha["documento_item_id"]) ? novoId("documento_itens", linha["documento_item_id"]) : undefined,
-    movimentacao_origem_id: S(linha["movimentacao_origem_id"]) ? novoId("movimentacoes", linha["movimentacao_origem_id"]) : undefined,
+    documento_id: S(linha["documento_id"])
+      ? novoId("documentos", linha["documento_id"])
+      : undefined,
+    documento_item_id: S(linha["documento_item_id"])
+      ? novoId("documento_itens", linha["documento_item_id"])
+      : undefined,
+    movimentacao_origem_id: S(linha["movimentacao_origem_id"])
+      ? novoId("movimentacoes", linha["movimentacao_origem_id"])
+      : undefined,
   }));
 
   tabelas["equipe_membros"] = (tabelas["equipe_membros"] ?? []).map((linha) => ({
@@ -1505,21 +1343,23 @@ export async function compatibilizarDataset(
     funcionario_id: novoId("funcionarios", linha["funcionario_id"]),
   }));
 
-  tabelas["movimentacoes_equipamentos"] = (tabelas["movimentacoes_equipamentos"] ?? []).map((linha) => {
-    const tipoOrigem = S(linha["tipo_origem"]).toUpperCase();
-    const tipoDestino = S(linha["tipo_destino"]).toUpperCase();
-    const mapaParticipante = (tipo: string) =>
-      tipo === "EMPRESA" ? "empresas" : tipo === "EQUIPE" ? "equipes" : "funcionarios";
+  tabelas["movimentacoes_equipamentos"] = (tabelas["movimentacoes_equipamentos"] ?? []).map(
+    (linha) => {
+      const tipoOrigem = S(linha["tipo_origem"]).toUpperCase();
+      const tipoDestino = S(linha["tipo_destino"]).toUpperCase();
+      const mapaParticipante = (tipo: string) =>
+        tipo === "EMPRESA" ? "empresas" : tipo === "EQUIPE" ? "equipes" : "funcionarios";
 
-    return {
-      ...linha,
-      id: novoId("movimentacoes_equipamentos", linha["id"]),
-      projeto_id: novoProjetoId,
-      estoque_equipamento_id: novoId("estoque_equipamentos", linha["estoque_equipamento_id"]),
-      origem_id: novoId(mapaParticipante(tipoOrigem), linha["origem_id"]),
-      destino_id: novoId(mapaParticipante(tipoDestino), linha["destino_id"]),
-    };
-  });
+      return {
+        ...linha,
+        id: novoId("movimentacoes_equipamentos", linha["id"]),
+        projeto_id: novoProjetoId,
+        estoque_equipamento_id: novoId("estoque_equipamentos", linha["estoque_equipamento_id"]),
+        origem_id: novoId(mapaParticipante(tipoOrigem), linha["origem_id"]),
+        destino_id: novoId(mapaParticipante(tipoDestino), linha["destino_id"]),
+      };
+    },
+  );
 
   tabelas["configuracoes"] = (tabelas["configuracoes"] ?? []).map((linha) => ({
     ...linha,
@@ -1539,7 +1379,9 @@ export async function compatibilizarDataset(
     id: novoId("documento_itens", linha["id"]),
     documento_id: novoId("documentos", linha["documento_id"]),
     produto_id: S(linha["produto_id"]) ? novoId("produtos", linha["produto_id"]) : null,
-    equipe_destino_id: S(linha["equipe_destino_id"]) ? novoId("equipes", linha["equipe_destino_id"]) : null,
+    equipe_destino_id: S(linha["equipe_destino_id"])
+      ? novoId("equipes", linha["equipe_destino_id"])
+      : null,
   }));
 
   tabelas["documento_referencias"] = (tabelas["documento_referencias"] ?? []).map((linha) => ({
@@ -1555,7 +1397,9 @@ export async function compatibilizarDataset(
     id: novoId("inventarios", linha["id"]),
     projeto_id: novoProjetoId,
     equipe_id: S(linha["equipe_id"]) ? novoId("equipes", linha["equipe_id"]) : null,
-    responsavel_id: S(linha["responsavel_id"]) ? novoId("funcionarios", linha["responsavel_id"]) : null,
+    responsavel_id: S(linha["responsavel_id"])
+      ? novoId("funcionarios", linha["responsavel_id"])
+      : null,
   }));
 
   tabelas["inventario_itens"] = (tabelas["inventario_itens"] ?? []).map((linha) => ({
@@ -1566,17 +1410,25 @@ export async function compatibilizarDataset(
     equipe_id: novoId("equipes", linha["equipe_id"]),
   }));
 
-  tabelas["manutencoes_equipamentos"] = (tabelas["manutencoes_equipamentos"] ?? []).map((linha) => ({
-    ...linha,
-    id: novoId("manutencoes_equipamentos", linha["id"]),
-    projeto_id: novoProjetoId,
-    estoque_equipamento_id: novoId("estoque_equipamentos", linha["estoque_equipamento_id"]),
-    equipamento_id: novoId("equipamentos", linha["equipamento_id"]),
-    empresa_id: S(linha["empresa_id"]) ? novoId("empresas", linha["empresa_id"]) : null,
-    movimento_sinalizacao_id: S(linha["movimento_sinalizacao_id"]) ? novoId("movimentacoes_equipamentos", linha["movimento_sinalizacao_id"]) : null,
-    movimento_envio_id: S(linha["movimento_envio_id"]) ? novoId("movimentacoes_equipamentos", linha["movimento_envio_id"]) : null,
-    movimento_retorno_id: S(linha["movimento_retorno_id"]) ? novoId("movimentacoes_equipamentos", linha["movimento_retorno_id"]) : null,
-  }));
+  tabelas["manutencoes_equipamentos"] = (tabelas["manutencoes_equipamentos"] ?? []).map(
+    (linha) => ({
+      ...linha,
+      id: novoId("manutencoes_equipamentos", linha["id"]),
+      projeto_id: novoProjetoId,
+      estoque_equipamento_id: novoId("estoque_equipamentos", linha["estoque_equipamento_id"]),
+      equipamento_id: novoId("equipamentos", linha["equipamento_id"]),
+      empresa_id: S(linha["empresa_id"]) ? novoId("empresas", linha["empresa_id"]) : null,
+      movimento_sinalizacao_id: S(linha["movimento_sinalizacao_id"])
+        ? novoId("movimentacoes_equipamentos", linha["movimento_sinalizacao_id"])
+        : null,
+      movimento_envio_id: S(linha["movimento_envio_id"])
+        ? novoId("movimentacoes_equipamentos", linha["movimento_envio_id"])
+        : null,
+      movimento_retorno_id: S(linha["movimento_retorno_id"])
+        ? novoId("movimentacoes_equipamentos", linha["movimento_retorno_id"])
+        : null,
+    }),
+  );
 
   tabelas["manutencao_documentos"] = (tabelas["manutencao_documentos"] ?? []).map((linha) => ({
     ...linha,
@@ -1586,13 +1438,19 @@ export async function compatibilizarDataset(
     documento_id: novoId("documentos", linha["documento_id"]),
   }));
 
-  tabelas["apropriacoes_financeiras_equipamentos"] = (tabelas["apropriacoes_financeiras_equipamentos"] ?? []).map((linha) => ({
+  tabelas["apropriacoes_financeiras_equipamentos"] = (
+    tabelas["apropriacoes_financeiras_equipamentos"] ?? []
+  ).map((linha) => ({
     ...linha,
     id: novoId("apropriacoes_financeiras_equipamentos", linha["id"]),
     projeto_id: novoProjetoId,
     documento_id: novoId("documentos", linha["documento_id"]),
-    documento_item_id: S(linha["documento_item_id"]) ? novoId("documento_itens", linha["documento_item_id"]) : null,
-    manutencao_id: S(linha["manutencao_id"]) ? novoId("manutencoes_equipamentos", linha["manutencao_id"]) : null,
+    documento_item_id: S(linha["documento_item_id"])
+      ? novoId("documento_itens", linha["documento_item_id"])
+      : null,
+    manutencao_id: S(linha["manutencao_id"])
+      ? novoId("manutencoes_equipamentos", linha["manutencao_id"])
+      : null,
     estoque_equipamento_id: novoId("estoque_equipamentos", linha["estoque_equipamento_id"]),
     equipamento_id: novoId("equipamentos", linha["equipamento_id"]),
   }));
@@ -1607,31 +1465,34 @@ export async function compatibilizarDataset(
     unidade_id: S(linha["unidade_id"]) ? novoId("unidades", linha["unidade_id"]) : null,
   }));
 
-  tabelas["regras_consumo_equipamentos"] = (tabelas["regras_consumo_equipamentos"] ?? []).map((linha) => ({
-    ...linha,
-    id: novoId("regras_consumo_equipamentos", linha["id"]),
-    projeto_id: novoProjetoId,
-    equipamento_id: novoId("equipamentos", linha["equipamento_id"]),
-    estoque_equipamento_id: S(linha["estoque_equipamento_id"]) ? novoId("estoque_equipamentos", linha["estoque_equipamento_id"]) : null,
-    produto_id: novoId("produtos", linha["produto_id"]),
-    unidade_base_id: novoId("unidades", linha["unidade_base_id"]),
-    unidade_consumo_id: novoId("unidades", linha["unidade_consumo_id"]),
-  }));
+  tabelas["regras_consumo_equipamentos"] = (tabelas["regras_consumo_equipamentos"] ?? []).map(
+    (linha) => ({
+      ...linha,
+      id: novoId("regras_consumo_equipamentos", linha["id"]),
+      projeto_id: novoProjetoId,
+      equipamento_id: novoId("equipamentos", linha["equipamento_id"]),
+      estoque_equipamento_id: S(linha["estoque_equipamento_id"])
+        ? novoId("estoque_equipamentos", linha["estoque_equipamento_id"])
+        : null,
+      produto_id: novoId("produtos", linha["produto_id"]),
+      unidade_base_id: novoId("unidades", linha["unidade_base_id"]),
+      unidade_consumo_id: novoId("unidades", linha["unidade_consumo_id"]),
+    }),
+  );
 
-  tabelas["perfis_parametros_custos"] = (tabelas["perfis_parametros_custos"] ?? []).map((linha) => ({
-    ...linha,
-    id: novoId("perfis_parametros_custos", linha["id"]),
-    perfil_id: perfilFamiliaIds.get(S(linha["perfil_id"])) ?? uid(),
-    projeto_id: novoProjetoId,
-  }));
+  tabelas["perfis_parametros_custos"] = (tabelas["perfis_parametros_custos"] ?? []).map(
+    (linha) => ({
+      ...linha,
+      id: novoId("perfis_parametros_custos", linha["id"]),
+      perfil_id: perfilFamiliaIds.get(S(linha["perfil_id"])) ?? uid(),
+      projeto_id: novoProjetoId,
+    }),
+  );
 
   tabelas["inteligencia_acoes"] = (tabelas["inteligencia_acoes"] ?? []).map((linha) => {
     const origem = S(linha["origem"]).toUpperCase();
-    const tabelaReferencia = origem === "VIGIA"
-      ? "equipamentos"
-      : origem === "INVENTARIO"
-        ? "inventarios"
-        : "produtos";
+    const tabelaReferencia =
+      origem === "VIGIA" ? "equipamentos" : origem === "INVENTARIO" ? "inventarios" : "produtos";
 
     return {
       ...linha,
@@ -1639,7 +1500,9 @@ export async function compatibilizarDataset(
       projeto_id: novoProjetoId,
       produto_id: S(linha["produto_id"]) ? novoId("produtos", linha["produto_id"]) : null,
       equipe_id: S(linha["equipe_id"]) ? novoId("equipes", linha["equipe_id"]) : null,
-      referencia_id: S(linha["referencia_id"]) ? novoId(tabelaReferencia, linha["referencia_id"]) : null,
+      referencia_id: S(linha["referencia_id"])
+        ? novoId(tabelaReferencia, linha["referencia_id"])
+        : null,
     };
   });
 
@@ -1689,9 +1552,7 @@ export async function compatibilizarDataset(
   };
 }
 
-export function lerArquivo(
-  buffer: ArrayBuffer,
-): DatasetImportado {
+export function lerArquivo(buffer: ArrayBuffer): DatasetImportado {
   const workbook = XLSX.read(buffer, {
     cellDates: true,
   });
@@ -1704,48 +1565,28 @@ export function lerArquivo(
 
   const problemas: string[] = [];
 
-  const projetos = (tabelas["projetos"] ?? []).map(
-    projetoDeLinha,
-  );
+  const projetos = (tabelas["projetos"] ?? []).map(projetoDeLinha);
 
-  const categorias = (tabelas["categorias"] ?? []).map(
-    categoriaDeLinha,
-  );
+  const categorias = (tabelas["categorias"] ?? []).map(categoriaDeLinha);
 
-  const unidades = (tabelas["unidades"] ?? []).map(
-    unidadeDeLinha,
-  );
+  const unidades = (tabelas["unidades"] ?? []).map(unidadeDeLinha);
 
-  const empresas = (tabelas["empresas"] ?? []).map(
-    empresaDeLinha,
-  );
+  const empresas = (tabelas["empresas"] ?? []).map(empresaDeLinha);
 
-  const funcionarios = (
-    tabelas["funcionarios"] ?? []
-  ).map(funcionarioDeLinha);
+  const funcionarios = (tabelas["funcionarios"] ?? []).map(funcionarioDeLinha);
 
   const locais = (tabelas["locais"] ?? []).map(localDeLinha);
 
-  const produtos = (tabelas["produtos"] ?? []).map(
-    produtoDeLinha,
-  );
+  const produtos = (tabelas["produtos"] ?? []).map(produtoDeLinha);
 
-  const equipes = (tabelas["equipes"] ?? []).map(
-    equipeDeLinha,
-  );
+  const equipes = (tabelas["equipes"] ?? []).map(equipeDeLinha);
 
-  const equipeMembros = (
-    tabelas["equipe_membros"] ?? []
-  ).map(equipeMembroDeLinha);
+  const equipeMembros = (tabelas["equipe_membros"] ?? []).map(equipeMembroDeLinha);
 
-  const movimentacoes = (
-    tabelas["movimentacoes"] ?? []
-  ).map(movimentacaoDeLinha);
+  const movimentacoes = (tabelas["movimentacoes"] ?? []).map(movimentacaoDeLinha);
 
   if (projetos.length !== 1) {
-    problemas.push(
-      `A planilha deve conter exatamente 1 projeto. Encontrados: ${projetos.length}.`,
-    );
+    problemas.push(`A planilha deve conter exatamente 1 projeto. Encontrados: ${projetos.length}.`);
   } else {
     const projeto = projetos[0];
     if (projeto) {
@@ -1759,10 +1600,7 @@ export function lerArquivo(
   const nomesEmpresas = new Map<string, number>();
   for (const empresa of empresas) {
     const chave = normalizar(empresa.nome);
-    nomesEmpresas.set(
-      chave,
-      (nomesEmpresas.get(chave) ?? 0) + 1,
-    );
+    nomesEmpresas.set(chave, (nomesEmpresas.get(chave) ?? 0) + 1);
   }
 
   const duplicidadesEmpresas = [...nomesEmpresas.values()].filter(
@@ -1770,18 +1608,13 @@ export function lerArquivo(
   ).length;
 
   if (duplicidadesEmpresas > 0) {
-    problemas.push(
-      `Empresas: ${duplicidadesEmpresas} possível(is) duplicidade(s) por nome`,
-    );
+    problemas.push(`Empresas: ${duplicidadesEmpresas} possível(is) duplicidade(s) por nome`);
   }
 
   const nomesProdutos = new Map<string, number>();
   for (const produto of produtos) {
     const chave = normalizar(produto.nome);
-    nomesProdutos.set(
-      chave,
-      (nomesProdutos.get(chave) ?? 0) + 1,
-    );
+    nomesProdutos.set(chave, (nomesProdutos.get(chave) ?? 0) + 1);
   }
 
   const duplicidadesProdutos = [...nomesProdutos.values()].filter(
@@ -1789,9 +1622,7 @@ export function lerArquivo(
   ).length;
 
   if (duplicidadesProdutos > 0) {
-    problemas.push(
-      `Produtos: ${duplicidadesProdutos} possível(is) duplicidade(s) por nome`,
-    );
+    problemas.push(`Produtos: ${duplicidadesProdutos} possível(is) duplicidade(s) por nome`);
   }
 
   return {
@@ -1807,10 +1638,7 @@ export function lerArquivo(
     movimentacoes,
     tabelas,
     contagens: Object.fromEntries(
-      TABELAS_IMPORTACAO.map((tabela) => [
-        tabela,
-        (tabelas[tabela] ?? []).length,
-      ]),
+      TABELAS_IMPORTACAO.map((tabela) => [tabela, (tabelas[tabela] ?? []).length]),
     ),
     problemas,
   };
@@ -1824,10 +1652,7 @@ type RegistroComId = { id?: unknown };
  * das abas novas. Não convertemos as entidades tipadas para Record<string,
  * unknown>, pois isso provoca TS2345 no strict mode.
  */
-function comProjeto<T extends object>(
-  linhas: T[],
-  projetoId: string,
-): T[] {
+function comProjeto<T extends object>(linhas: T[], projetoId: string): T[] {
   return linhas.map((linha) => {
     if (Object.prototype.hasOwnProperty.call(linha, "projeto_id")) {
       return { ...linha, projeto_id: projetoId } as T;
@@ -1838,14 +1663,8 @@ function comProjeto<T extends object>(
 }
 
 /** Extrai IDs sem exigir que a entidade tenha index signature. */
-function idsDosRegistros<T extends RegistroComId>(
-  linhas: T[],
-): Set<string> {
-  return new Set(
-    linhas
-      .map((linha) => S(linha.id))
-      .filter(Boolean),
-  );
+function idsDosRegistros<T extends RegistroComId>(linhas: T[]): Set<string> {
+  return new Set(linhas.map((linha) => S(linha.id)).filter(Boolean));
 }
 
 /**
@@ -1854,30 +1673,21 @@ function idsDosRegistros<T extends RegistroComId>(
  * de uma string dinâmica. As entidades tipadas continuam intactas no resto
  * do fluxo.
  */
-async function bulkPutTabela(
-  tabela: string,
-  linhas: Linha[],
-): Promise<void> {
+async function bulkPutTabela(tabela: string, linhas: Linha[]): Promise<void> {
   if (linhas.length === 0) return;
 
   const db = getDB();
-  await db.table(tabela).bulkPut(linhas as any[]);
+  await db.table(tabela).bulkPut(linhas as never[]);
 }
 
-async function apagarFilhosPorIds(
-  tabela: string,
-  campo: string,
-  ids: Set<string>,
-): Promise<void> {
+async function apagarFilhosPorIds(tabela: string, campo: string, ids: Set<string>): Promise<void> {
   if (ids.size === 0) return;
 
   const db = getDB();
   const registros = await db.table(tabela).toArray();
 
   const removerIds = registros
-    .filter((registro: Linha) =>
-      ids.has(S(registro[campo])),
-    )
+    .filter((registro: Linha) => ids.has(S(registro[campo])))
     .map((registro: Linha) => S(registro["id"]))
     .filter(Boolean);
 
@@ -1895,16 +1705,11 @@ async function apagarFilhosPorIds(
  * sem projeto_id (apropriações, itens de documentos, itens de inventário
  * e membros de equipe).
  */
-export async function salvarDataset(
-  dataset: DatasetImportado,
-  projetoId?: string,
-): Promise<void> {
+export async function salvarDataset(dataset: DatasetImportado, projetoId?: string): Promise<void> {
   const projetoOrigem = dataset.projetos[0];
 
   if (!projetoOrigem) {
-    throw new Error(
-      "A planilha não contém um projeto para importar.",
-    );
+    throw new Error("A planilha não contém um projeto para importar.");
   }
 
   if (dataset.problemas.length > 0) {
@@ -1918,9 +1723,7 @@ export async function salvarDataset(
   const destinoId = projetoId || projetoOrigem.id;
 
   if (!destinoId) {
-    throw new Error(
-      "Não foi possível determinar o projeto de destino.",
-    );
+    throw new Error("Não foi possível determinar o projeto de destino.");
   }
 
   const db = getDB();
@@ -1965,55 +1768,31 @@ export async function salvarDataset(
     destinoId,
   );
 
-  const arquivos = comProjeto(
-    dataset.tabelas["arquivos"] ?? [],
-    destinoId,
-  );
+  const arquivos = comProjeto(dataset.tabelas["arquivos"] ?? [], destinoId);
 
-  const equipamentos = comProjeto(
-    dataset.tabelas["equipamentos"] ?? [],
-    destinoId,
-  );
+  const equipamentos = comProjeto(dataset.tabelas["equipamentos"] ?? [], destinoId);
 
-  const estoqueEquipamentos = comProjeto(
-    dataset.tabelas["estoque_equipamentos"] ?? [],
-    destinoId,
-  );
+  const estoqueEquipamentos = comProjeto(dataset.tabelas["estoque_equipamentos"] ?? [], destinoId);
 
   const movimentacoesEquipamentos = comProjeto(
     dataset.tabelas["movimentacoes_equipamentos"] ?? [],
     destinoId,
   );
 
-  const configuracoes = comProjeto(
-    dataset.tabelas["configuracoes"] ?? [],
-    destinoId,
-  );
+  const configuracoes = comProjeto(dataset.tabelas["configuracoes"] ?? [], destinoId);
 
-  const documentos = comProjeto(
-    dataset.tabelas["documentos"] ?? [],
-    destinoId,
-  );
+  const documentos = comProjeto(dataset.tabelas["documentos"] ?? [], destinoId);
 
   const documentoReferencias = comProjeto(
     dataset.tabelas["documento_referencias"] ?? [],
     destinoId,
   );
 
-  const inventarios = comProjeto(
-    dataset.tabelas["inventarios"] ?? [],
-    destinoId,
-  );
+  const inventarios = comProjeto(dataset.tabelas["inventarios"] ?? [], destinoId);
 
-  const inteligenciaAcoes = comProjeto(
-    dataset.tabelas["inteligencia_acoes"] ?? [],
-    destinoId,
-  );
+  const inteligenciaAcoes = comProjeto(dataset.tabelas["inteligencia_acoes"] ?? [], destinoId);
 
-  const manutencoes = comProjeto(
-    dataset.tabelas["manutencoes_equipamentos"] ?? [],
-    destinoId,
-  );
+  const manutencoes = comProjeto(dataset.tabelas["manutencoes_equipamentos"] ?? [], destinoId);
 
   const manutencaoDocumentos = comProjeto(
     dataset.tabelas["manutencao_documentos"] ?? [],
@@ -2021,9 +1800,7 @@ export async function salvarDataset(
   );
 
   const apropriacoesFinanceiras = comProjeto(
-    dataset.tabelas[
-      "apropriacoes_financeiras_equipamentos"
-    ] ?? [],
+    dataset.tabelas["apropriacoes_financeiras_equipamentos"] ?? [],
     destinoId,
   );
 
@@ -2032,15 +1809,9 @@ export async function salvarDataset(
     destinoId,
   );
 
-  const regrasConsumo = comProjeto(
-    dataset.tabelas["regras_consumo_equipamentos"] ?? [],
-    destinoId,
-  );
+  const regrasConsumo = comProjeto(dataset.tabelas["regras_consumo_equipamentos"] ?? [], destinoId);
 
-  const perfisCustos = comProjeto(
-    dataset.tabelas["perfis_parametros_custos"] ?? [],
-    destinoId,
-  );
+  const perfisCustos = comProjeto(dataset.tabelas["perfis_parametros_custos"] ?? [], destinoId);
 
   const movimentacoes = comProjeto(
     dataset.movimentacoes.map((item) => ({ ...item })),
@@ -2051,17 +1822,13 @@ export async function salvarDataset(
     ...item,
   }));
 
-  const apropriacoes = (
-    dataset.tabelas["apropriacoes"] ?? []
-  ).map((linha) => ({ ...linha }));
+  const apropriacoes = (dataset.tabelas["apropriacoes"] ?? []).map((linha) => ({ ...linha }));
 
-  const documentoItens = (
-    dataset.tabelas["documento_itens"] ?? []
-  ).map((linha) => ({ ...linha }));
+  const documentoItens = (dataset.tabelas["documento_itens"] ?? []).map((linha) => ({ ...linha }));
 
-  const inventarioItens = (
-    dataset.tabelas["inventario_itens"] ?? []
-  ).map((linha) => ({ ...linha }));
+  const inventarioItens = (dataset.tabelas["inventario_itens"] ?? []).map((linha) => ({
+    ...linha,
+  }));
 
   /*
    * IDs antigos que precisam ser removidos antes de substituir o projeto.
@@ -2095,82 +1862,35 @@ export async function salvarDataset(
     db.locais.where("projeto_id").equals(destinoId).toArray(),
     db.produtos.where("projeto_id").equals(destinoId).toArray(),
     db.equipes.where("projeto_id").equals(destinoId).toArray(),
-    db.categorias_equipamentos
-      .where("projeto_id")
-      .equals(destinoId)
-      .toArray(),
+    db.categorias_equipamentos.where("projeto_id").equals(destinoId).toArray(),
     db.arquivos.where("projeto_id").equals(destinoId).toArray(),
     db.equipamentos.where("projeto_id").equals(destinoId).toArray(),
-    db.estoque_equipamentos
-      .where("projeto_id")
-      .equals(destinoId)
-      .toArray(),
-    db.movimentacoes_equipamentos
-      .where("projeto_id")
-      .equals(destinoId)
-      .toArray(),
-    db.configuracoes
-      .where("projeto_id")
-      .equals(destinoId)
-      .toArray(),
+    db.estoque_equipamentos.where("projeto_id").equals(destinoId).toArray(),
+    db.movimentacoes_equipamentos.where("projeto_id").equals(destinoId).toArray(),
+    db.configuracoes.where("projeto_id").equals(destinoId).toArray(),
     db.documentos.where("projeto_id").equals(destinoId).toArray(),
-    db.documento_referencias
-      .where("projeto_id")
-      .equals(destinoId)
-      .toArray(),
-    db.inventarios
-      .where("projeto_id")
-      .equals(destinoId)
-      .toArray(),
-    db.inteligencia_acoes
-      .where("projeto_id")
-      .equals(destinoId)
-      .toArray(),
-    db.manutencoes_equipamentos
-      .where("projeto_id")
-      .equals(destinoId)
-      .toArray(),
-    db.manutencao_documentos
-      .where("projeto_id")
-      .equals(destinoId)
-      .toArray(),
-    db.apropriacoes_financeiras_equipamentos
-      .where("projeto_id")
-      .equals(destinoId)
-      .toArray(),
-    db.consumos_equipamentos
-      .where("projeto_id")
-      .equals(destinoId)
-      .toArray(),
-    db.regras_consumo_equipamentos
-      .where("projeto_id")
-      .equals(destinoId)
-      .toArray(),
-    db.perfis_parametros_custos
-      .where("projeto_id")
-      .equals(destinoId)
-      .toArray(),
+    db.documento_referencias.where("projeto_id").equals(destinoId).toArray(),
+    db.inventarios.where("projeto_id").equals(destinoId).toArray(),
+    db.inteligencia_acoes.where("projeto_id").equals(destinoId).toArray(),
+    db.manutencoes_equipamentos.where("projeto_id").equals(destinoId).toArray(),
+    db.manutencao_documentos.where("projeto_id").equals(destinoId).toArray(),
+    db.apropriacoes_financeiras_equipamentos.where("projeto_id").equals(destinoId).toArray(),
+    db.consumos_equipamentos.where("projeto_id").equals(destinoId).toArray(),
+    db.regras_consumo_equipamentos.where("projeto_id").equals(destinoId).toArray(),
+    db.perfis_parametros_custos.where("projeto_id").equals(destinoId).toArray(),
     db.movimentacoes.where("projeto_id").equals(destinoId).toArray(),
   ]);
 
   const equipesAntigasIds = idsDosRegistros(equipesAntigas);
   const equipesNovasIds = idsDosRegistros(equipes);
 
-  const estoqueAntigoIds = idsDosRegistros(
-    estoqueEquipamentosAntigos,
-  );
-  const estoqueNovoIds = idsDosRegistros(
-    estoqueEquipamentos,
-  );
+  const estoqueAntigoIds = idsDosRegistros(estoqueEquipamentosAntigos);
+  const estoqueNovoIds = idsDosRegistros(estoqueEquipamentos);
 
-  const documentosAntigosIds = idsDosRegistros(
-    documentosAntigos,
-  );
+  const documentosAntigosIds = idsDosRegistros(documentosAntigos);
   const documentosNovosIds = idsDosRegistros(documentos);
 
-  const inventariosAntigosIds = idsDosRegistros(
-    inventariosAntigos,
-  );
+  const inventariosAntigosIds = idsDosRegistros(inventariosAntigos);
   const inventariosNovosIds = idsDosRegistros(inventarios);
 
   /*
@@ -2178,11 +1898,7 @@ export async function salvarDataset(
    * O banco não possui FK relacional do IndexedDB; a integridade é
    * controlada pelo fluxo de domínio.
    */
-  await validarConflitosInterprojetos(
-    dataset.tabelas,
-    destinoId,
-    !projetoId,
-  );
+  await validarConflitosInterprojetos(dataset.tabelas, destinoId, !projetoId);
 
   const tabelasTransacao = [
     db.projetos,
@@ -2216,345 +1932,286 @@ export async function salvarDataset(
     db.perfis_parametros_custos,
   ];
 
-  await db.transaction(
-    "rw",
-    tabelasTransacao,
-    async () => {
-      /*
-       * 1. Apaga relações filhas sem projeto_id.
-       *
-       * Fazemos isso antes dos pais para não deixar apropriações,
-       * itens ou membros apontando para registros antigos.
-       */
-      await apagarFilhosPorIds(
-        "equipe_membros",
-        "equipe_id",
-        new Set([
-          ...equipesAntigasIds,
-          ...equipesNovasIds,
-        ]),
-      );
+  await db.transaction("rw", tabelasTransacao, async () => {
+    /*
+     * 1. Apaga relações filhas sem projeto_id.
+     *
+     * Fazemos isso antes dos pais para não deixar apropriações,
+     * itens ou membros apontando para registros antigos.
+     */
+    await apagarFilhosPorIds(
+      "equipe_membros",
+      "equipe_id",
+      new Set([...equipesAntigasIds, ...equipesNovasIds]),
+    );
 
-      await apagarFilhosPorIds(
-        "apropriacoes",
-        "estoque_equipamento_id",
-        new Set([
-          ...estoqueAntigoIds,
-          ...estoqueNovoIds,
-        ]),
-      );
+    await apagarFilhosPorIds(
+      "apropriacoes",
+      "estoque_equipamento_id",
+      new Set([...estoqueAntigoIds, ...estoqueNovoIds]),
+    );
 
-      await apagarFilhosPorIds(
-        "documento_itens",
-        "documento_id",
-        new Set([
-          ...documentosAntigosIds,
-          ...documentosNovosIds,
-        ]),
-      );
+    await apagarFilhosPorIds(
+      "documento_itens",
+      "documento_id",
+      new Set([...documentosAntigosIds, ...documentosNovosIds]),
+    );
 
-      await apagarFilhosPorIds(
-        "inventario_itens",
-        "inventario_id",
-        new Set([
-          ...inventariosAntigosIds,
-          ...inventariosNovosIds,
-        ]),
-      );
+    await apagarFilhosPorIds(
+      "inventario_itens",
+      "inventario_id",
+      new Set([...inventariosAntigosIds, ...inventariosNovosIds]),
+    );
 
-      /*
-       * 2. Remove todo o conteúdo anterior do projeto.
-       */
-      const apagarPorId = async <T extends RegistroComId>(
-        tabela: string,
-        registros: T[],
-      ): Promise<void> => {
-        const ids = idsDosRegistros(registros);
+    /*
+     * 2. Remove todo o conteúdo anterior do projeto.
+     */
+    const apagarPorId = async <T extends RegistroComId>(
+      tabela: string,
+      registros: T[],
+    ): Promise<void> => {
+      const ids = idsDosRegistros(registros);
 
-        if (ids.size > 0) {
-          await db.table(tabela).bulkDelete([...ids]);
-        }
-      };
-
-      await apagarPorId("empresas", empresasAntigas);
-      await apagarPorId("funcionarios", funcionariosAntigos);
-      await apagarPorId("locais", locaisAntigos);
-      await apagarPorId("produtos", produtosAntigos);
-      await apagarPorId("equipes", equipesAntigas);
-      await apagarPorId(
-        "categorias_equipamentos",
-        categoriasEquipamentosAntigas,
-      );
-      await apagarPorId("arquivos", arquivosAntigos);
-      await apagarPorId("equipamentos", equipamentosAntigos);
-      await apagarPorId(
-        "estoque_equipamentos",
-        estoqueEquipamentosAntigos,
-      );
-      await apagarPorId(
-        "movimentacoes_equipamentos",
-        movimentacoesEquipamentosAntigas,
-      );
-      await apagarPorId("configuracoes", configuracoesAntigas);
-      await apagarPorId("documentos", documentosAntigos);
-      await apagarPorId(
-        "documento_referencias",
-        documentoReferenciasAntigas,
-      );
-      await apagarPorId("inventarios", inventariosAntigos);
-      await apagarPorId(
-        "inteligencia_acoes",
-        inteligenciaAcoesAntigas,
-      );
-      await apagarPorId(
-        "manutencoes_equipamentos",
-        manutencoesAntigas,
-      );
-      await apagarPorId(
-        "manutencao_documentos",
-        manutencaoDocumentosAntigos,
-      );
-      await apagarPorId(
-        "apropriacoes_financeiras_equipamentos",
-        apropriacoesFinanceirasAntigas,
-      );
-      await apagarPorId(
-        "consumos_equipamentos",
-        consumosEquipamentosAntigos,
-      );
-      await apagarPorId(
-        "regras_consumo_equipamentos",
-        regrasConsumoAntigas,
-      );
-      await apagarPorId(
-        "perfis_parametros_custos",
-        perfisCustosAntigos,
-      );
-      await apagarPorId(
-        "movimentacoes",
-        movimentacoesAntigas,
-      );
-
-      /*
-       * 3. Projeto e catálogos globais.
-       */
-      await db.projetos.put(projetoDestino);
-
-      if (dataset.categorias.length > 0) {
-        await db.categorias.bulkPut(dataset.categorias);
+      if (ids.size > 0) {
+        await db.table(tabela).bulkDelete([...ids]);
       }
+    };
 
-      if (dataset.unidades.length > 0) {
-        await db.unidades.bulkPut(dataset.unidades);
-      }
+    await apagarPorId("empresas", empresasAntigas);
+    await apagarPorId("funcionarios", funcionariosAntigos);
+    await apagarPorId("locais", locaisAntigos);
+    await apagarPorId("produtos", produtosAntigos);
+    await apagarPorId("equipes", equipesAntigas);
+    await apagarPorId("categorias_equipamentos", categoriasEquipamentosAntigas);
+    await apagarPorId("arquivos", arquivosAntigos);
+    await apagarPorId("equipamentos", equipamentosAntigos);
+    await apagarPorId("estoque_equipamentos", estoqueEquipamentosAntigos);
+    await apagarPorId("movimentacoes_equipamentos", movimentacoesEquipamentosAntigas);
+    await apagarPorId("configuracoes", configuracoesAntigas);
+    await apagarPorId("documentos", documentosAntigos);
+    await apagarPorId("documento_referencias", documentoReferenciasAntigas);
+    await apagarPorId("inventarios", inventariosAntigos);
+    await apagarPorId("inteligencia_acoes", inteligenciaAcoesAntigas);
+    await apagarPorId("manutencoes_equipamentos", manutencoesAntigas);
+    await apagarPorId("manutencao_documentos", manutencaoDocumentosAntigos);
+    await apagarPorId("apropriacoes_financeiras_equipamentos", apropriacoesFinanceirasAntigas);
+    await apagarPorId("consumos_equipamentos", consumosEquipamentosAntigos);
+    await apagarPorId("regras_consumo_equipamentos", regrasConsumoAntigas);
+    await apagarPorId("perfis_parametros_custos", perfisCustosAntigos);
+    await apagarPorId("movimentacoes", movimentacoesAntigas);
 
-      /*
-       * 4. Pais.
-       */
-      if (empresas.length > 0) {
-        await db.empresas.bulkPut(empresas);
-      }
+    /*
+     * 3. Projeto e catálogos globais.
+     */
+    await db.projetos.put(projetoDestino);
 
-      if (funcionarios.length > 0) {
-        await db.funcionarios.bulkPut(funcionarios);
-      }
+    if (dataset.categorias.length > 0) {
+      await db.categorias.bulkPut(dataset.categorias);
+    }
 
-      if (locais.length > 0) {
-        await db.locais.bulkPut(locais);
-      }
+    if (dataset.unidades.length > 0) {
+      await db.unidades.bulkPut(dataset.unidades);
+    }
 
-      if (produtos.length > 0) {
-        await db.produtos.bulkPut(produtos);
-      }
+    /*
+     * 4. Pais.
+     */
+    if (empresas.length > 0) {
+      await db.empresas.bulkPut(empresas);
+    }
 
-      if (equipes.length > 0) {
-        await db.equipes.bulkPut(equipes);
-      }
+    if (funcionarios.length > 0) {
+      await db.funcionarios.bulkPut(funcionarios);
+    }
 
-      if (categoriasEquipamentos.length > 0) {
-        await bulkPutTabela(
-          "categorias_equipamentos",
-          categoriasEquipamentos,
+    if (locais.length > 0) {
+      await db.locais.bulkPut(locais);
+    }
+
+    if (produtos.length > 0) {
+      await db.produtos.bulkPut(produtos);
+    }
+
+    if (equipes.length > 0) {
+      await db.equipes.bulkPut(equipes);
+    }
+
+    if (categoriasEquipamentos.length > 0) {
+      await bulkPutTabela("categorias_equipamentos", categoriasEquipamentos);
+    }
+
+    if (arquivos.length > 0) {
+      await bulkPutTabela("arquivos", arquivos);
+    }
+
+    if (equipamentos.length > 0) {
+      await bulkPutTabela("equipamentos", equipamentos);
+    }
+
+    if (estoqueEquipamentos.length > 0) {
+      await bulkPutTabela("estoque_equipamentos", estoqueEquipamentos);
+    }
+
+    /*
+     * 5. Relações e histórico.
+     */
+    if (equipeMembros.length > 0) {
+      await db.equipe_membros.bulkPut(equipeMembros);
+    }
+
+    if (apropriacoes.length > 0) {
+      await bulkPutTabela("apropriacoes", apropriacoes);
+    }
+
+    if (movimentacoes.length > 0) {
+      await bulkPutTabela("movimentacoes", movimentacoes);
+    }
+
+    if (movimentacoesEquipamentos.length > 0) {
+      await bulkPutTabela("movimentacoes_equipamentos", movimentacoesEquipamentos);
+    }
+
+    if (configuracoes.length > 0) {
+      await bulkPutTabela("configuracoes", configuracoes);
+    }
+
+    if (documentos.length > 0) {
+      await bulkPutTabela("documentos", documentos);
+    }
+
+    if (documentoItens.length > 0) {
+      await bulkPutTabela("documento_itens", documentoItens);
+    }
+
+    if (documentoReferencias.length > 0) {
+      await bulkPutTabela("documento_referencias", documentoReferencias);
+    }
+
+    if (inventarios.length > 0) {
+      await bulkPutTabela("inventarios", inventarios);
+    }
+
+    if (inventarioItens.length > 0) {
+      await bulkPutTabela("inventario_itens", inventarioItens);
+    }
+
+    if (inteligenciaAcoes.length > 0) {
+      await bulkPutTabela("inteligencia_acoes", inteligenciaAcoes);
+    }
+
+    if (manutencoes.length > 0) {
+      await bulkPutTabela("manutencoes_equipamentos", manutencoes);
+    }
+
+    if (manutencaoDocumentos.length > 0) {
+      await bulkPutTabela("manutencao_documentos", manutencaoDocumentos);
+    }
+
+    if (apropriacoesFinanceiras.length > 0) {
+      await bulkPutTabela("apropriacoes_financeiras_equipamentos", apropriacoesFinanceiras);
+    }
+
+    if (consumosEquipamentos.length > 0) {
+      await bulkPutTabela("consumos_equipamentos", consumosEquipamentos);
+    }
+
+    if (regrasConsumo.length > 0) {
+      await bulkPutTabela("regras_consumo_equipamentos", regrasConsumo);
+    }
+
+    if (perfisCustos.length > 0) {
+      await bulkPutTabela("perfis_parametros_custos", perfisCustos);
+    }
+
+    // Verificação pós-gravação ainda dentro da transação. Qualquer divergência
+    // lança erro e faz o IndexedDB desfazer toda a importação.
+    const verificarQuantidadeProjeto = async (tabela: string, esperado: number) => {
+      const registros = (await db.table(tabela).toArray()) as Linha[];
+      return registros.filter((item) => S(item["projeto_id"]) === destinoId).length === esperado;
+    };
+
+    const verificacoesDiretas: Array<[string, number]> = [
+      ["empresas", empresas.length],
+      ["funcionarios", funcionarios.length],
+      ["locais", locais.length],
+      ["produtos", produtos.length],
+      ["equipes", equipes.length],
+      ["categorias_equipamentos", categoriasEquipamentos.length],
+      ["arquivos", arquivos.length],
+      ["equipamentos", equipamentos.length],
+      ["estoque_equipamentos", estoqueEquipamentos.length],
+      ["movimentacoes", movimentacoes.length],
+      ["movimentacoes_equipamentos", movimentacoesEquipamentos.length],
+      ["configuracoes", configuracoes.length],
+      ["documentos", documentos.length],
+      ["documento_referencias", documentoReferencias.length],
+      ["inventarios", inventarios.length],
+      ["inteligencia_acoes", inteligenciaAcoes.length],
+      ["manutencoes_equipamentos", manutencoes.length],
+      ["manutencao_documentos", manutencaoDocumentos.length],
+      ["apropriacoes_financeiras_equipamentos", apropriacoesFinanceiras.length],
+      ["consumos_equipamentos", consumosEquipamentos.length],
+      ["regras_consumo_equipamentos", regrasConsumo.length],
+      ["perfis_parametros_custos", perfisCustos.length],
+    ];
+
+    for (const [tabela, esperado] of verificacoesDiretas) {
+      if (!(await verificarQuantidadeProjeto(tabela, esperado))) {
+        throw new Error(
+          `Falha de integridade após a importação: a tabela ${tabela} não contém a quantidade esperada de registros do projeto.`,
         );
       }
+    }
 
-      if (arquivos.length > 0) {
-        await bulkPutTabela("arquivos", arquivos);
-      }
-
-      if (equipamentos.length > 0) {
-        await bulkPutTabela("equipamentos", equipamentos);
-      }
-
-      if (estoqueEquipamentos.length > 0) {
-        await bulkPutTabela(
-          "estoque_equipamentos",
-          estoqueEquipamentos,
+    const verificarRelacionada = async (
+      tabela: string,
+      campo: string,
+      pais: Set<string>,
+      esperado: number,
+    ) => {
+      const registros = (await db.table(tabela).toArray()) as Linha[];
+      const quantidade = registros.filter((item) => pais.has(S(item[campo]))).length;
+      if (quantidade !== esperado) {
+        throw new Error(
+          `Falha de integridade após a importação: a tabela ${tabela} contém ${quantidade} registros relacionados, mas eram esperados ${esperado}.`,
         );
       }
+    };
 
-      /*
-       * 5. Relações e histórico.
-       */
-      if (equipeMembros.length > 0) {
-        await db.equipe_membros.bulkPut(equipeMembros);
-      }
-
-      if (apropriacoes.length > 0) {
-        await bulkPutTabela("apropriacoes", apropriacoes);
-      }
-
-      if (movimentacoes.length > 0) {
-        await bulkPutTabela("movimentacoes", movimentacoes);
-      }
-
-      if (movimentacoesEquipamentos.length > 0) {
-        await bulkPutTabela(
-          "movimentacoes_equipamentos",
-          movimentacoesEquipamentos,
-        );
-      }
-
-      if (configuracoes.length > 0) {
-        await bulkPutTabela("configuracoes", configuracoes);
-      }
-
-      if (documentos.length > 0) {
-        await bulkPutTabela("documentos", documentos);
-      }
-
-      if (documentoItens.length > 0) {
-        await bulkPutTabela("documento_itens", documentoItens);
-      }
-
-      if (documentoReferencias.length > 0) {
-        await bulkPutTabela(
-          "documento_referencias",
-          documentoReferencias,
-        );
-      }
-
-      if (inventarios.length > 0) {
-        await bulkPutTabela("inventarios", inventarios);
-      }
-
-      if (inventarioItens.length > 0) {
-        await bulkPutTabela("inventario_itens", inventarioItens);
-      }
-
-      if (inteligenciaAcoes.length > 0) {
-        await bulkPutTabela(
-          "inteligencia_acoes",
-          inteligenciaAcoes,
-        );
-      }
-
-      if (manutencoes.length > 0) {
-        await bulkPutTabela(
-          "manutencoes_equipamentos",
-          manutencoes,
-        );
-      }
-
-      if (manutencaoDocumentos.length > 0) {
-        await bulkPutTabela(
-          "manutencao_documentos",
-          manutencaoDocumentos,
-        );
-      }
-
-      if (apropriacoesFinanceiras.length > 0) {
-        await bulkPutTabela(
-          "apropriacoes_financeiras_equipamentos",
-          apropriacoesFinanceiras,
-        );
-      }
-
-      if (consumosEquipamentos.length > 0) {
-        await bulkPutTabela(
-          "consumos_equipamentos",
-          consumosEquipamentos,
-        );
-      }
-
-      if (regrasConsumo.length > 0) {
-        await bulkPutTabela(
-          "regras_consumo_equipamentos",
-          regrasConsumo,
-        );
-      }
-
-      if (perfisCustos.length > 0) {
-        await bulkPutTabela(
-          "perfis_parametros_custos",
-          perfisCustos,
-        );
-      }
-
-      // Verificação pós-gravação ainda dentro da transação. Qualquer divergência
-      // lança erro e faz o IndexedDB desfazer toda a importação.
-      const verificarQuantidadeProjeto = async (tabela: string, esperado: number) => {
-        const registros = (await db.table(tabela).toArray()) as Linha[];
-        return registros.filter((item) => S(item["projeto_id"]) === destinoId).length === esperado;
-      };
-
-      const verificacoesDiretas: Array<[string, number]> = [
-        ["empresas", empresas.length],
-        ["funcionarios", funcionarios.length],
-        ["locais", locais.length],
-        ["produtos", produtos.length],
-        ["equipes", equipes.length],
-        ["categorias_equipamentos", categoriasEquipamentos.length],
-        ["arquivos", arquivos.length],
-        ["equipamentos", equipamentos.length],
-        ["estoque_equipamentos", estoqueEquipamentos.length],
-        ["movimentacoes", movimentacoes.length],
-        ["movimentacoes_equipamentos", movimentacoesEquipamentos.length],
-        ["configuracoes", configuracoes.length],
-        ["documentos", documentos.length],
-        ["documento_referencias", documentoReferencias.length],
-        ["inventarios", inventarios.length],
-        ["inteligencia_acoes", inteligenciaAcoes.length],
-        ["manutencoes_equipamentos", manutencoes.length],
-        ["manutencao_documentos", manutencaoDocumentos.length],
-        ["apropriacoes_financeiras_equipamentos", apropriacoesFinanceiras.length],
-        ["consumos_equipamentos", consumosEquipamentos.length],
-        ["regras_consumo_equipamentos", regrasConsumo.length],
-        ["perfis_parametros_custos", perfisCustos.length],
-      ];
-
-      for (const [tabela, esperado] of verificacoesDiretas) {
-        if (!(await verificarQuantidadeProjeto(tabela, esperado))) {
-          throw new Error(`Falha de integridade após a importação: a tabela ${tabela} não contém a quantidade esperada de registros do projeto.`);
-        }
-      }
-
-      const verificarRelacionada = async (tabela: string, campo: string, pais: Set<string>, esperado: number) => {
-        const registros = (await db.table(tabela).toArray()) as Linha[];
-        const quantidade = registros.filter((item) => pais.has(S(item[campo]))).length;
-        if (quantidade !== esperado) {
-          throw new Error(`Falha de integridade após a importação: a tabela ${tabela} contém ${quantidade} registros relacionados, mas eram esperados ${esperado}.`);
-        }
-      };
-
-      await verificarRelacionada("equipe_membros", "equipe_id", equipesNovasIds, equipeMembros.length);
-      await verificarRelacionada("apropriacoes", "estoque_equipamento_id", estoqueNovoIds, apropriacoes.length);
-      await verificarRelacionada("documento_itens", "documento_id", documentosNovosIds, documentoItens.length);
-      await verificarRelacionada("inventario_itens", "inventario_id", inventariosNovosIds, inventarioItens.length);
-    },
-  );
-
+    await verificarRelacionada(
+      "equipe_membros",
+      "equipe_id",
+      equipesNovasIds,
+      equipeMembros.length,
+    );
+    await verificarRelacionada(
+      "apropriacoes",
+      "estoque_equipamento_id",
+      estoqueNovoIds,
+      apropriacoes.length,
+    );
+    await verificarRelacionada(
+      "documento_itens",
+      "documento_id",
+      documentosNovosIds,
+      documentoItens.length,
+    );
+    await verificarRelacionada(
+      "inventario_itens",
+      "inventario_id",
+      inventariosNovosIds,
+      inventarioItens.length,
+    );
+  });
 }
 
 /**
  * Função auxiliar para inspeção manual/automação:
  * informa quantos registros cada aba contém sem alterar o banco.
  */
-export function resumirDataset(
-  dataset: DatasetImportado,
-): string {
-  return TABELAS_IMPORTACAO.map(
-    (tabela) =>
-      `${tabela}: ${dataset.contagens[tabela] ?? 0}`,
-  ).join("\n");
+export function resumirDataset(dataset: DatasetImportado): string {
+  return TABELAS_IMPORTACAO.map((tabela) => `${tabela}: ${dataset.contagens[tabela] ?? 0}`).join(
+    "\n",
+  );
 }
+
