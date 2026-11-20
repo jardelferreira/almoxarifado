@@ -7,10 +7,7 @@ import type {
   MovimentacaoEquipamentoParte,
   MovimentacaoEquipamentoTipo,
 } from "@/types";
-import {
-  estadoEquipamentosRepo,
-  type EstadoEstoqueEquipamento,
-} from "./estado-repo";
+import { estadoEquipamentosRepo, type EstadoEstoqueEquipamento } from "./estado-repo";
 
 type MovimentacaoEquipamentoInput = Omit<
   MovimentacaoEquipamento,
@@ -33,49 +30,30 @@ function validarQuantidade(quantidade: number): void {
   }
 }
 
-function ordenarMovimentacoes(
-  movimentacoes: MovimentacaoEquipamento[],
-): MovimentacaoEquipamento[] {
+function ordenarMovimentacoes(movimentacoes: MovimentacaoEquipamento[]): MovimentacaoEquipamento[] {
   return [...movimentacoes].sort((a, b) =>
-    `${a.data}|${a.criado_em}|${a.id}`.localeCompare(
-      `${b.data}|${b.criado_em}|${b.id}`,
-    ),
+    `${a.data}|${a.criado_em}|${a.id}`.localeCompare(`${b.data}|${b.criado_em}|${b.id}`),
   );
 }
 
-async function obterEquipes(
-  projetoId: string,
-): Promise<{
+async function obterEquipes(projetoId: string): Promise<{
   almoxarifado: Equipe;
   manutencao: Equipe;
 }> {
   const db = getDB();
 
-  const equipes = await db.equipes
-    .where("projeto_id")
-    .equals(projetoId)
-    .toArray();
+  const equipes = await db.equipes.where("projeto_id").equals(projetoId).toArray();
 
-  const almoxarifado = equipes.find(
-    (equipe) =>
-      normalizarNome(equipe.nome) === "almoxarifado",
-  );
+  const almoxarifado = equipes.find((equipe) => normalizarNome(equipe.nome) === "almoxarifado");
 
-  const manutencao = equipes.find(
-    (equipe) =>
-      normalizarNome(equipe.nome) === "manutencao",
-  );
+  const manutencao = equipes.find((equipe) => normalizarNome(equipe.nome) === "manutencao");
 
   if (!almoxarifado) {
-    throw new Error(
-      "A equipe Almoxarifado não foi encontrada neste projeto.",
-    );
+    throw new Error("A equipe Almoxarifado não foi encontrada neste projeto.");
   }
 
   if (!manutencao) {
-    throw new Error(
-      "A equipe Manutenção não foi encontrada neste projeto.",
-    );
+    throw new Error("A equipe Manutenção não foi encontrada neste projeto.");
   }
 
   return {
@@ -84,97 +62,53 @@ async function obterEquipes(
   };
 }
 
-async function validarFuncionario(
-  projetoId: string,
-  funcionarioId: string,
-): Promise<void> {
-  const funcionario = await getDB().funcionarios.get(
-    funcionarioId,
-  );
+async function validarFuncionario(projetoId: string, funcionarioId: string): Promise<void> {
+  const funcionario = await getDB().funcionarios.get(funcionarioId);
 
-  if (
-    !funcionario ||
-    funcionario.projeto_id !== projetoId
-  ) {
-    throw new Error(
-      "O funcionário não pertence ao projeto da movimentação.",
-    );
+  if (!funcionario || funcionario.projeto_id !== projetoId) {
+    throw new Error("O funcionário não pertence ao projeto da movimentação.");
   }
 
   if (funcionario.status !== "ATIVO") {
-    throw new Error(
-      "O funcionário está inativo.",
-    );
+    throw new Error("O funcionário está inativo.");
   }
 }
 
-async function validarEquipe(
-  projetoId: string,
-  equipeId: string,
-): Promise<Equipe> {
+async function validarEquipe(projetoId: string, equipeId: string): Promise<Equipe> {
   const equipe = await getDB().equipes.get(equipeId);
 
-  if (
-    !equipe ||
-    equipe.projeto_id !== projetoId
-  ) {
-    throw new Error(
-      "A equipe não pertence ao projeto da movimentação.",
-    );
+  if (!equipe || equipe.projeto_id !== projetoId) {
+    throw new Error("A equipe não pertence ao projeto da movimentação.");
   }
 
   if (!equipe.ativo) {
-    throw new Error(
-      "A equipe está inativa.",
-    );
+    throw new Error("A equipe está inativa.");
   }
 
   return equipe;
 }
 
-async function validarEmpresa(
-  projetoId: string,
-  empresaId: string,
-): Promise<void> {
-  const empresa = await getDB().empresas.get(
-    empresaId,
-  );
+async function validarEmpresa(projetoId: string, empresaId: string): Promise<void> {
+  const empresa = await getDB().empresas.get(empresaId);
 
-  if (
-    !empresa ||
-    empresa.projeto_id !== projetoId
-  ) {
-    throw new Error(
-      "A empresa não pertence ao projeto da movimentação.",
-    );
+  if (!empresa || empresa.projeto_id !== projetoId) {
+    throw new Error("A empresa não pertence ao projeto da movimentação.");
   }
 
   if (!empresa.ativo) {
-    throw new Error(
-      "A empresa está inativa.",
-    );
+    throw new Error("A empresa está inativa.");
   }
 }
 
-function validarParticipante(
-  parte: MovimentacaoEquipamentoParte,
-): void {
-  const partes: MovimentacaoEquipamentoParte[] = [
-    "EMPRESA",
-    "EQUIPE",
-    "FUNCIONARIO",
-  ];
+function validarParticipante(parte: MovimentacaoEquipamentoParte): void {
+  const partes: MovimentacaoEquipamentoParte[] = ["EMPRESA", "EQUIPE", "FUNCIONARIO"];
 
   if (!partes.includes(parte)) {
-    throw new Error(
-      "Tipo de participante inválido.",
-    );
+    throw new Error("Tipo de participante inválido.");
   }
 }
 
-function validarTipo(
-  tipo: MovimentacaoEquipamentoTipo,
-): void {
+function validarTipo(tipo: MovimentacaoEquipamentoTipo): void {
   const tipos: MovimentacaoEquipamentoTipo[] = [
     "ENTRADA",
     "SAIDA",
@@ -191,9 +125,7 @@ function validarTipo(
   ];
 
   if (!tipos.includes(tipo)) {
-    throw new Error(
-      "Tipo de movimentação inválido.",
-    );
+    throw new Error("Tipo de movimentação inválido.");
   }
 }
 
@@ -202,10 +134,7 @@ function exigirDisponibilidade(
   quantidadeSolicitada: number,
   mensagem: string,
 ): void {
-  if (
-    quantidadeSolicitada >
-    quantidadeDisponivel
-  ) {
+  if (quantidadeSolicitada > quantidadeDisponivel) {
     throw new Error(mensagem);
   }
 }
@@ -215,14 +144,8 @@ async function obterApropriacao(
   funcionarioId: string,
 ): Promise<Apropriacao | undefined> {
   return getDB()
-    .apropriacoes
-    .where(
-      "[estoque_equipamento_id+funcionario_id]",
-    )
-    .equals([
-      estoqueEquipamentoId,
-      funcionarioId,
-    ])
+    .apropriacoes.where("[estoque_equipamento_id+funcionario_id]")
+    .equals([estoqueEquipamentoId, funcionarioId])
     .first();
 }
 
@@ -234,16 +157,12 @@ async function adicionarApropriacao(
 ): Promise<void> {
   const db = getDB();
 
-  const existente = await obterApropriacao(
-    estoqueEquipamentoId,
-    funcionarioId,
-  );
+  const existente = await obterApropriacao(estoqueEquipamentoId, funcionarioId);
 
   if (existente) {
     await db.apropriacoes.put({
       ...existente,
-      quantidade:
-        existente.quantidade + quantidade,
+      quantidade: existente.quantidade + quantidade,
       atualizado_em: agora,
     });
 
@@ -252,8 +171,7 @@ async function adicionarApropriacao(
 
   const apropriacao: Apropriacao = {
     id: uid(),
-    estoque_equipamento_id:
-      estoqueEquipamentoId,
+    estoque_equipamento_id: estoqueEquipamentoId,
     funcionario_id: funcionarioId,
     quantidade,
     criado_em: agora,
@@ -271,30 +189,20 @@ async function removerApropriacao(
 ): Promise<void> {
   const db = getDB();
 
-  const apropriacao = await obterApropriacao(
-    estoqueEquipamentoId,
-    funcionarioId,
-  );
+  const apropriacao = await obterApropriacao(estoqueEquipamentoId, funcionarioId);
 
   if (!apropriacao) {
-    throw new Error(
-      "Não existe apropriação para este funcionário e equipamento.",
-    );
+    throw new Error("Não existe apropriação para este funcionário e equipamento.");
   }
 
   if (quantidade > apropriacao.quantidade) {
-    throw new Error(
-      "A quantidade devolvida é maior que a quantidade apropriada pelo funcionário.",
-    );
+    throw new Error("A quantidade devolvida é maior que a quantidade apropriada pelo funcionário.");
   }
 
-  const novaQuantidade =
-    apropriacao.quantidade - quantidade;
+  const novaQuantidade = apropriacao.quantidade - quantidade;
 
   if (novaQuantidade === 0) {
-    await db.apropriacoes.delete(
-      apropriacao.id,
-    );
+    await db.apropriacoes.delete(apropriacao.id);
 
     return;
   }
@@ -322,70 +230,35 @@ async function atualizarApropriacoes(
 
   switch (tipo) {
     case "SAIDA":
-      await adicionarApropriacao(
-        estoque_equipamento_id,
-        destino_id,
-        quantidade,
-        agora,
-      );
+      await adicionarApropriacao(estoque_equipamento_id, destino_id, quantidade, agora);
       return;
 
     case "DEVOLUCAO":
-      await removerApropriacao(
-        estoque_equipamento_id,
-        origem_id,
-        quantidade,
-        agora,
-      );
+      await removerApropriacao(estoque_equipamento_id, origem_id, quantidade, agora);
       return;
 
     case "TRANSFERENCIA":
-      await removerApropriacao(
-        estoque_equipamento_id,
-        origem_id,
-        quantidade,
-        agora,
-      );
+      await removerApropriacao(estoque_equipamento_id, origem_id, quantidade, agora);
 
-      await adicionarApropriacao(
-        estoque_equipamento_id,
-        destino_id,
-        quantidade,
-        agora,
-      );
+      await adicionarApropriacao(estoque_equipamento_id, destino_id, quantidade, agora);
 
       return;
 
     case "SINALIZAR_MANUTENCAO":
       if (tipo_origem === "FUNCIONARIO") {
-        await removerApropriacao(
-          estoque_equipamento_id,
-          origem_id,
-          quantidade,
-          agora,
-        );
+        await removerApropriacao(estoque_equipamento_id, origem_id, quantidade, agora);
       }
       return;
 
     case "MANUTENCAO":
       if (tipo_origem === "FUNCIONARIO") {
-        await removerApropriacao(
-          estoque_equipamento_id,
-          origem_id,
-          quantidade,
-          agora,
-        );
+        await removerApropriacao(estoque_equipamento_id, origem_id, quantidade, agora);
       }
       return;
 
     case "ENVIO":
       if (tipo_origem === "FUNCIONARIO") {
-        await removerApropriacao(
-          estoque_equipamento_id,
-          origem_id,
-          quantidade,
-          agora,
-        );
+        await removerApropriacao(estoque_equipamento_id, origem_id, quantidade, agora);
       }
       return;
 
@@ -402,14 +275,17 @@ async function obterPendenciaReentrada(
   estoqueEquipamentoId: string,
 ): Promise<{ tipo: "DEVOLUCAO_FORNECEDOR" | "BAIXA"; restante: number; origemId: string }> {
   const movimentacoes = await getDB()
-    .movimentacoes_equipamentos
-    .where("estoque_equipamento_id")
+    .movimentacoes_equipamentos.where("estoque_equipamento_id")
     .equals(estoqueEquipamentoId)
     .toArray();
 
   const ordenadas = ordenarMovimentacoes(movimentacoes);
 
-  const pendentes: Array<{ tipo: "DEVOLUCAO_FORNECEDOR" | "BAIXA"; restante: number; origemId: string }> = [];
+  const pendentes: Array<{
+    tipo: "DEVOLUCAO_FORNECEDOR" | "BAIXA";
+    restante: number;
+    origemId: string;
+  }> = [];
 
   for (const movimentacao of ordenadas) {
     if (movimentacao.tipo === "DEVOLUCAO_FORNECEDOR" || movimentacao.tipo === "BAIXA") {
@@ -437,7 +313,9 @@ async function obterPendenciaReentrada(
 
   const pendencia = pendentes.at(-1);
   if (!pendencia || pendencia.restante <= 0) {
-    throw new Error("Este registro não possui quantidade devolvida ou baixada disponível para reentrada.");
+    throw new Error(
+      "Este registro não possui quantidade devolvida ou baixada disponível para reentrada.",
+    );
   }
 
   return pendencia;
@@ -451,14 +329,7 @@ async function validarEstadoDaOrigem(
     manutencao: Equipe;
   },
 ): Promise<void> {
-  const {
-    tipo,
-    quantidade,
-    tipo_origem,
-    origem_id,
-    tipo_destino,
-    destino_id,
-  } = movimentacao;
+  const { tipo, quantidade, tipo_origem, origem_id, tipo_destino, destino_id } = movimentacao;
 
   switch (tipo) {
     case "SAIDA":
@@ -470,10 +341,7 @@ async function validarEstadoDaOrigem(
       return;
 
     case "DEVOLUCAO": {
-      const disponivel =
-        estado.funcionarios.get(
-          origem_id,
-        ) ?? 0;
+      const disponivel = estado.funcionarios.get(origem_id) ?? 0;
 
       exigirDisponibilidade(
         disponivel,
@@ -485,10 +353,7 @@ async function validarEstadoDaOrigem(
     }
 
     case "TRANSFERENCIA": {
-      const disponivel =
-        estado.funcionarios.get(
-          origem_id,
-        ) ?? 0;
+      const disponivel = estado.funcionarios.get(origem_id) ?? 0;
 
       exigirDisponibilidade(
         disponivel,
@@ -532,9 +397,7 @@ async function validarEstadoDaOrigem(
 
     case "ENVIO":
       if (tipo_origem !== "EQUIPE") {
-        throw new Error(
-          "O envio para manutenção deve partir do Almoxarifado ou da Manutenção.",
-        );
+        throw new Error("O envio para manutenção deve partir do Almoxarifado ou da Manutenção.");
       }
 
       if (origem_id === equipes.almoxarifado.id) {
@@ -555,17 +418,23 @@ async function validarEstadoDaOrigem(
         return;
       }
 
-      throw new Error(
-        "O envio deve partir do Almoxarifado ou da Manutenção.",
-      );
+      throw new Error("O envio deve partir do Almoxarifado ou da Manutenção.");
 
     case "RETIRADA_MANUTENCAO":
       if (origem_id === equipes.manutencao.id) {
-        exigirDisponibilidade(estado.manutencao, quantidade, "Quantidade insuficiente na Manutenção.");
+        exigirDisponibilidade(
+          estado.manutencao,
+          quantidade,
+          "Quantidade insuficiente na Manutenção.",
+        );
         return;
       }
       if (origem_id === equipes.almoxarifado.id) {
-        exigirDisponibilidade(estado.almoxarifado, quantidade, "Quantidade insuficiente no Almoxarifado.");
+        exigirDisponibilidade(
+          estado.almoxarifado,
+          quantidade,
+          "Quantidade insuficiente no Almoxarifado.",
+        );
         return;
       }
       throw new Error("Origem inválida para retirada de manutenção.");
@@ -602,7 +471,9 @@ async function validarEstadoDaOrigem(
         movimentacao.estoque_equipamento_id,
       );
       if (origem_id !== pendencia.origemId) {
-        throw new Error("A empresa de origem da reentrada deve ser a mesma da última devolução ou baixa pendente.");
+        throw new Error(
+          "A empresa de origem da reentrada deve ser a mesma da última devolução ou baixa pendente.",
+        );
       }
       exigirDisponibilidade(
         pendencia.restante,
@@ -614,9 +485,7 @@ async function validarEstadoDaOrigem(
 
     case "BAIXA": {
       if (tipo_origem !== "EQUIPE") {
-        throw new Error(
-          "A baixa deve partir do Almoxarifado ou da Manutenção.",
-        );
+        throw new Error("A baixa deve partir do Almoxarifado ou da Manutenção.");
       }
 
       if (origem_id === equipes.almoxarifado.id) {
@@ -632,18 +501,13 @@ async function validarEstadoDaOrigem(
           "Quantidade insuficiente na Manutenção para baixa.",
         );
       } else {
-        throw new Error(
-          "A baixa deve partir do Almoxarifado ou da Manutenção.",
-        );
+        throw new Error("A baixa deve partir do Almoxarifado ou da Manutenção.");
       }
       return;
     }
 
     case "DEVOLUCAO_FORNECEDOR":
-      if (
-        origem_id ===
-        equipes.almoxarifado.id
-      ) {
+      if (origem_id === equipes.almoxarifado.id) {
         exigirDisponibilidade(
           estado.almoxarifado,
           quantidade,
@@ -653,10 +517,7 @@ async function validarEstadoDaOrigem(
         return;
       }
 
-      if (
-        origem_id ===
-        equipes.manutencao.id
-      ) {
+      if (origem_id === equipes.manutencao.id) {
         exigirDisponibilidade(
           estado.manutencao,
           quantidade,
@@ -666,17 +527,13 @@ async function validarEstadoDaOrigem(
         return;
       }
 
-      throw new Error(
-        "Origem inválida para devolução ao fornecedor.",
-      );
+      throw new Error("Origem inválida para devolução ao fornecedor.");
 
     case "ENTRADA":
       return;
 
     default:
-      throw new Error(
-        "Tipo de movimentação não suportado.",
-      );
+      throw new Error("Tipo de movimentação não suportado.");
   }
 }
 
@@ -687,38 +544,26 @@ function validarRegraDoTipo(
     manutencao: Equipe;
   },
 ): void {
-  const {
-    tipo,
-    tipo_origem,
-    origem_id,
-    tipo_destino,
-    destino_id,
-  } = movimentacao;
+  const { tipo, tipo_origem, origem_id, tipo_destino, destino_id } = movimentacao;
 
   switch (tipo) {
     case "ENTRADA":
       if (
         tipo_origem !== "EMPRESA" ||
         tipo_destino !== "EQUIPE" ||
-        destino_id !==
-          equipes.almoxarifado.id
+        destino_id !== equipes.almoxarifado.id
       ) {
-        throw new Error(
-          "ENTRADA deve ser Empresa → Almoxarifado.",
-        );
+        throw new Error("ENTRADA deve ser Empresa → Almoxarifado.");
       }
       return;
 
     case "SAIDA":
       if (
         tipo_origem !== "EQUIPE" ||
-        origem_id !==
-          equipes.almoxarifado.id ||
+        origem_id !== equipes.almoxarifado.id ||
         tipo_destino !== "FUNCIONARIO"
       ) {
-        throw new Error(
-          "SAIDA deve ser Almoxarifado → Funcionário.",
-        );
+        throw new Error("SAIDA deve ser Almoxarifado → Funcionário.");
       }
       return;
 
@@ -726,29 +571,19 @@ function validarRegraDoTipo(
       if (
         tipo_origem !== "FUNCIONARIO" ||
         tipo_destino !== "EQUIPE" ||
-        destino_id !==
-          equipes.almoxarifado.id
+        destino_id !== equipes.almoxarifado.id
       ) {
-        throw new Error(
-          "DEVOLUCAO deve ser Funcionário → Almoxarifado.",
-        );
+        throw new Error("DEVOLUCAO deve ser Funcionário → Almoxarifado.");
       }
       return;
 
     case "TRANSFERENCIA":
-      if (
-        tipo_origem !== "FUNCIONARIO" ||
-        tipo_destino !== "FUNCIONARIO"
-      ) {
-        throw new Error(
-          "TRANSFERENCIA deve ser Funcionário → Funcionário.",
-        );
+      if (tipo_origem !== "FUNCIONARIO" || tipo_destino !== "FUNCIONARIO") {
+        throw new Error("TRANSFERENCIA deve ser Funcionário → Funcionário.");
       }
 
       if (origem_id === destino_id) {
-        throw new Error(
-          "O funcionário de origem e destino não podem ser iguais.",
-        );
+        throw new Error("O funcionário de origem e destino não podem ser iguais.");
       }
 
       return;
@@ -759,9 +594,7 @@ function validarRegraDoTipo(
         tipo_destino !== "EQUIPE" ||
         destino_id !== equipes.manutencao.id
       ) {
-        throw new Error(
-          "SINALIZAR_MANUTENCAO deve registrar a sinalização para Manutenção.",
-        );
+        throw new Error("SINALIZAR_MANUTENCAO deve registrar a sinalização para Manutenção.");
       }
       return;
 
@@ -780,9 +613,7 @@ function validarRegraDoTipo(
         (tipo_origem !== "EQUIPE" && tipo_origem !== "FUNCIONARIO") ||
         tipo_destino !== "EMPRESA"
       ) {
-        throw new Error(
-          "ENVIO deve ser Almoxarifado ou Funcionário → Empresa de manutenção.",
-        );
+        throw new Error("ENVIO deve ser Almoxarifado ou Funcionário → Empresa de manutenção.");
       }
       if (
         tipo_origem === "EQUIPE" &&
@@ -815,109 +646,69 @@ function validarRegraDoTipo(
       }
 
       if (tipo_origem === "EQUIPE" && origem_id !== equipes.manutencao.id) {
-        throw new Error(
-          "O retorno interno deve partir da equipe Manutenção.",
-        );
+        throw new Error("O retorno interno deve partir da equipe Manutenção.");
       }
       return;
 
     case "BAIXA":
       if (
         tipo_origem !== "EQUIPE" ||
-        (origem_id !== equipes.almoxarifado.id &&
-          origem_id !== equipes.manutencao.id) ||
+        (origem_id !== equipes.almoxarifado.id && origem_id !== equipes.manutencao.id) ||
         tipo_destino !== "EMPRESA"
       ) {
-        throw new Error(
-          "BAIXA deve ser Almoxarifado ou Manutenção → Empresa proprietária.",
-        );
+        throw new Error("BAIXA deve ser Almoxarifado ou Manutenção → Empresa proprietária.");
       }
       return;
 
     case "REENTRADA":
       if (tipo_origem !== "EMPRESA" || tipo_destino !== "EQUIPE") {
-        throw new Error(
-          "REENTRADA deve ser Empresa → Equipe.",
-        );
+        throw new Error("REENTRADA deve ser Empresa → Equipe.");
       }
       return;
 
     case "DEVOLUCAO_FORNECEDOR":
       if (
         tipo_origem !== "EQUIPE" ||
-        (origem_id !==
-          equipes.almoxarifado.id &&
-          origem_id !==
-            equipes.manutencao.id) ||
+        (origem_id !== equipes.almoxarifado.id && origem_id !== equipes.manutencao.id) ||
         tipo_destino !== "EMPRESA"
       ) {
-        throw new Error(
-          "DEVOLUCAO_FORNECEDOR deve ser Almoxarifado/Manutenção → Empresa.",
-        );
+        throw new Error("DEVOLUCAO_FORNECEDOR deve ser Almoxarifado/Manutenção → Empresa.");
       }
       return;
 
     default:
-      throw new Error(
-        "Tipo de movimentação não suportado.",
-      );
+      throw new Error("Tipo de movimentação não suportado.");
   }
 }
 
-async function validarParticipantes(
-  movimentacao: MovimentacaoEquipamentoInput,
-): Promise<void> {
-  const {
-    projeto_id,
-    tipo_origem,
-    origem_id,
-    tipo_destino,
-    destino_id,
-  } = movimentacao;
+async function validarParticipantes(movimentacao: MovimentacaoEquipamentoInput): Promise<void> {
+  const { projeto_id, tipo_origem, origem_id, tipo_destino, destino_id } = movimentacao;
 
   validarParticipante(tipo_origem);
   validarParticipante(tipo_destino);
 
   if (tipo_origem === "EQUIPE") {
-    await validarEquipe(
-      projeto_id,
-      origem_id,
-    );
+    await validarEquipe(projeto_id, origem_id);
   }
 
   if (tipo_origem === "FUNCIONARIO") {
-    await validarFuncionario(
-      projeto_id,
-      origem_id,
-    );
+    await validarFuncionario(projeto_id, origem_id);
   }
 
   if (tipo_origem === "EMPRESA") {
-    await validarEmpresa(
-      projeto_id,
-      origem_id,
-    );
+    await validarEmpresa(projeto_id, origem_id);
   }
 
   if (tipo_destino === "EQUIPE") {
-    await validarEquipe(
-      projeto_id,
-      destino_id,
-    );
+    await validarEquipe(projeto_id, destino_id);
   }
 
   if (tipo_destino === "FUNCIONARIO") {
-    await validarFuncionario(
-      projeto_id,
-      destino_id,
-    );
+    await validarFuncionario(projeto_id, destino_id);
   }
 
   if (tipo_destino === "EMPRESA") {
-    await validarEmpresa(
-      projeto_id,
-      destino_id,
-    );
+    await validarEmpresa(projeto_id, destino_id);
   }
 }
 
@@ -925,48 +716,31 @@ async function validarEntradaUnica(
   estoqueEquipamentoId: string,
   quantidade: number,
 ): Promise<void> {
-  const movimentacoes =
-    await getDB()
-      .movimentacoes_equipamentos
-      .where("estoque_equipamento_id")
-      .equals(estoqueEquipamentoId)
-      .toArray();
+  const movimentacoes = await getDB()
+    .movimentacoes_equipamentos.where("estoque_equipamento_id")
+    .equals(estoqueEquipamentoId)
+    .toArray();
 
-  const existeEntrada = movimentacoes.some(
-    (movimentacao) =>
-      movimentacao.tipo === "ENTRADA",
-  );
+  const existeEntrada = movimentacoes.some((movimentacao) => movimentacao.tipo === "ENTRADA");
 
   if (existeEntrada) {
-    throw new Error(
-      "Este estoque de equipamento já possui uma entrada registrada.",
-    );
+    throw new Error("Este estoque de equipamento já possui uma entrada registrada.");
   }
 
-  const estoque =
-    await getDB().estoque_equipamentos.get(
-      estoqueEquipamentoId,
-    );
+  const estoque = await getDB().estoque_equipamentos.get(estoqueEquipamentoId);
 
   if (!estoque) {
-    throw new Error(
-      "Estoque de equipamento não encontrado.",
-    );
+    throw new Error("Estoque de equipamento não encontrado.");
   }
 
   if (quantidade !== estoque.quantidade) {
-    throw new Error(
-      "A quantidade da ENTRADA deve ser igual à quantidade registrada no estoque.",
-    );
+    throw new Error("A quantidade da ENTRADA deve ser igual à quantidade registrada no estoque.");
   }
 }
 
-async function obterSinalizacaoPendente(
-  estoqueEquipamentoId: string,
-): Promise<number> {
+async function obterSinalizacaoPendente(estoqueEquipamentoId: string): Promise<number> {
   const movimentacoes = await getDB()
-    .movimentacoes_equipamentos
-    .where("estoque_equipamento_id")
+    .movimentacoes_equipamentos.where("estoque_equipamento_id")
     .equals(estoqueEquipamentoId)
     .toArray();
 
@@ -975,15 +749,9 @@ async function obterSinalizacaoPendente(
   let pendente = 0;
 
   for (const movimentacao of ordenadas) {
-    if (
-      movimentacao.tipo === "SINALIZAR_MANUTENCAO" ||
-      movimentacao.tipo === "MANUTENCAO"
-    ) {
+    if (movimentacao.tipo === "SINALIZAR_MANUTENCAO" || movimentacao.tipo === "MANUTENCAO") {
       pendente += movimentacao.quantidade;
-    } else if (
-      movimentacao.tipo === "ENVIO" ||
-      movimentacao.tipo === "RETIRADA_MANUTENCAO"
-    ) {
+    } else if (movimentacao.tipo === "ENVIO" || movimentacao.tipo === "RETIRADA_MANUTENCAO") {
       pendente = Math.max(0, pendente - movimentacao.quantidade);
     } else if (movimentacao.tipo === "RETORNO_MANUTENCAO") {
       pendente = 0;
@@ -994,87 +762,74 @@ async function obterSinalizacaoPendente(
 }
 
 export const movimentacoesEquipamentosRepo = {
-  async listar(
-    projetoId: string,
-  ): Promise<MovimentacaoEquipamento[]> {
+  async listar(projetoId: string): Promise<MovimentacaoEquipamento[]> {
     return getDB()
-      .movimentacoes_equipamentos
-      .where("projeto_id")
+      .movimentacoes_equipamentos.where("projeto_id")
       .equals(projetoId)
       .toArray()
-      .then((rows) =>
-        ordenarMovimentacoes(rows).reverse(),
-      );
+      .then((rows) => ordenarMovimentacoes(rows).reverse());
   },
 
   async listarPorEstoque(
     projetoId: string,
     estoqueEquipamentoId: string,
   ): Promise<MovimentacaoEquipamento[]> {
-    const estoque =
-      await getDB()
-        .estoque_equipamentos
-        .get(estoqueEquipamentoId);
+    const estoque = await getDB().estoque_equipamentos.get(estoqueEquipamentoId);
 
-    if (
-      !estoque ||
-      estoque.projeto_id !== projetoId
-    ) {
-      throw new Error(
-        "Estoque de equipamento não encontrado neste projeto.",
-      );
+    if (!estoque || estoque.projeto_id !== projetoId) {
+      throw new Error("Estoque de equipamento não encontrado neste projeto.");
     }
 
-    const rows =
-      await getDB()
-        .movimentacoes_equipamentos
-        .where("estoque_equipamento_id")
-        .equals(estoqueEquipamentoId)
-        .toArray();
+    const rows = await getDB()
+      .movimentacoes_equipamentos.where("estoque_equipamento_id")
+      .equals(estoqueEquipamentoId)
+      .toArray();
 
     return ordenarMovimentacoes(rows).reverse();
   },
 
-  async salvar(
-    dados: MovimentacaoEquipamentoInput,
-  ): Promise<MovimentacaoEquipamento> {
+  async salvar(dados: MovimentacaoEquipamentoInput): Promise<MovimentacaoEquipamento> {
     const db = getDB();
 
     validarTipo(dados.tipo);
     validarQuantidade(dados.quantidade);
 
-    const estoque =
-      await db.estoque_equipamentos.get(
-        dados.estoque_equipamento_id,
-      );
+    const estoque = await db.estoque_equipamentos.get(dados.estoque_equipamento_id);
 
-    if (
-      !estoque ||
-      estoque.projeto_id !== dados.projeto_id
-    ) {
+    if (!estoque || estoque.projeto_id !== dados.projeto_id) {
+      throw new Error("O estoque de equipamento não pertence ao projeto da movimentação.");
+    }
+
+    const equipamento = await db.equipamentos.get(estoque.equipamento_id);
+
+    if (!equipamento || equipamento.projeto_id !== dados.projeto_id) {
+      throw new Error("O equipamento não pertence ao projeto da movimentação.");
+    }
+
+    // O encerramento físico depende da natureza do vínculo:
+    // - próprio: baixa definitiva, encerrando a vida útil no estoque;
+    // - alugado/emprestado: devolução ao proprietário, sem baixa patrimonial.
+    if (dados.tipo === "BAIXA" && estoque.vinculo !== "PROPRIO") {
       throw new Error(
-        "O estoque de equipamento não pertence ao projeto da movimentação.",
+        "Equipamentos alugados ou emprestados não podem receber baixa definitiva. Registre a devolução ao fornecedor.",
       );
     }
 
-    const equipamento =
-      await db.equipamentos.get(
-        estoque.equipamento_id,
-      );
-
-    if (
-      !equipamento ||
-      equipamento.projeto_id !==
-        dados.projeto_id
-    ) {
+    if (dados.tipo === "DEVOLUCAO_FORNECEDOR" && estoque.vinculo === "PROPRIO") {
       throw new Error(
-        "O equipamento não pertence ao projeto da movimentação.",
+        "Equipamentos próprios não devem ser devolvidos ao fornecedor. Registre a baixa definitiva quando encerrarem sua vida útil.",
       );
     }
 
-    const equipes = await obterEquipes(
-      dados.projeto_id,
-    );
+    if (
+      (dados.tipo === "BAIXA" || dados.tipo === "DEVOLUCAO_FORNECEDOR") &&
+      dados.tipo_destino === "EMPRESA" &&
+      dados.destino_id !== estoque.empresa_id
+    ) {
+      throw new Error("O destino deve ser o proprietário cadastrado no estoque do equipamento.");
+    }
+
+    const equipes = await obterEquipes(dados.projeto_id);
 
     // REENTRADA sempre retorna ao Almoxarifado por padrão.
     // O destino pode ser omitido pela interface sem invalidar a movimentação.
@@ -1096,10 +851,7 @@ export const movimentacoesEquipamentosRepo = {
     }
 
     if (dados.tipo === "REENTRADA" && estoque.ativo !== false) {
-      const pendencia = await obterPendenciaReentrada(
-        dados.projeto_id,
-        estoque.id,
-      );
+      const pendencia = await obterPendenciaReentrada(dados.projeto_id, estoque.id);
       if (pendencia.restante <= 0) {
         throw new Error("Este registro de estoque não possui quantidade pendente para reentrada.");
       }
@@ -1110,20 +862,13 @@ export const movimentacoesEquipamentosRepo = {
     }
 
     if (dados.tipo === "SINALIZAR_MANUTENCAO") {
-      const sinalizacaoPendente = await obterSinalizacaoPendente(
-        dados.estoque_equipamento_id,
-      );
+      const sinalizacaoPendente = await obterSinalizacaoPendente(dados.estoque_equipamento_id);
       if (sinalizacaoPendente > 0) {
-        throw new Error(
-          "Este equipamento já está sinalizado para manutenção.",
-        );
+        throw new Error("Este equipamento já está sinalizado para manutenção.");
       }
     }
 
-    validarRegraDoTipo(
-      dados,
-      equipes,
-    );
+    validarRegraDoTipo(dados, equipes);
 
     await validarParticipantes(dados);
 
@@ -1133,61 +878,42 @@ export const movimentacoesEquipamentosRepo = {
      * física das unidades no Almoxarifado.
      */
     if (dados.tipo === "ENTRADA") {
-      await validarEntradaUnica(
-        dados.estoque_equipamento_id,
-        dados.quantidade,
-      );
+      await validarEntradaUnica(dados.estoque_equipamento_id, dados.quantidade);
     } else {
       /*
        * Para qualquer outra operação, reconstruímos o estado
        * atual e validamos a quantidade na localização correta.
        */
-      const estado =
-        await estadoEquipamentosRepo.calcular(
-          dados.projeto_id,
-          dados.estoque_equipamento_id,
-        );
-
-      await validarEstadoDaOrigem(
-        dados,
-        estado,
-        equipes,
+      const estado = await estadoEquipamentosRepo.calcular(
+        dados.projeto_id,
+        dados.estoque_equipamento_id,
       );
+
+      await validarEstadoDaOrigem(dados, estado, equipes);
     }
 
     const agora = new Date().toISOString();
 
-    const movimentacao: MovimentacaoEquipamento =
-      {
-        ...dados,
-        id: dados.id ?? uid(),
-        criado_em: agora,
-        atualizado_em: agora,
-      };
+    const movimentacao: MovimentacaoEquipamento = {
+      ...dados,
+      id: dados.id ?? uid(),
+      criado_em: agora,
+      atualizado_em: agora,
+    };
 
     /*
      * Movimentações existentes não devem ser sobrescritas
      * porque isso poderia invalidar todo o histórico posterior.
      */
     if (dados.id) {
-      const existente =
-        await db.movimentacoes_equipamentos.get(
-          dados.id,
-        );
+      const existente = await db.movimentacoes_equipamentos.get(dados.id);
 
       if (!existente) {
-        throw new Error(
-          "Movimentação não encontrada.",
-        );
+        throw new Error("Movimentação não encontrada.");
       }
 
-      if (
-        existente.projeto_id !==
-        dados.projeto_id
-      ) {
-        throw new Error(
-          "A movimentação não pertence ao projeto atual.",
-        );
+      if (existente.projeto_id !== dados.projeto_id) {
+        throw new Error("A movimentação não pertence ao projeto atual.");
       }
 
       throw new Error(
@@ -1210,15 +936,13 @@ export const movimentacoesEquipamentosRepo = {
          * que reduz permanentemente o saldo físico.
          */
         if (movimentacao.tipo === "DEVOLUCAO_FORNECEDOR") {
-          const estoqueAtual =
-            await db.estoque_equipamentos.get(estoque.id);
+          const estoqueAtual = await db.estoque_equipamentos.get(estoque.id);
 
           if (!estoqueAtual) {
             throw new Error("Estoque de equipamento não encontrado.");
           }
 
-          const novoDevolvido =
-            estoqueAtual.devolvido + movimentacao.quantidade;
+          const novoDevolvido = estoqueAtual.devolvido + movimentacao.quantidade;
 
           if (novoDevolvido > estoqueAtual.quantidade) {
             throw new Error(
@@ -1229,7 +953,10 @@ export const movimentacoesEquipamentosRepo = {
           await db.estoque_equipamentos.put({
             ...estoqueAtual,
             devolvido: novoDevolvido,
-            status: novoDevolvido + (estoqueAtual.baixado ?? 0) < estoqueAtual.quantidade ? "ATIVO" : "ENCERRADO",
+            status:
+              novoDevolvido + (estoqueAtual.baixado ?? 0) < estoqueAtual.quantidade
+                ? "ATIVO"
+                : "ENCERRADO",
             ativo: novoDevolvido + (estoqueAtual.baixado ?? 0) < estoqueAtual.quantidade,
             atualizado_em: agora,
           });
@@ -1239,24 +966,27 @@ export const movimentacoesEquipamentosRepo = {
           const estoqueAtual = await db.estoque_equipamentos.get(estoque.id);
           if (!estoqueAtual) throw new Error("Estoque de equipamento não encontrado.");
 
-          const pendencia = await obterPendenciaReentrada(
-            dados.projeto_id,
-            estoque.id,
-          );
+          const pendencia = await obterPendenciaReentrada(dados.projeto_id, estoque.id);
           if (movimentacao.origem_id !== pendencia.origemId) {
-            throw new Error("A empresa de origem da reentrada não corresponde ao histórico pendente.");
+            throw new Error(
+              "A empresa de origem da reentrada não corresponde ao histórico pendente.",
+            );
           }
           if (movimentacao.quantidade > pendencia.restante) {
-            throw new Error("A quantidade da reentrada excede a quantidade disponível para restauração.");
+            throw new Error(
+              "A quantidade da reentrada excede a quantidade disponível para restauração.",
+            );
           }
 
           const novoDevolvido = Math.max(
             0,
-            estoqueAtual.devolvido - (pendencia.tipo === "DEVOLUCAO_FORNECEDOR" ? movimentacao.quantidade : 0),
+            estoqueAtual.devolvido -
+              (pendencia.tipo === "DEVOLUCAO_FORNECEDOR" ? movimentacao.quantidade : 0),
           );
           const novoBaixado = Math.max(
             0,
-            (estoqueAtual.baixado ?? 0) - (pendencia.tipo === "BAIXA" ? movimentacao.quantidade : 0),
+            (estoqueAtual.baixado ?? 0) -
+              (pendencia.tipo === "BAIXA" ? movimentacao.quantidade : 0),
           );
 
           await db.estoque_equipamentos.put({
@@ -1276,19 +1006,16 @@ export const movimentacoesEquipamentosRepo = {
             throw new Error("Estoque de equipamento não encontrado.");
           }
 
-          const estadoAtual = await estadoEquipamentosRepo.calcular(
-            dados.projeto_id,
-            estoque.id,
-          );
-          const novoBaixado =
-            (estoqueAtual.baixado ?? 0) + movimentacao.quantidade;
+          const estadoAtual = await estadoEquipamentosRepo.calcular(dados.projeto_id, estoque.id);
+          const novoBaixado = (estoqueAtual.baixado ?? 0) + movimentacao.quantidade;
 
           // A baixa pode partir do Almoxarifado ou da Manutenção.
-          const quantidadeNaOrigem = movimentacao.origem_id === equipes.almoxarifado.id
-            ? estadoAtual.almoxarifado
-            : movimentacao.origem_id === equipes.manutencao.id
-              ? estadoAtual.manutencao
-              : 0;
+          const quantidadeNaOrigem =
+            movimentacao.origem_id === equipes.almoxarifado.id
+              ? estadoAtual.almoxarifado
+              : movimentacao.origem_id === equipes.manutencao.id
+                ? estadoAtual.manutencao
+                : 0;
 
           if (movimentacao.quantidade > quantidadeNaOrigem) {
             throw new Error("Quantidade insuficiente na origem para baixa.");
@@ -1301,20 +1028,18 @@ export const movimentacoesEquipamentosRepo = {
           await db.estoque_equipamentos.put({
             ...estoqueAtual,
             baixado: novoBaixado,
-            status: estoqueAtual.devolvido + novoBaixado < estoqueAtual.quantidade ? "ATIVO" : "ENCERRADO",
+            status:
+              estoqueAtual.devolvido + novoBaixado < estoqueAtual.quantidade
+                ? "ATIVO"
+                : "ENCERRADO",
             ativo: estoqueAtual.devolvido + novoBaixado < estoqueAtual.quantidade,
             atualizado_em: agora,
           });
         }
 
-        await atualizarApropriacoes(
-          movimentacao,
-          agora,
-        );
+        await atualizarApropriacoes(movimentacao, agora);
 
-        await db.movimentacoes_equipamentos.put(
-          movimentacao,
-        );
+        await db.movimentacoes_equipamentos.put(movimentacao);
 
         // O histórico físico continua sendo a fonte operacional. A ocorrência
         // acompanha esse ciclo na mesma transação para não deixar o detalhamento
@@ -1326,33 +1051,19 @@ export const movimentacoesEquipamentosRepo = {
           movimentacao.tipo === "RETIRADA_MANUTENCAO" ||
           movimentacao.tipo === "RETORNO_MANUTENCAO"
         ) {
-          await manutencoesEquipamentosRepo.sincronizarComMovimentacao(
-            movimentacao,
-          );
+          await manutencoesEquipamentosRepo.sincronizarComMovimentacao(movimentacao);
         }
-
       },
     );
 
     return movimentacao;
   },
 
-  async excluir(
-    projetoId: string,
-    movimentacaoId: string,
-  ): Promise<void> {
-    const movimentacao =
-      await getDB()
-        .movimentacoes_equipamentos
-        .get(movimentacaoId);
+  async excluir(projetoId: string, movimentacaoId: string): Promise<void> {
+    const movimentacao = await getDB().movimentacoes_equipamentos.get(movimentacaoId);
 
-    if (
-      !movimentacao ||
-      movimentacao.projeto_id !== projetoId
-    ) {
-      throw new Error(
-        "Movimentação não encontrada neste projeto.",
-      );
+    if (!movimentacao || movimentacao.projeto_id !== projetoId) {
+      throw new Error("Movimentação não encontrada neste projeto.");
     }
 
     /*
@@ -1369,21 +1080,14 @@ export const movimentacoesEquipamentosRepo = {
   async buscar(
     projetoId: string,
     movimentacaoId: string,
-  ): Promise<
-    MovimentacaoEquipamento | undefined
-  > {
-    const movimentacao =
-      await getDB()
-        .movimentacoes_equipamentos
-        .get(movimentacaoId);
+  ): Promise<MovimentacaoEquipamento | undefined> {
+    const movimentacao = await getDB().movimentacoes_equipamentos.get(movimentacaoId);
 
-    if (
-      !movimentacao ||
-      movimentacao.projeto_id !== projetoId
-    ) {
+    if (!movimentacao || movimentacao.projeto_id !== projetoId) {
       return undefined;
     }
 
     return movimentacao;
   },
 };
+
