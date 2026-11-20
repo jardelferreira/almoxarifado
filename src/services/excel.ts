@@ -632,6 +632,57 @@ function validarEscopoProjeto(
   }
 }
 
+/**
+ * Compatibilidade com exportações feitas antes da regra de encerramento por
+ * vínculo existir. Nessas planilhas, alguns equipamentos alugados ou
+ * emprestados podem aparecer com uma movimentação BAIXA. Ao importar o
+ * próprio projeto, preservamos o histórico, mas corrigimos o significado
+ * operacional para DEVOLUCAO_FORNECEDOR antes da validação e da gravação.
+ *
+ * A regra continua sendo rigorosa nas novas movimentações: a migração só
+ * acontece no importador e somente quando o vínculo do estoque é conhecido
+ * como não próprio.
+ */
+function migrarBaixasLegadasDeEquipamentosNaoProprios(
+  tabelas: Record<string, Linha[]>,
+): { tabelas: Record<string, Linha[]>; migradas: number } {
+  const estoques = new Map(
+    (tabelas["estoque_equipamentos"] ?? []).map((linha) => [S(linha["id"]), linha]),
+  );
+  let migradas = 0;
+
+  const movimentacoes = (tabelas["movimentacoes_equipamentos"] ?? []).map((linha) => {
+    if (S(linha["tipo"]).toUpperCase() !== "BAIXA") return linha;
+
+    const estoque = estoques.get(S(linha["estoque_equipamento_id"]));
+    const vinculo = normalizar(S(estoque?.["vinculo"]));
+    const vinculoNaoProprio = ["ALUGADO", "EMPRESTIMO"].includes(vinculo);
+
+    if (!estoque || !vinculoNaoProprio) return linha;
+
+    migradas += 1;
+    const observacaoAtual = S(linha["observacoes"]);
+    const observacaoMigracao =
+      "Compatibilidade de importação: baixa histórica convertida em devolução ao fornecedor.";
+
+    return {
+      ...linha,
+      tipo: "DEVOLUCAO_FORNECEDOR",
+      tipo_origem: "EQUIPE",
+      tipo_destino: "EMPRESA",
+      destino_id: S(estoque["empresa_id"]) || linha["destino_id"],
+      observacoes: observacaoAtual
+        ? `${observacaoAtual} ${observacaoMigracao}`
+        : observacaoMigracao,
+    };
+  });
+
+  return {
+    tabelas: { ...tabelas, movimentacoes_equipamentos: movimentacoes },
+    migradas,
+  };
+}
+
 function serializarEstavel(valor: unknown): string {
   if (Array.isArray(valor)) return `[${valor.map(serializarEstavel).join(",")}]`;
   if (valor && typeof valor === "object") {
@@ -1512,6 +1563,8 @@ export async function compatibilizarDataset(dataset: DatasetImportado): Promise<
     projeto_id: novoProjetoId,
   }));
 
+  Object.assign(tabelas, migrarBaixasLegadasDeEquipamentosNaoProprios(tabelas).tabelas);
+
   const projetos = tabelas["projetos"].map((linha) => projetoDeLinha(linha));
   const categorias = tabelas["categorias"].map((linha) => categoriaDeLinha(linha));
   const unidades = tabelas["unidades"].map((linha) => unidadeDeLinha(linha));
@@ -1562,6 +1615,8 @@ export function lerArquivo(buffer: ArrayBuffer): DatasetImportado {
   for (const tabela of TABELAS_IMPORTACAO) {
     tabelas[tabela] = obterAba(workbook, tabela);
   }
+
+  Object.assign(tabelas, migrarBaixasLegadasDeEquipamentosNaoProprios(tabelas).tabelas);
 
   const problemas: string[] = [];
 
