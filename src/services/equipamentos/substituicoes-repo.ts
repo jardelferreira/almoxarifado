@@ -67,18 +67,17 @@ function criarRegraHerdada(
 
 export const substituicoesEquipamentosRepo = {
   async listar(projetoId: string): Promise<SubstituicaoEquipamento[]> {
-    const rows = await getDB().substituicoes_equipamentos
-      .where("projeto_id")
+    const rows = await getDB()
+      .substituicoes_equipamentos.where("projeto_id")
       .equals(projetoId)
       .toArray();
 
-    return rows.sort((a, b) => `${b.data}|${b.criado_em}`.localeCompare(`${a.data}|${a.criado_em}`));
+    return rows.sort((a, b) =>
+      `${b.data}|${b.criado_em}`.localeCompare(`${a.data}|${a.criado_em}`),
+    );
   },
 
-  async buscar(
-    projetoId: string,
-    id: string,
-  ): Promise<SubstituicaoEquipamento | undefined> {
+  async buscar(projetoId: string, id: string): Promise<SubstituicaoEquipamento | undefined> {
     const row = await getDB().substituicoes_equipamentos.get(id);
     return row?.projeto_id === projetoId ? row : undefined;
   },
@@ -107,7 +106,9 @@ export const substituicoesEquipamentosRepo = {
       throw new Error("O cadastro do equipamento devolvido não foi encontrado.");
     }
     if (equipamentoOrigem.tipo_controle !== equipamentoSubstituto.tipo_controle) {
-      throw new Error("O substituto deve manter o mesmo tipo de controle do equipamento devolvido.");
+      throw new Error(
+        "O substituto deve manter o mesmo tipo de controle do equipamento devolvido.",
+      );
     }
 
     const estadoOrigem = await estadoEquipamentosRepo.calcular(dados.projetoId, origem.id);
@@ -119,8 +120,13 @@ export const substituicoesEquipamentosRepo = {
     }
 
     const equipes = await db.equipes.where("projeto_id").equals(dados.projetoId).toArray();
-    const almoxarifado = equipes.find((equipe) =>
-      equipe.nome.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase() === "almoxarifado",
+    const almoxarifado = equipes.find(
+      (equipe) =>
+        equipe.nome
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .trim()
+          .toLowerCase() === "almoxarifado",
     );
     if (!almoxarifado) {
       throw new Error("A equipe Almoxarifado não foi encontrada neste projeto.");
@@ -142,40 +148,49 @@ export const substituicoesEquipamentosRepo = {
 
     const agora = new Date().toISOString();
     const novoEstoqueId = uid();
-    const movimentacaoDevolucao = criarMovimentacao({
-      projeto_id: dados.projetoId,
-      estoque_equipamento_id: origem.id,
-      tipo: "DEVOLUCAO_FORNECEDOR",
-      quantidade: dados.quantidade,
-      tipo_origem: "EQUIPE",
-      origem_id: almoxarifado.id,
-      tipo_destino: "EMPRESA",
-      destino_id: origem.empresa_id,
-      data,
-      referencia_documento: texto(dados.referenciaDocumento),
-      observacoes: texto(dados.observacoes),
-    }, agora);
-    const movimentacaoEntrada = criarMovimentacao({
-      projeto_id: dados.projetoId,
-      estoque_equipamento_id: novoEstoqueId,
-      tipo: "ENTRADA",
-      quantidade: dados.quantidade,
-      tipo_origem: "EMPRESA",
-      origem_id: origem.empresa_id,
-      tipo_destino: "EQUIPE",
-      destino_id: almoxarifado.id,
-      data,
-      referencia_documento: texto(dados.referenciaDocumento),
-      observacoes: texto(dados.observacoes),
-    }, agora);
+    const tipoEncerramento = origem.vinculo === "PROPRIO" ? "BAIXA" : "DEVOLUCAO_FORNECEDOR";
+    const movimentacaoDevolucao = criarMovimentacao(
+      {
+        projeto_id: dados.projetoId,
+        estoque_equipamento_id: origem.id,
+        tipo: tipoEncerramento,
+        quantidade: dados.quantidade,
+        tipo_origem: "EQUIPE",
+        origem_id: almoxarifado.id,
+        tipo_destino: "EMPRESA",
+        destino_id: origem.empresa_id,
+        data,
+        referencia_documento: texto(dados.referenciaDocumento),
+        observacoes: texto(dados.observacoes),
+      },
+      agora,
+    );
+    const movimentacaoEntrada = criarMovimentacao(
+      {
+        projeto_id: dados.projetoId,
+        estoque_equipamento_id: novoEstoqueId,
+        tipo: "ENTRADA",
+        quantidade: dados.quantidade,
+        tipo_origem: "EMPRESA",
+        origem_id: origem.empresa_id,
+        tipo_destino: "EQUIPE",
+        destino_id: almoxarifado.id,
+        data,
+        referencia_documento: texto(dados.referenciaDocumento),
+        observacoes: texto(dados.observacoes),
+      },
+      agora,
+    );
 
     const novoEstoque: EstoqueEquipamento = {
       ...origem,
       id: novoEstoqueId,
       equipamento_id: equipamentoSubstituto.id,
       equipe_id: almoxarifado.id,
-      patrimonio: equipamentoSubstituto.tipo_controle === "INDIVIDUAL" ? texto(dados.patrimonio) : null,
-      identificacao: equipamentoSubstituto.tipo_controle === "INDIVIDUAL" ? texto(dados.identificacao) : null,
+      patrimonio:
+        equipamentoSubstituto.tipo_controle === "INDIVIDUAL" ? texto(dados.patrimonio) : null,
+      identificacao:
+        equipamentoSubstituto.tipo_controle === "INDIVIDUAL" ? texto(dados.identificacao) : null,
       serial: equipamentoSubstituto.tipo_controle === "INDIVIDUAL" ? texto(dados.serial) : null,
       quantidade: dados.quantidade,
       devolvido: 0,
@@ -231,7 +246,8 @@ export const substituicoesEquipamentosRepo = {
         await db.estoque_equipamentos.put({
           ...origemAtual,
           devolvido,
-          status: devolvido + (origemAtual.baixado ?? 0) < origemAtual.quantidade ? "ATIVO" : "ENCERRADO",
+          status:
+            devolvido + (origemAtual.baixado ?? 0) < origemAtual.quantidade ? "ATIVO" : "ENCERRADO",
           ativo: devolvido + (origemAtual.baixado ?? 0) < origemAtual.quantidade,
           atualizado_em: agora,
         });
@@ -248,3 +264,4 @@ export const substituicoesEquipamentosRepo = {
     return substituicao;
   },
 };
+
