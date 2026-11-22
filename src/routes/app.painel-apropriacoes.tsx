@@ -43,7 +43,20 @@ import { getDB } from "@/db/db";
 import { useProjetoAtivoId } from "@/hooks/useAppData";
 import { estadoEquipamentosRepo } from "@/services/equipamentos/estado-repo";
 import { movimentacoesEquipamentosRepo } from "@/services/equipamentos/movimentacoes-repo";
-import type { Empresa, Equipe, Equipamento, EstoqueEquipamento, Funcionario } from "@/types";
+import {
+  obterRequisitosValidacaoTransacao,
+  type RascunhoMovimentacaoValidavel,
+  type RequisitoValidacaoTransacao,
+} from "@/services/equipamentos/validacao-transacoes";
+import { ValidarPinTransacaoDialog } from "@/components/equipamentos/ValidarPinTransacaoDialog";
+import type {
+  Empresa,
+  Equipe,
+  Equipamento,
+  EstoqueEquipamento,
+  Funcionario,
+  ValidacaoTransacaoEntrada,
+} from "@/types";
 import { formatarCpf } from "@/utils/seguranca";
 import { num } from "@/utils/format";
 
@@ -100,6 +113,9 @@ export function PainelApropriacoesPage() {
   const [salvando, setSalvando] = useState(false);
   const [buscaEquipamento, setBuscaEquipamento] = useState("");
   const [modo, setModo] = useState<ModoPainel>("ATENDIMENTO");
+  const [dialogValidacao, setDialogValidacao] = useState(false);
+  const [movimentoPendente, setMovimentoPendente] = useState<RascunhoMovimentacaoValidavel | null>(null);
+  const [requisitosValidacao, setRequisitosValidacao] = useState<RequisitoValidacaoTransacao[]>([]);
 
   const dados = useLiveQuery(async () => {
     if (!projetoId) return null;
@@ -282,7 +298,10 @@ export function PainelApropriacoesPage() {
 
   const exigeConfirmacao = (valor: AcaoPainel) => valor === "BAIXA";
 
-  const executarAcao = async () => {
+  const executarAcao = async (
+    validacao: ValidacaoTransacaoEntrada[] = [],
+    propagarErro = false,
+  ) => {
     if (!projetoId || !funcionarioId || !funcionario || !estoqueId) {
       toast.error("Selecione o funcionário e o equipamento.");
       return;
@@ -313,6 +332,44 @@ export function PainelApropriacoesPage() {
       return;
     }
 
+    const movimentoValidavel: RascunhoMovimentacaoValidavel =
+      acao === "APROPRIAR"
+        ? {
+            projeto_id: projetoId,
+            tipo: "SAIDA",
+            tipo_origem: "EQUIPE",
+            origem_id: equipeAlmoxarifado,
+            tipo_destino: "FUNCIONARIO",
+            destino_id: funcionarioId,
+          }
+        : acao === "TRANSFERIR"
+          ? {
+              projeto_id: projetoId,
+              tipo: "TRANSFERENCIA",
+              tipo_origem: "FUNCIONARIO",
+              origem_id: funcionarioId,
+              tipo_destino: "FUNCIONARIO",
+              destino_id: destinoFuncionarioId!,
+            }
+          : {
+              projeto_id: projetoId,
+              tipo: "DEVOLUCAO",
+              tipo_origem: "FUNCIONARIO",
+              origem_id: funcionarioId,
+              tipo_destino: "EQUIPE",
+              destino_id: equipeAlmoxarifado,
+            };
+
+    if (validacao.length === 0) {
+      const requisitos = await obterRequisitosValidacaoTransacao(movimentoValidavel);
+      if (requisitos.length > 0) {
+        setMovimentoPendente(movimentoValidavel);
+        setRequisitosValidacao(requisitos);
+        setDialogValidacao(true);
+        return;
+      }
+    }
+
     setSalvando(true);
     try {
       const estado = await estadoEquipamentosRepo.calcular(projetoId, estoqueId);
@@ -337,6 +394,7 @@ export function PainelApropriacoesPage() {
           data,
           referencia_documento: null,
           observacoes: observacaoInformada || "Apropriação realizada pelo Painel de Atendimento.",
+          validacao,
         });
         toast.success(`Equipamento apropriado para ${funcionario.nome}.`);
       } else {
@@ -363,6 +421,7 @@ export function PainelApropriacoesPage() {
             referencia_documento: null,
             observacoes:
               observacaoInformada || "Desapropriação realizada pelo Painel de Atendimento.",
+            validacao,
           });
           toast.success("Equipamento devolvido ao Almoxarifado.");
         } else if (acao === "TRANSFERIR") {
@@ -379,6 +438,7 @@ export function PainelApropriacoesPage() {
             referencia_documento: null,
             observacoes:
               observacaoInformada || "Transferência realizada pelo Painel de Atendimento.",
+            validacao,
           });
           toast.success("Equipamento transferido com sucesso.");
         } else if (acao === "SINALIZAR_MANUTENCAO") {
@@ -394,6 +454,7 @@ export function PainelApropriacoesPage() {
             data,
             referencia_documento: null,
             observacoes: observacaoInformada || "Devolução para sinalização de manutenção.",
+            validacao,
           });
           await salvarMovimentacao({
             projeto_id: projetoId,
@@ -427,6 +488,7 @@ export function PainelApropriacoesPage() {
             referencia_documento: null,
             observacoes:
               observacaoInformada || "Devolução ao Almoxarifado para retorno ao fornecedor.",
+            validacao,
           });
           await salvarMovimentacao({
             projeto_id: projetoId,
@@ -462,6 +524,7 @@ export function PainelApropriacoesPage() {
             data,
             referencia_documento: null,
             observacoes: observacaoInformada || "Devolução para baixa definitiva.",
+            validacao,
           });
           await salvarMovimentacao({
             projeto_id: projetoId,
@@ -483,6 +546,7 @@ export function PainelApropriacoesPage() {
       setDialogAcao(false);
       setDialogConfirmacao(false);
     } catch (error) {
+      if (propagarErro) throw error;
       toast.error(
         error instanceof Error ? error.message : "Não foi possível concluir o atendimento.",
       );
@@ -958,6 +1022,26 @@ export function PainelApropriacoesPage() {
           </Card>
         ))}
 
+      <ValidarPinTransacaoDialog
+        open={dialogValidacao}
+        movimento={movimentoPendente}
+        requisitos={requisitosValidacao}
+        salvando={salvando}
+        onOpenChange={(open) => {
+          setDialogValidacao(open);
+          if (!open) {
+            setMovimentoPendente(null);
+            setRequisitosValidacao([]);
+          }
+        }}
+        onConfirm={async (validacao) => {
+          await executarAcao(validacao, true);
+          setDialogValidacao(false);
+          setMovimentoPendente(null);
+          setRequisitosValidacao([]);
+        }}
+      />
+
       <Dialog open={dialogAcao} onOpenChange={(open) => !salvando && setDialogAcao(open)}>
         <DialogContent className="w-[calc(100vw-1rem)] max-w-3xl sm:max-w-4xl lg:max-w-5xl xl:max-w-6xl">
           <DialogHeader>
@@ -1311,4 +1395,3 @@ function imprimirAtendimento(
   janela.document.close();
   janela.focus();
 }
-

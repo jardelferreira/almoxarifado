@@ -50,6 +50,13 @@ import { num } from "@/utils/format";
 import { HistoricoEquipamento } from "@/components/equipamentos/HistoricoEquipamento";
 import { construirHistoricoEquipamento } from "@/services/equipamentos/historico";
 import { gerarRelatorioEquipamento } from "@/services/equipamentos/relatorio-equipamento";
+import { ValidarPinTransacaoDialog } from "@/components/equipamentos/ValidarPinTransacaoDialog";
+import {
+    obterRequisitosValidacaoTransacao,
+    type RascunhoMovimentacaoValidavel,
+    type RequisitoValidacaoTransacao,
+} from "@/services/equipamentos/validacao-transacoes";
+import type { ValidacaoTransacaoEntrada } from "@/types";
 
 export const Route = createFileRoute("/app/apropriacoes")({
     ssr: false,
@@ -85,6 +92,10 @@ export function ApropriacoesPage() {
     const [quantidadeOperacao, setQuantidadeOperacao] = useState("1");
     const [quantidadeDevolucao, setQuantidadeDevolucao] = useState("1");
     const [salvando, setSalvando] = useState(false);
+    const [dialogValidacao, setDialogValidacao] = useState(false);
+    const [movimentoPendente, setMovimentoPendente] = useState<RascunhoMovimentacaoValidavel | null>(null);
+    const [requisitosValidacao, setRequisitosValidacao] = useState<RequisitoValidacaoTransacao[]>([]);
+    const [acaoPendente, setAcaoPendente] = useState<"APROPRIAR" | "DEVOLVER" | null>(null);
 
     const dados = useLiveQuery(async () => {
         if (!projetoId) return null;
@@ -221,7 +232,7 @@ export function ApropriacoesPage() {
         setDialogApropriar(true);
     };
 
-    const salvarApropriacao = async () => {
+    const salvarApropriacao = async (validacao: ValidacaoTransacaoEntrada[] = []) => {
         if (!projetoId || !selecionado || !funcionarioId) {
             toast.error("Selecione um funcionário.");
             return;
@@ -264,8 +275,43 @@ export function ApropriacoesPage() {
                 throw new Error(`Quantidade indisponível no Almoxarifado. Disponível: ${estadoAtual.almoxarifado}.`);
             }
 
+            const almoxarifadoId = await obterAlmoxarifadoId(projetoId);
+            const movimentosValidaveis: RascunhoMovimentacaoValidavel[] = [
+                ...(!equipamentoQuantitativo && responsavelAtualId && responsavelAtualId !== funcionarioId
+                    ? [{
+                        projeto_id: projetoId,
+                        tipo: "DEVOLUCAO" as const,
+                        tipo_origem: "FUNCIONARIO" as const,
+                        origem_id: responsavelAtualId,
+                        tipo_destino: "EQUIPE" as const,
+                        destino_id: almoxarifadoId,
+                    }]
+                    : []),
+                {
+                    projeto_id: projetoId,
+                    tipo: "SAIDA" as const,
+                    tipo_origem: "EQUIPE" as const,
+                    origem_id: almoxarifadoId,
+                    tipo_destino: "FUNCIONARIO" as const,
+                    destino_id: funcionarioId,
+                },
+            ];
+            if (validacao.length === 0) {
+                const requisitos = (await Promise.all(
+                    movimentosValidaveis.map((movimento) => obterRequisitosValidacaoTransacao(movimento)),
+                )).flat().filter((requisito, indice, lista) =>
+                    lista.findIndex((item) => `${item.funcionario_id}:${item.papel}` === `${requisito.funcionario_id}:${requisito.papel}`) === indice,
+                );
+                if (requisitos.length > 0) {
+                    setMovimentoPendente(movimentosValidaveis.at(-1) ?? null);
+                    setRequisitosValidacao(requisitos);
+                    setAcaoPendente("APROPRIAR");
+                    setDialogValidacao(true);
+                    return;
+                }
+            }
+
             if (!equipamentoQuantitativo && responsavelAtualId && responsavelAtualId !== funcionarioId) {
-                const almoxarifadoId = await obterAlmoxarifadoId(projetoId);
                 await movimentacoesEquipamentosRepo.salvar({
                     projeto_id: projetoId,
                     estoque_equipamento_id: selecionado.estoque.id,
@@ -278,10 +324,10 @@ export function ApropriacoesPage() {
                     data: new Date().toISOString().slice(0, 10),
                     referencia_documento: null,
                     observacoes: "Troca de responsável pela Central de Apropriações.",
+                    validacao,
                 });
             }
 
-            const almoxarifadoId = await obterAlmoxarifadoId(projetoId);
             await movimentacoesEquipamentosRepo.salvar({
                 projeto_id: projetoId,
                 estoque_equipamento_id: selecionado.estoque.id,
@@ -294,13 +340,16 @@ export function ApropriacoesPage() {
                 data: new Date().toISOString().slice(0, 10),
                 referencia_documento: null,
                 observacoes: "Apropriação realizada pela Central de Apropriações.",
+                validacao,
             });
 
             toast.success(`Equipamento apropriado para ${funcionario.nome}.`);
             setDialogApropriar(false);
             setSelecionado(null);
+            return true;
         } catch (error) {
             toast.error(error instanceof Error ? error.message : "Não foi possível apropriar o equipamento.");
+            return false;
         } finally {
             setSalvando(false);
         }
@@ -317,7 +366,7 @@ export function ApropriacoesPage() {
         setDialogDevolver(true);
     };
 
-    const removerApropriacao = async () => {
+    const removerApropriacao = async (validacao: ValidacaoTransacaoEntrada[] = []) => {
         const alvo = alvoDevolucao;
 
         if (!projetoId || !alvo || !funcionarioDevolucaoId) return;
@@ -341,6 +390,24 @@ export function ApropriacoesPage() {
             }
 
             const almoxarifadoId = await obterAlmoxarifadoId(projetoId);
+            const movimentoValidavel = {
+                projeto_id: projetoId,
+                tipo: "DEVOLUCAO" as const,
+                tipo_origem: "FUNCIONARIO" as const,
+                origem_id: funcionarioDevolucaoId,
+                tipo_destino: "EQUIPE" as const,
+                destino_id: almoxarifadoId,
+            };
+            if (validacao.length === 0) {
+                const requisitos = await obterRequisitosValidacaoTransacao(movimentoValidavel);
+                if (requisitos.length > 0) {
+                    setMovimentoPendente(movimentoValidavel);
+                    setRequisitosValidacao(requisitos);
+                    setAcaoPendente("DEVOLVER");
+                    setDialogValidacao(true);
+                    return;
+                }
+            }
 
             await movimentacoesEquipamentosRepo.salvar({
                 projeto_id: projetoId,
@@ -354,6 +421,7 @@ export function ApropriacoesPage() {
                 data: new Date().toISOString().slice(0, 10),
                 referencia_documento: null,
                 observacoes: "Remoção da apropriação pela Central de Apropriações.",
+                validacao,
             });
 
             toast.success(
@@ -364,12 +432,14 @@ export function ApropriacoesPage() {
             setAlvoDevolucao(null);
             setFuncionarioDevolucaoId(null);
             setSelecionado(null);
+            return true;
         } catch (error) {
             toast.error(
                 error instanceof Error
                     ? error.message
                     : "Não foi possível remover a apropriação.",
             );
+            return false;
         } finally {
             setSalvando(false);
         }
@@ -808,6 +878,34 @@ export function ApropriacoesPage() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            <ValidarPinTransacaoDialog
+                open={dialogValidacao}
+                movimento={movimentoPendente}
+                requisitos={requisitosValidacao}
+                salvando={salvando}
+                onOpenChange={(open) => {
+                    setDialogValidacao(open);
+                    if (!open) {
+                        setMovimentoPendente(null);
+                        setRequisitosValidacao([]);
+                        setAcaoPendente(null);
+                    }
+                }}
+                onConfirm={async (validacao) => {
+                    const sucesso =
+                        acaoPendente === "APROPRIAR"
+                            ? await salvarApropriacao(validacao)
+                            : acaoPendente === "DEVOLVER"
+                                ? await removerApropriacao(validacao)
+                                : false;
+                    if (!sucesso) return;
+                    setDialogValidacao(false);
+                    setMovimentoPendente(null);
+                    setRequisitosValidacao([]);
+                    setAcaoPendente(null);
+                }}
+            />
         </div>
     );
 }

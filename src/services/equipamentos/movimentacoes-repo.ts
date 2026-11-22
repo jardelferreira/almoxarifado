@@ -6,14 +6,18 @@ import type {
   MovimentacaoEquipamento,
   MovimentacaoEquipamentoParte,
   MovimentacaoEquipamentoTipo,
+  ValidacaoTransacaoEntrada,
 } from "@/types";
 import { estadoEquipamentosRepo, type EstadoEstoqueEquipamento } from "./estado-repo";
+import { validarTransacaoPorPin } from "./validacao-transacoes";
 
 type MovimentacaoEquipamentoInput = Omit<
   MovimentacaoEquipamento,
   "id" | "criado_em" | "atualizado_em"
 > & {
   id?: string;
+  /** Entrada transitória; o PIN nunca é persistido. */
+  validacao?: ValidacaoTransacaoEntrada[];
 };
 
 function normalizarNome(nome: string): string {
@@ -872,6 +876,9 @@ export const movimentacoesEquipamentosRepo = {
 
     await validarParticipantes(dados);
 
+    const { validacao, ...dadosPersistiveis } = dados;
+    const validacoes = await validarTransacaoPorPin(dadosPersistiveis, validacao ?? []);
+
     /*
      * ENTRADA é um evento inicial.
      * O registro de estoque já representa a existência
@@ -895,7 +902,8 @@ export const movimentacoesEquipamentosRepo = {
     const agora = new Date().toISOString();
 
     const movimentacao: MovimentacaoEquipamento = {
-      ...dados,
+      ...dadosPersistiveis,
+      validacoes: validacoes.length > 0 ? validacoes : null,
       id: dados.id ?? uid(),
       criado_em: agora,
       atualizado_em: agora,
@@ -1090,4 +1098,3 @@ export const movimentacoesEquipamentosRepo = {
     return movimentacao;
   },
 };
-
