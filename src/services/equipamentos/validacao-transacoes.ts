@@ -1,4 +1,5 @@
 import { getDB } from "@/db/db";
+import { configuracoesRepo } from "@/services/configuracoes-repo";
 import { verificarPin } from "@/utils/seguranca";
 import type {
   MovimentacaoEquipamentoTipo,
@@ -71,6 +72,19 @@ function adicionarRequisito(
 export async function obterRequisitosValidacaoTransacao(
   movimento: RascunhoMovimentacaoValidavel,
 ): Promise<RequisitoValidacaoTransacao[]> {
+  const configuracao = await configuracoesRepo.obter(movimento.projeto_id);
+  if (!configuracao.seguranca.exigir_validacao_transacoes_equipamentos) {
+    return [];
+  }
+  if (configuracao.seguranca.metodo_validacao_transacoes_equipamentos !== "PIN") {
+    const metodo = listarMetodosValidacaoTransacao().find(
+      (item) => item.id === configuracao.seguranca.metodo_validacao_transacoes_equipamentos,
+    );
+    throw new Error(
+      `O método de validação ${metodo?.nome ?? "selecionado"} ainda não está disponível neste ambiente.`,
+    );
+  }
+
   const db = getDB();
   const requisitos: RequisitoValidacaoTransacao[] = [];
 

@@ -1,4 +1,5 @@
 import { DocumentoTipo } from "./documento";
+import type { MetodoValidacaoTransacao } from "./validacao-transacao";
 export type ConfiguracaoModulos = {
   materiais: boolean;
   equipamentos: boolean;
@@ -33,6 +34,13 @@ export type ConfiguracaoInventario = {
   ajustar_automaticamente: boolean;
 };
 
+export type ConfiguracaoSeguranca = {
+  /** Exige validação dos participantes nas movimentações de equipamentos. */
+  exigir_validacao_transacoes_equipamentos: boolean;
+  /** Método escolhido para a validação quando novos módulos estiverem disponíveis. */
+  metodo_validacao_transacoes_equipamentos: MetodoValidacaoTransacao;
+};
+
 export interface Configuracao {
   id: string;
   projeto_id: string;
@@ -40,6 +48,7 @@ export interface Configuracao {
   documentos: ConfiguracaoDocumentos;
   estoque: ConfiguracaoEstoque;
   inventario: ConfiguracaoInventario;
+  seguranca: ConfiguracaoSeguranca;
   casas_decimais: number;
   criado_em: string;
   atualizado_em: string;
@@ -79,6 +88,10 @@ export function criarConfiguracaoPadrao(
       permitir_inventario_parcial: true,
       exigir_responsavel: false,
       ajustar_automaticamente: false,
+    },
+    seguranca: {
+      exigir_validacao_transacoes_equipamentos: false,
+      metodo_validacao_transacoes_equipamentos: "PIN",
     },
     casas_decimais: 2,
     criado_em: criadoEm,
