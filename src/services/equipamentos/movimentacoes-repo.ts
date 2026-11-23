@@ -938,8 +938,10 @@ export const movimentacoesEquipamentosRepo = {
       db.movimentacoes_equipamentos,
       db.estoque_equipamentos,
       // estadoEquipamentosRepo.calcular() consulta o cadastro do equipamento
-      // dentro da mesma transação para validar a baixa com consistência.
+      // e as equipes dentro da mesma transação para validar a baixa com
+      // consistência.
       db.equipamentos,
+      db.equipes,
     ];
     const alteraApropriacoes = ["SAIDA", "DEVOLUCAO", "TRANSFERENCIA"].includes(
       movimentacao.tipo,
