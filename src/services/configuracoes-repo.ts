@@ -5,6 +5,7 @@ import type {
   ConfiguracaoEstoque,
   ConfiguracaoInventario,
   ConfiguracaoModulos,
+  ConfiguracaoSeguranca,
 } from "@/types";
 import { criarConfiguracaoPadrao } from "@/types/configuracao";
 
@@ -30,6 +31,10 @@ const mesclarConfiguracao = (
     ...padrao.inventario,
     ...(existente.inventario ?? {}),
   } as ConfiguracaoInventario,
+  seguranca: {
+    ...padrao.seguranca,
+    ...(existente.seguranca ?? {}),
+  } as ConfiguracaoSeguranca,
 });
 
 export const configuracoesRepo = {
@@ -37,7 +42,10 @@ export const configuracoesRepo = {
     const db = getDB();
     const existente = await db.configuracoes.where("projeto_id").equals(projetoId).first();
     if (existente) {
-      return mesclarConfiguracao(existente, criarConfiguracaoPadrao(projetoId, existente.criado_em));
+      return mesclarConfiguracao(
+        existente,
+        criarConfiguracaoPadrao(projetoId, existente.criado_em),
+      );
     }
 
     return criarConfiguracaoPadrao(projetoId);
@@ -53,8 +61,7 @@ export const configuracoesRepo = {
         criarConfiguracaoPadrao(projetoId, existente.criado_em),
       );
 
-      const precisaAtualizar =
-        JSON.stringify(normalizada) !== JSON.stringify(existente);
+      const precisaAtualizar = JSON.stringify(normalizada) !== JSON.stringify(existente);
 
       if (precisaAtualizar) {
         await db.configuracoes.put(normalizada);

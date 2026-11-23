@@ -10,6 +10,7 @@ export * from "./equipe";
 export * from "./movimentacao";
 export * from "./arquivo";
 export * from "./equipamento";
+export * from "./validacao-transacao";
 export * from "./configuracao";
 export * from "./documento";
 export * from "./inventario";
