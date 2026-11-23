@@ -316,8 +316,13 @@ function detalhesRegistroFisico(
       : stock.identificacao || stock.patrimonio || stock.serial
         ? `Identificação: ${stock.identificacao || stock.patrimonio || stock.serial}`
         : "Sem identificação individual";
+  const caracteristicas = [
+    `Marca: ${equipamento?.marca || "não informada"}`,
+    `Modelo: ${equipamento?.modelo || "não informado"}`,
+    `Descrição: ${equipamento?.descricao || "não informada"}`,
+  ].join(" · ");
 
-  return `Equipe proprietária: ${equipe} · Proprietário: ${proprietario} · Vínculo: ${vinculo} · ${identificadores}`;
+  return `${caracteristicas} · Equipe proprietária: ${equipe} · Proprietário: ${proprietario} · Vínculo: ${vinculo} · ${identificadores}`;
 }
 
 type FiltroOpcao = {
@@ -3072,41 +3077,6 @@ function MovimentacoesEquipamentosPage() {
                         vazio="Nenhum equipamento disponível para baixa"
                       />
                     </div>
-                    {equipamentoSelecionado && estoqueSelecionado && (
-                      <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-4 text-sm dark:border-slate-700 dark:bg-slate-900/40">
-                        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                          <div>
-                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                              Características do equipamento
-                            </p>
-                            <p className="mt-1 font-semibold text-foreground">
-                              {equipamentoSelecionado.nome}
-                            </p>
-                          </div>
-                          <span className="rounded-md border bg-background px-2 py-1 text-xs font-medium">
-                            {equipamentoSelecionado.tipo_controle === "INDIVIDUAL"
-                              ? "Controle individual"
-                              : "Controle quantitativo"}
-                          </span>
-                        </div>
-                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                          <div>
-                            <p className="text-xs text-muted-foreground">Marca</p>
-                            <p className="font-medium">{equipamentoSelecionado.marca || "Não informada"}</p>
-                          </div>
-                          <div>
-                            <p className="text-xs text-muted-foreground">Modelo</p>
-                            <p className="font-medium">{equipamentoSelecionado.modelo || "Não informado"}</p>
-                          </div>
-                          <div className="sm:col-span-2 lg:col-span-1">
-                            <p className="text-xs text-muted-foreground">Descrição</p>
-                            <p className="break-words font-medium">
-                              {equipamentoSelecionado.descricao || "Não informada"}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    )}
                     <div className="space-y-2">
                       <Label>Equipamento em estoque</Label>
                       <Combobox
@@ -3139,6 +3109,41 @@ function MovimentacoesEquipamentosPage() {
                         vazio="Nenhum equipamento disponível para baixa"
                       />
                     </div>
+                    {equipamentoSelecionado && estoqueSelecionado && (
+                      <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-4 text-sm dark:border-slate-700 dark:bg-slate-900/40">
+                        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                              Características do equipamento selecionado
+                            </p>
+                            <p className="mt-1 font-semibold text-foreground">
+                              {equipamentoSelecionado.nome}
+                            </p>
+                          </div>
+                          <span className="rounded-md border bg-background px-2 py-1 text-xs font-medium">
+                            {equipamentoSelecionado.tipo_controle === "INDIVIDUAL"
+                              ? "Controle individual"
+                              : "Controle quantitativo"}
+                          </span>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                          <div>
+                            <p className="text-xs text-muted-foreground">Marca</p>
+                            <p className="font-medium">{equipamentoSelecionado.marca || "Não informada"}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">Modelo</p>
+                            <p className="font-medium">{equipamentoSelecionado.modelo || "Não informado"}</p>
+                          </div>
+                          <div className="sm:col-span-2 lg:col-span-1">
+                            <p className="text-xs text-muted-foreground">Descrição</p>
+                            <p className="break-words font-medium">
+                              {equipamentoSelecionado.descricao || "Não informada"}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                     <div className="space-y-2">
                       <Label>Motivo da baixa *</Label>
                       <textarea
