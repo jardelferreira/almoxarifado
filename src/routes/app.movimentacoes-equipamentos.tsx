@@ -47,6 +47,12 @@ import { getDB } from "@/db/db";
 import { estoqueEquipamentosRepo } from "@/services/equipamentos/estoque-repo";
 import { movimentacoesEquipamentosRepo } from "@/services/equipamentos/movimentacoes-repo";
 import { substituicoesEquipamentosRepo } from "@/services/equipamentos/substituicoes-repo";
+import {
+  obterRequisitosValidacaoTransacao,
+  type RascunhoMovimentacaoValidavel,
+  type RequisitoValidacaoTransacao,
+} from "@/services/equipamentos/validacao-transacoes";
+import { ValidarPinTransacaoDialog } from "@/components/equipamentos/ValidarPinTransacaoDialog";
 import type {
   Empresa,
   Equipe,
@@ -57,6 +63,7 @@ import type {
   MovimentacaoEquipamentoParte,
   MovimentacaoEquipamentoTipo,
   SubstituicaoEquipamento,
+  ValidacaoTransacaoEntrada,
 } from "@/types";
 
 export const Route = createFileRoute("/app/movimentacoes-equipamentos")({
@@ -108,6 +115,11 @@ type FormularioSubstituicao = {
   motivo: string;
   observacoes: string;
 };
+
+type DadosMovimentacaoRota = Omit<
+  MovimentacaoEquipamento,
+  "id" | "criado_em" | "atualizado_em" | "validacoes"
+> & { validacao?: ValidacaoTransacaoEntrada[] };
 
 const hoje = () => new Date().toISOString().slice(0, 10);
 
@@ -455,6 +467,9 @@ function MovimentacoesEquipamentosPage() {
   );
   const [formulario, setFormulario] = useState<Formulario>(formularioInicial);
   const [salvando, setSalvando] = useState(false);
+  const [dialogValidacao, setDialogValidacao] = useState(false);
+  const [movimentoPendente, setMovimentoPendente] = useState<DadosMovimentacaoRota | null>(null);
+  const [requisitosValidacao, setRequisitosValidacao] = useState<RequisitoValidacaoTransacao[]>([]);
   const [salvandoSubstituicao, setSalvandoSubstituicao] = useState(false);
   const [formularioSubstituicao, setFormularioSubstituicao] = useState<FormularioSubstituicao>({
     estoqueOrigemId: "",
@@ -469,6 +484,7 @@ function MovimentacoesEquipamentosPage() {
     observacoes: "",
   });
   const observacoesRef = useRef<HTMLTextAreaElement>(null);
+  const motivoBaixaRef = useRef<HTMLTextAreaElement>(null);
   const historicoSubstituicoesRef = useRef<HTMLDivElement>(null);
 
   async function carregar() {
@@ -1624,9 +1640,42 @@ function MovimentacoesEquipamentosPage() {
     return observacoesRef.current?.value ?? formulario.observacoes;
   }
 
+  function motivoBaixaDigitado(): string {
+    return motivoBaixaRef.current?.value ?? formulario.motivoBaixa;
+  }
+
+  async function registrarDadosMovimentacao(
+    dados: DadosMovimentacaoRota,
+    validacao: ValidacaoTransacaoEntrada[] = [],
+  ) {
+    await movimentacoesEquipamentosRepo.salvar({ ...dados, validacao });
+    await carregar();
+    setDialogAberto(false);
+    setFormulario({ ...formularioInicial, data: hoje() });
+    if (observacoesRef.current) observacoesRef.current.value = "";
+    if (motivoBaixaRef.current) motivoBaixaRef.current.value = "";
+    toast.success("Movimentação registrada.");
+  }
+
+  async function confirmarValidacao(validacao: ValidacaoTransacaoEntrada[]) {
+    if (!movimentoPendente) return;
+    setSalvando(true);
+    try {
+      await registrarDadosMovimentacao(movimentoPendente, validacao);
+      setDialogValidacao(false);
+      setMovimentoPendente(null);
+      setRequisitosValidacao([]);
+    } catch (error) {
+      throw error;
+    } finally {
+      setSalvando(false);
+    }
+  }
+
   function abrirNovo() {
     setFormulario({ ...formularioInicial, data: hoje() });
     if (observacoesRef.current) observacoesRef.current.value = "";
+    if (motivoBaixaRef.current) motivoBaixaRef.current.value = "";
     setDialogAberto(true);
   }
 
@@ -1719,6 +1768,7 @@ function MovimentacoesEquipamentosPage() {
       serial: "",
       motivoBaixa: "",
     }));
+    if (motivoBaixaRef.current) motivoBaixaRef.current.value = "";
   }
 
   function selecionarEstoque(id: string) {
@@ -1903,7 +1953,8 @@ function MovimentacoesEquipamentosPage() {
         return;
       }
 
-      if (tipo === "BAIXA" && !formulario.motivoBaixa.trim()) {
+      const motivoBaixa = motivoBaixaDigitado().trim();
+      if (tipo === "BAIXA" && !motivoBaixa) {
         toast.error("Informe o motivo da baixa.");
         return;
       }
@@ -2075,16 +2126,18 @@ function MovimentacoesEquipamentosPage() {
         data: formulario.data,
         referencia_documento: formulario.referenciaDocumento.trim() || null,
         observacoes:
-          tipo === "BAIXA" ? formulario.motivoBaixa.trim() : observacoesDigitadas().trim() || null,
+          tipo === "BAIXA" ? motivoBaixa : observacoesDigitadas().trim() || null,
       };
 
-      await movimentacoesEquipamentosRepo.salvar(dadosMovimentacao);
+      const requisitos = await obterRequisitosValidacaoTransacao(dadosMovimentacao);
+      if (requisitos.length > 0) {
+        setMovimentoPendente(dadosMovimentacao);
+        setRequisitosValidacao(requisitos);
+        setDialogValidacao(true);
+        return;
+      }
 
-      await carregar();
-      setDialogAberto(false);
-      setFormulario({ ...formularioInicial, data: hoje() });
-      if (observacoesRef.current) observacoesRef.current.value = "";
-      toast.success("Movimentação registrada.");
+      await registrarDadosMovimentacao(dadosMovimentacao);
       return;
     } catch (error) {
       toast.error(
@@ -3019,6 +3072,41 @@ function MovimentacoesEquipamentosPage() {
                         vazio="Nenhum equipamento disponível para baixa"
                       />
                     </div>
+                    {equipamentoSelecionado && estoqueSelecionado && (
+                      <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-4 text-sm dark:border-slate-700 dark:bg-slate-900/40">
+                        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                              Características do equipamento
+                            </p>
+                            <p className="mt-1 font-semibold text-foreground">
+                              {equipamentoSelecionado.nome}
+                            </p>
+                          </div>
+                          <span className="rounded-md border bg-background px-2 py-1 text-xs font-medium">
+                            {equipamentoSelecionado.tipo_controle === "INDIVIDUAL"
+                              ? "Controle individual"
+                              : "Controle quantitativo"}
+                          </span>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                          <div>
+                            <p className="text-xs text-muted-foreground">Marca</p>
+                            <p className="font-medium">{equipamentoSelecionado.marca || "Não informada"}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">Modelo</p>
+                            <p className="font-medium">{equipamentoSelecionado.modelo || "Não informado"}</p>
+                          </div>
+                          <div className="sm:col-span-2 lg:col-span-1">
+                            <p className="text-xs text-muted-foreground">Descrição</p>
+                            <p className="break-words font-medium">
+                              {equipamentoSelecionado.descricao || "Não informada"}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                     <div className="space-y-2">
                       <Label>Equipamento em estoque</Label>
                       <Combobox
@@ -3054,9 +3142,9 @@ function MovimentacoesEquipamentosPage() {
                     <div className="space-y-2">
                       <Label>Motivo da baixa *</Label>
                       <textarea
+                        ref={motivoBaixaRef}
                         className="min-h-24 w-full rounded-md border bg-background px-3 py-2 text-sm"
-                        value={formulario.motivoBaixa}
-                        onChange={(event) => atualizar("motivoBaixa", event.target.value)}
+                        defaultValue={formulario.motivoBaixa}
                         placeholder="Informe o motivo da baixa definitiva..."
                       />
                     </div>
@@ -3489,6 +3577,21 @@ function MovimentacoesEquipamentosPage() {
         </DialogContent>
       </Dialog>
 
+      <ValidarPinTransacaoDialog
+        open={dialogValidacao}
+        movimento={movimentoPendente as RascunhoMovimentacaoValidavel | null}
+        requisitos={requisitosValidacao}
+        salvando={salvando}
+        onOpenChange={(open) => {
+          setDialogValidacao(open);
+          if (!open) {
+            setMovimentoPendente(null);
+            setRequisitosValidacao([]);
+          }
+        }}
+        onConfirm={confirmarValidacao}
+      />
+
       <Dialog
         open={!!detalheSubstituicao}
         onOpenChange={(open) => !open && setDetalheSubstituicao(null)}
@@ -3777,4 +3880,3 @@ function MovimentacoesEquipamentosPage() {
     </>
   );
 }
-

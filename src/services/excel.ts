@@ -643,9 +643,10 @@ function validarEscopoProjeto(
  * acontece no importador e somente quando o vínculo do estoque é conhecido
  * como não próprio.
  */
-function migrarBaixasLegadasDeEquipamentosNaoProprios(
-  tabelas: Record<string, Linha[]>,
-): { tabelas: Record<string, Linha[]>; migradas: number } {
+function migrarBaixasLegadasDeEquipamentosNaoProprios(tabelas: Record<string, Linha[]>): {
+  tabelas: Record<string, Linha[]>;
+  migradas: number;
+} {
   const estoques = new Map(
     (tabelas["estoque_equipamentos"] ?? []).map((linha) => [S(linha["id"]), linha]),
   );
@@ -2269,4 +2270,3 @@ export function resumirDataset(dataset: DatasetImportado): string {
     "\n",
   );
 }
-

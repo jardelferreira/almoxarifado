@@ -1,23 +1,15 @@
 import type { ID } from "./common";
 import type { EquipamentoMetodoDepreciacao } from "./financeiro-equipamento";
+import type { ValidacaoTransacaoRegistro } from "./validacao-transacao";
 
 export type EquipamentoTipoControle = "INDIVIDUAL" | "QUANTITATIVO";
 export type EquipamentoVinculo = "PROPRIO" | "ALUGADO" | "EMPRESTIMO";
 export type EquipamentoSituacaoCadastro = "ATIVO" | "PLANEJADO";
 export type EquipamentoStatus = "ATIVO" | "ENCERRADO";
 
-export type EquipamentoPeriodicidadeCusto =
-  | "HORA"
-  | "DIA"
-  | "SEMANA"
-  | "MES"
-  | "ANO";
+export type EquipamentoPeriodicidadeCusto = "HORA" | "DIA" | "SEMANA" | "MES" | "ANO";
 
-export type EquipamentoFonteValor =
-  | "INFORMADO"
-  | "DOCUMENTO"
-  | "HISTORICO"
-  | "IMPORTADO";
+export type EquipamentoFonteValor = "INFORMADO" | "DOCUMENTO" | "HISTORICO" | "IMPORTADO";
 
 export interface CategoriaEquipamento {
   id: ID;
@@ -101,8 +93,18 @@ export interface EstoqueEquipamentoEdicao {
   id: ID;
   em: string;
   campos: Array<"patrimonio" | "identificacao" | "serial" | "referencia_documento" | "observacoes">;
-  antes: Partial<Pick<EstoqueEquipamento, "patrimonio" | "identificacao" | "serial" | "referencia_documento" | "observacoes">>;
-  depois: Partial<Pick<EstoqueEquipamento, "patrimonio" | "identificacao" | "serial" | "referencia_documento" | "observacoes">>;
+  antes: Partial<
+    Pick<
+      EstoqueEquipamento,
+      "patrimonio" | "identificacao" | "serial" | "referencia_documento" | "observacoes"
+    >
+  >;
+  depois: Partial<
+    Pick<
+      EstoqueEquipamento,
+      "patrimonio" | "identificacao" | "serial" | "referencia_documento" | "observacoes"
+    >
+  >;
 }
 
 export interface Apropriacao {
@@ -129,10 +131,7 @@ export type MovimentacaoEquipamentoTipo =
   | "MANUTENCAO"
   | "RETIRADA_MANUTENCAO";
 
-export type MovimentacaoEquipamentoParte =
-  | "EMPRESA"
-  | "EQUIPE"
-  | "FUNCIONARIO";
+export type MovimentacaoEquipamentoParte = "EMPRESA" | "EQUIPE" | "FUNCIONARIO";
 
 export interface MovimentacaoEquipamento {
   id: ID;
@@ -147,6 +146,8 @@ export interface MovimentacaoEquipamento {
   data: string;
   referencia_documento?: string | null | undefined;
   observacoes?: string | null | undefined;
+  /** Evidência segura da autenticação; nunca contém PIN ou biometria bruta. */
+  validacoes?: ValidacaoTransacaoRegistro[] | null | undefined;
   criado_em: string;
   atualizado_em: string;
 }

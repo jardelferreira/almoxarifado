@@ -6,14 +6,18 @@ import type {
   MovimentacaoEquipamento,
   MovimentacaoEquipamentoParte,
   MovimentacaoEquipamentoTipo,
+  ValidacaoTransacaoEntrada,
 } from "@/types";
 import { estadoEquipamentosRepo, type EstadoEstoqueEquipamento } from "./estado-repo";
+import { validarTransacaoPorPin } from "./validacao-transacoes";
 
 type MovimentacaoEquipamentoInput = Omit<
   MovimentacaoEquipamento,
   "id" | "criado_em" | "atualizado_em"
 > & {
   id?: string;
+  /** Entrada transitória; o PIN nunca é persistido. */
+  validacao?: ValidacaoTransacaoEntrada[];
 };
 
 function normalizarNome(nome: string): string {
@@ -872,6 +876,9 @@ export const movimentacoesEquipamentosRepo = {
 
     await validarParticipantes(dados);
 
+    const { validacao, ...dadosPersistiveis } = dados;
+    const validacoes = await validarTransacaoPorPin(dadosPersistiveis, validacao ?? []);
+
     /*
      * ENTRADA é um evento inicial.
      * O registro de estoque já representa a existência
@@ -895,7 +902,8 @@ export const movimentacoesEquipamentosRepo = {
     const agora = new Date().toISOString();
 
     const movimentacao: MovimentacaoEquipamento = {
-      ...dados,
+      ...dadosPersistiveis,
+      validacoes: validacoes.length > 0 ? validacoes : null,
       id: dados.id ?? uid(),
       criado_em: agora,
       atualizado_em: agora,
@@ -921,16 +929,27 @@ export const movimentacoesEquipamentosRepo = {
       );
     }
 
-    await db.transaction(
-      "rw",
-      [
-        db.movimentacoes_equipamentos,
-        db.apropriacoes,
-        db.estoque_equipamentos,
-        db.equipamentos,
-        db.manutencoes_equipamentos,
-      ],
-      async () => {
+    // A manutenção só participa da transação quando o evento realmente
+    // altera o ciclo de manutenção. Baixa, devolução ao fornecedor e demais
+    // movimentos não devem falhar porque um banco legado ainda não possui a
+    // objectStore de manutenções; a migração do schema a cria para os fluxos
+    // que precisam dela.
+    const tabelasTransacao: Array<import("dexie").Table<any, string>> = [
+      db.movimentacoes_equipamentos,
+      db.apropriacoes,
+      db.estoque_equipamentos,
+      db.equipamentos,
+    ];
+    const usaManutencao = [
+      "SINALIZAR_MANUTENCAO",
+      "MANUTENCAO",
+      "ENVIO",
+      "RETIRADA_MANUTENCAO",
+      "RETORNO_MANUTENCAO",
+    ].includes(movimentacao.tipo);
+    if (usaManutencao) tabelasTransacao.push(db.manutencoes_equipamentos);
+
+    await db.transaction("rw", tabelasTransacao, async () => {
         /*
          * DEVOLUCAO_FORNECEDOR é a única movimentação
          * que reduz permanentemente o saldo físico.
@@ -1090,4 +1109,3 @@ export const movimentacoesEquipamentosRepo = {
     return movimentacao;
   },
 };
-
