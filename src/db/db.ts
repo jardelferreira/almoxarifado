@@ -251,6 +251,18 @@ export class AlmoxarifadoDB extends Dexie {
       substituicoes_equipamentos:
         "id, projeto_id, estoque_origem_id, equipamento_origem_id, estoque_substituto_id, equipamento_substituto_id, movimentacao_devolucao_id, movimentacao_entrada_id, data",
     });
+
+    // Alguns bancos locais já haviam sido abertos com uma versão posterior
+    // durante testes e ainda assim ficaram sem as stores adicionadas nas
+    // migrações anteriores. Esta versão é intencionalmente aditiva e repete
+    // as stores críticas para forçar uma nova atualização do IndexedDB.
+    this.version(25).stores({
+      configuracoes: "id, projeto_id",
+      manutencoes_equipamentos:
+        "id, projeto_id, estoque_equipamento_id, equipamento_id, status_operacional, status_detalhamento, data_abertura, empresa_id, movimento_sinalizacao_id, movimento_envio_id, movimento_retorno_id, [projeto_id+estoque_equipamento_id], [projeto_id+status_operacional]",
+      substituicoes_equipamentos:
+        "id, projeto_id, estoque_origem_id, equipamento_origem_id, estoque_substituto_id, equipamento_substituto_id, movimentacao_devolucao_id, movimentacao_entrada_id, data",
+    });
   }
 }
 
