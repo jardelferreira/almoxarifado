@@ -72,6 +72,18 @@ function adicionarRequisito(
 export async function obterRequisitosValidacaoTransacao(
   movimento: RascunhoMovimentacaoValidavel,
 ): Promise<RequisitoValidacaoTransacao[]> {
+  // Baixas, devoluções ao fornecedor, manutenção e demais operações entre
+  // equipe/empresa não possuem funcionário como parte da transação. Além de
+  // não haver PIN a solicitar, não devemos consultar a configuração de
+  // validação nesse caminho; isso mantém operações legadas funcionando mesmo
+  // enquanto um IndexedDB antigo termina sua migração.
+  if (
+    movimento.tipo_origem !== "FUNCIONARIO" &&
+    movimento.tipo_destino !== "FUNCIONARIO"
+  ) {
+    return [];
+  }
+
   const configuracao = await configuracoesRepo.obter(movimento.projeto_id);
   if (!configuracao.seguranca.exigir_validacao_transacoes_equipamentos) {
     return [];

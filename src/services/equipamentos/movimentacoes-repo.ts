@@ -936,10 +936,12 @@ export const movimentacoesEquipamentosRepo = {
     // que precisam dela.
     const tabelasTransacao: Array<import("dexie").Table<any, string>> = [
       db.movimentacoes_equipamentos,
-      db.apropriacoes,
       db.estoque_equipamentos,
-      db.equipamentos,
     ];
+    const alteraApropriacoes = ["SAIDA", "DEVOLUCAO", "TRANSFERENCIA"].includes(
+      movimentacao.tipo,
+    );
+    if (alteraApropriacoes) tabelasTransacao.push(db.apropriacoes);
     const usaManutencao = [
       "SINALIZAR_MANUTENCAO",
       "MANUTENCAO",
