@@ -929,16 +929,34 @@ export const movimentacoesEquipamentosRepo = {
       );
     }
 
-    await db.transaction(
-      "rw",
-      [
-        db.movimentacoes_equipamentos,
-        db.apropriacoes,
-        db.estoque_equipamentos,
-        db.equipamentos,
-        db.manutencoes_equipamentos,
-      ],
-      async () => {
+    // A manutenção só participa da transação quando o evento realmente
+    // altera o ciclo de manutenção. Baixa, devolução ao fornecedor e demais
+    // movimentos não devem falhar porque um banco legado ainda não possui a
+    // objectStore de manutenções; a migração do schema a cria para os fluxos
+    // que precisam dela.
+    const tabelasTransacao: Array<import("dexie").Table<any, string>> = [
+      db.movimentacoes_equipamentos,
+      db.estoque_equipamentos,
+      // estadoEquipamentosRepo.calcular() consulta o cadastro do equipamento
+      // e as equipes dentro da mesma transação para validar a baixa com
+      // consistência.
+      db.equipamentos,
+      db.equipes,
+    ];
+    const alteraApropriacoes = ["SAIDA", "DEVOLUCAO", "TRANSFERENCIA"].includes(
+      movimentacao.tipo,
+    );
+    if (alteraApropriacoes) tabelasTransacao.push(db.apropriacoes);
+    const usaManutencao = [
+      "SINALIZAR_MANUTENCAO",
+      "MANUTENCAO",
+      "ENVIO",
+      "RETIRADA_MANUTENCAO",
+      "RETORNO_MANUTENCAO",
+    ].includes(movimentacao.tipo);
+    if (usaManutencao) tabelasTransacao.push(db.manutencoes_equipamentos);
+
+    await db.transaction("rw", tabelasTransacao, async () => {
         /*
          * DEVOLUCAO_FORNECEDOR é a única movimentação
          * que reduz permanentemente o saldo físico.
