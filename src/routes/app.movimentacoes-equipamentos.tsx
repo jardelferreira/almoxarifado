@@ -3084,9 +3084,12 @@ function MovimentacoesEquipamentosPage() {
                           .map((stock) => {
                             const equipamento = equipamentoPorId.get(stock.equipamento_id);
                             const estado = estados.get(stock.id);
+                            const marcaModelo = [equipamento?.marca, equipamento?.modelo]
+                              .filter(Boolean)
+                              .join(" · ");
                             return {
                               value: stock.id,
-                              label: `${equipamento?.nome ?? "Equipamento"} · disponível: ${Math.min(
+                              label: `${equipamento?.nome ?? "Equipamento"}${marcaModelo ? ` · ${marcaModelo}` : ""} · disponível: ${Math.min(
                                 formulario.origemId === equipesOperacionais.manutencao?.id
                                   ? (estado?.manutencao ?? 0)
                                   : (estado?.almoxarifado ?? 0),
