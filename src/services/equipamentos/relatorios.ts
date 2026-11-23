@@ -1167,6 +1167,8 @@ export type RelatorioManutencaoLinha = {
   estoque: EstoqueEquipamento;
   quantidade: number;
   identificacao: string;
+  numeroSerie: string | null;
+  patrimonio: string | null;
   origem: "ALMOXARIFADO" | "FUNCIONARIO";
   funcionario: Funcionario | undefined;
   equipe: Equipe | undefined;
@@ -1274,6 +1276,8 @@ export async function consultarRelatorioEquipamentosManutencao(
       quantidade: estado.manutencao,
       identificacao:
         estoque.identificacao || estoque.patrimonio || estoque.serial || "Sem identificação",
+      numeroSerie: estoque.serial || null,
+      patrimonio: estoque.patrimonio || null,
       origem: estado.apropriado > 0 ? "FUNCIONARIO" : "ALMOXARIFADO",
       funcionario: origemMovimento?.tipo_origem === "FUNCIONARIO" ? funcionarioPorId.get(origemMovimento.origem_id) : undefined,
       equipe: origemMovimento?.tipo_origem === "EQUIPE" ? equipePorId.get(origemMovimento.origem_id) : undefined,
@@ -1311,12 +1315,10 @@ export function exportarRelatorioEquipamentosManutencao(
       arquivo: `relatorio_equipamentos_manutencao_${new Date().toISOString().slice(0, 10)}`,
       colunas: [
         "EQUIPAMENTO",
-        "CATEGORIA",
         "IDENTIFICACAO",
         "PROPRIETARIO",
         "EQUIPE_PROPRIETARIA",
         "QUANTIDADE",
-        "ORIGEM",
         "STATUS",
         "DATA_ABERTURA",
         "DATA_ENVIO",
@@ -1326,12 +1328,14 @@ export function exportarRelatorioEquipamentosManutencao(
       ],
       linhas: relatorio.linhas.map((linha) => ({
         EQUIPAMENTO: linha.equipamento.nome,
-        CATEGORIA: linha.categoria?.nome ?? "—",
-        IDENTIFICACAO: linha.identificacao,
+        IDENTIFICACAO: [
+          `Identificação: ${linha.identificacao}`,
+          `Número de série: ${linha.numeroSerie ?? "—"}`,
+          `Patrimônio: ${linha.patrimonio ?? "—"}`,
+        ].join("\n"),
         PROPRIETARIO: linha.empresa?.nome ?? "—",
         EQUIPE_PROPRIETARIA: linha.equipeProprietaria?.nome ?? "Projeto inteiro",
         QUANTIDADE: linha.quantidade,
-        ORIGEM: linha.origem,
         STATUS: linha.statusManutencao ?? "—",
         DATA_ABERTURA: linha.dataAbertura ?? "",
         DATA_ENVIO: linha.dataEnvio ?? "",
@@ -1341,12 +1345,10 @@ export function exportarRelatorioEquipamentosManutencao(
       })),
       larguras: {
         EQUIPAMENTO: 34,
-        CATEGORIA: 22,
-        IDENTIFICACAO: 20,
+        IDENTIFICACAO: 32,
         PROPRIETARIO: 28,
         EQUIPE_PROPRIETARIA: 28,
         QUANTIDADE: 12,
-        ORIGEM: 28,
         STATUS: 20,
         DATA_ABERTURA: 16,
         DATA_ENVIO: 16,
@@ -1849,14 +1851,16 @@ export function imprimirRelatorioEquipamentosManutencao(
   imprimirTabelaRelatorioEquipamentos(
     "Equipamentos em manutenção",
     projetoNome,
-    ["Equipamento", "Categoria", "Identificação", "Proprietário / equipe", "Quantidade", "Origem", "Status", "Abertura", "Envio", "Retorno", "Observação inicial", "Última observação da manutenção"],
+    ["Equipamento", "Identificação / série / patrimônio", "Proprietário / equipe", "Quantidade", "Status", "Abertura", "Envio", "Retorno", "Observação inicial", "Última observação da manutenção"],
     relatorio.linhas.map((linha) => [
       linha.equipamento.nome,
-      linha.categoria?.nome ?? "—",
-      linha.identificacao,
+      [
+        `Identificação: ${linha.identificacao}`,
+        `Número de série: ${linha.numeroSerie ?? "—"}`,
+        `Patrimônio: ${linha.patrimonio ?? "—"}`,
+      ].join("\n"),
       [linha.empresa?.nome ?? "—", linha.equipeProprietaria?.nome ?? "Projeto inteiro"].join(" / "),
       linha.quantidade,
-      linha.origem,
       linha.statusManutencao ?? "—",
       linha.dataAbertura ?? "—",
       linha.dataEnvio ?? "—",

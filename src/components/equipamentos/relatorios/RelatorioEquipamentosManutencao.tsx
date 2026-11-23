@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import { Download, FileSpreadsheet, Printer, Search } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -124,7 +123,6 @@ export function RelatorioEquipamentosManutencao({
                   <th className="px-4 py-3 text-left font-medium">Identificação</th>
                   <th className="px-4 py-3 text-left font-medium">Proprietário / equipe</th>
                   <th className="px-4 py-3 text-right font-medium">Quantidade</th>
-                  <th className="px-4 py-3 text-left font-medium">Origem</th>
                   <th className="px-4 py-3 text-left font-medium">Status / datas</th>
                   <th className="px-4 py-3 text-left font-medium">Observação inicial</th>
                   <th className="px-4 py-3 text-left font-medium">Última observação da manutenção</th>
@@ -139,15 +137,16 @@ export function RelatorioEquipamentosManutencao({
                         {linha.categoria?.nome ?? "Sem categoria"}
                       </div>
                     </td>
-                    <td className="px-4 py-3">{linha.identificacao}</td>
+                    <td className="px-4 py-3 align-top">
+                      <div>Identificação: {linha.identificacao}</div>
+                      <div className="text-xs text-muted-foreground">Número de série: {linha.numeroSerie ?? "—"}</div>
+                      <div className="text-xs text-muted-foreground">Patrimônio: {linha.patrimonio ?? "—"}</div>
+                    </td>
                     <td className="px-4 py-3">
                       <div>{linha.empresa?.nome ?? "—"}</div>
                       <div className="text-xs text-muted-foreground">{linha.equipeProprietaria?.nome ?? "Projeto inteiro"}</div>
                     </td>
                     <td className="px-4 py-3 text-right font-semibold">{linha.quantidade}</td>
-                    <td className="px-4 py-3">
-                      <Badge variant="secondary">{linha.origem}</Badge>
-                    </td>
                     <td className="px-4 py-3">
                       <div className="font-medium">{linha.statusManutencao ? manutencaoEquipamentoStatusLabel(linha.statusManutencao as Parameters<typeof manutencaoEquipamentoStatusLabel>[0]) : "—"}</div>
                       <div className="text-xs text-muted-foreground">Abertura: {linha.dataAbertura ?? "—"}</div>
@@ -164,7 +163,7 @@ export function RelatorioEquipamentosManutencao({
                 ))}
                 {!linhas.length && (
                   <tr>
-                    <td colSpan={8} className="px-4 py-10 text-center text-muted-foreground">
+                    <td colSpan={7} className="px-4 py-10 text-center text-muted-foreground">
                       Nenhum equipamento em manutenção.
                     </td>
                   </tr>
