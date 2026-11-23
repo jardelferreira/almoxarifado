@@ -40,7 +40,19 @@ const mesclarConfiguracao = (
 export const configuracoesRepo = {
   async obter(projetoId: string): Promise<Configuracao> {
     const db = getDB();
-    const existente = await db.configuracoes.where("projeto_id").equals(projetoId).first();
+    let existente: Configuracao | undefined;
+    try {
+      existente = await db.configuracoes.where("projeto_id").equals(projetoId).first();
+    } catch (error) {
+      // Bancos legados podem chegar com a tabela de configurações ausente.
+      // A validação de transações é opcional; nesse cenário, usar o padrão
+      // desativado permite que as operações locais continuem funcionando até
+      // a migração do IndexedDB ser concluída.
+      if (!(error instanceof DOMException) && !(error instanceof Error && error.name === "NotFoundError")) {
+        throw error;
+      }
+      return criarConfiguracaoPadrao(projetoId);
+    }
     if (existente) {
       return mesclarConfiguracao(
         existente,

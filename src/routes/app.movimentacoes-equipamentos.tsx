@@ -316,8 +316,13 @@ function detalhesRegistroFisico(
       : stock.identificacao || stock.patrimonio || stock.serial
         ? `Identificação: ${stock.identificacao || stock.patrimonio || stock.serial}`
         : "Sem identificação individual";
+  const caracteristicas = [
+    `Marca: ${equipamento?.marca || "não informada"}`,
+    `Modelo: ${equipamento?.modelo || "não informado"}`,
+    `Descrição: ${equipamento?.descricao || "não informada"}`,
+  ].join(" · ");
 
-  return `Equipe proprietária: ${equipe} · Proprietário: ${proprietario} · Vínculo: ${vinculo} · ${identificadores}`;
+  return `${caracteristicas} · Equipe proprietária: ${equipe} · Proprietário: ${proprietario} · Vínculo: ${vinculo} · ${identificadores}`;
 }
 
 type FiltroOpcao = {
@@ -484,6 +489,7 @@ function MovimentacoesEquipamentosPage() {
     observacoes: "",
   });
   const observacoesRef = useRef<HTMLTextAreaElement>(null);
+  const motivoBaixaRef = useRef<HTMLTextAreaElement>(null);
   const historicoSubstituicoesRef = useRef<HTMLDivElement>(null);
 
   async function carregar() {
@@ -1639,6 +1645,9 @@ function MovimentacoesEquipamentosPage() {
     return observacoesRef.current?.value ?? formulario.observacoes;
   }
 
+  function motivoBaixaDigitado(): string {
+    return motivoBaixaRef.current?.value ?? formulario.motivoBaixa;
+  }
   async function registrarDadosMovimentacao(
     dados: DadosMovimentacaoRota,
     validacao: ValidacaoTransacaoEntrada[] = [],
@@ -1648,6 +1657,7 @@ function MovimentacoesEquipamentosPage() {
     setDialogAberto(false);
     setFormulario({ ...formularioInicial, data: hoje() });
     if (observacoesRef.current) observacoesRef.current.value = "";
+    if (motivoBaixaRef.current) motivoBaixaRef.current.value = "";
     toast.success("Movimentação registrada.");
   }
 
@@ -1669,6 +1679,7 @@ function MovimentacoesEquipamentosPage() {
   function abrirNovo() {
     setFormulario({ ...formularioInicial, data: hoje() });
     if (observacoesRef.current) observacoesRef.current.value = "";
+    if (motivoBaixaRef.current) motivoBaixaRef.current.value = "";
     setDialogAberto(true);
   }
 
@@ -1761,6 +1772,7 @@ function MovimentacoesEquipamentosPage() {
       serial: "",
       motivoBaixa: "",
     }));
+    if (motivoBaixaRef.current) motivoBaixaRef.current.value = "";
   }
 
   function selecionarEstoque(id: string) {
@@ -1945,7 +1957,8 @@ function MovimentacoesEquipamentosPage() {
         return;
       }
 
-      if (tipo === "BAIXA" && !formulario.motivoBaixa.trim()) {
+      const motivoBaixa = motivoBaixaDigitado().trim();
+      if (tipo === "BAIXA" && !motivoBaixa) {
         toast.error("Informe o motivo da baixa.");
         return;
       }
@@ -2117,7 +2130,7 @@ function MovimentacoesEquipamentosPage() {
         data: formulario.data,
         referencia_documento: formulario.referenciaDocumento.trim() || null,
         observacoes:
-          tipo === "BAIXA" ? formulario.motivoBaixa.trim() : observacoesDigitadas().trim() || null,
+          tipo === "BAIXA" ? motivoBaixa : observacoesDigitadas().trim() || null,
       };
 
       const requisitos = await obterRequisitosValidacaoTransacao(dadosMovimentacao);
@@ -3070,9 +3083,12 @@ function MovimentacoesEquipamentosPage() {
                           .map((stock) => {
                             const equipamento = equipamentoPorId.get(stock.equipamento_id);
                             const estado = estados.get(stock.id);
+                            const marcaModelo = [equipamento?.marca, equipamento?.modelo]
+                              .filter(Boolean)
+                              .join(" · ");
                             return {
                               value: stock.id,
-                              label: `${equipamento?.nome ?? "Equipamento"} · disponível: ${Math.min(
+                              label: `${equipamento?.nome ?? "Equipamento"}${marcaModelo ? ` · ${marcaModelo}` : ""} · disponível: ${Math.min(
                                 formulario.origemId === equipesOperacionais.manutencao?.id
                                   ? (estado?.manutencao ?? 0)
                                   : (estado?.almoxarifado ?? 0),
@@ -3095,12 +3111,47 @@ function MovimentacoesEquipamentosPage() {
                         vazio="Nenhum equipamento disponível para baixa"
                       />
                     </div>
+                    {equipamentoSelecionado && estoqueSelecionado && (
+                      <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-4 text-sm dark:border-slate-700 dark:bg-slate-900/40">
+                        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                              Características do equipamento selecionado
+                            </p>
+                            <p className="mt-1 font-semibold text-foreground">
+                              {equipamentoSelecionado.nome}
+                            </p>
+                          </div>
+                          <span className="rounded-md border bg-background px-2 py-1 text-xs font-medium">
+                            {equipamentoSelecionado.tipo_controle === "INDIVIDUAL"
+                              ? "Controle individual"
+                              : "Controle quantitativo"}
+                          </span>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                          <div>
+                            <p className="text-xs text-muted-foreground">Marca</p>
+                            <p className="font-medium">{equipamentoSelecionado.marca || "Não informada"}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">Modelo</p>
+                            <p className="font-medium">{equipamentoSelecionado.modelo || "Não informado"}</p>
+                          </div>
+                          <div className="sm:col-span-2 lg:col-span-1">
+                            <p className="text-xs text-muted-foreground">Descrição</p>
+                            <p className="break-words font-medium">
+                              {equipamentoSelecionado.descricao || "Não informada"}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                     <div className="space-y-2">
                       <Label>Motivo da baixa *</Label>
                       <textarea
+                        ref={motivoBaixaRef}
                         className="min-h-24 w-full rounded-md border bg-background px-3 py-2 text-sm"
-                        value={formulario.motivoBaixa}
-                        onChange={(event) => atualizar("motivoBaixa", event.target.value)}
+                        defaultValue={formulario.motivoBaixa}
                         placeholder="Informe o motivo da baixa definitiva..."
                       />
                     </div>
