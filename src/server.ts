@@ -23,13 +23,12 @@ const FALLBACK_CONTENT_SECURITY_POLICY = [
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com data:",
   "img-src 'self' data: blob:",
-  "connect-src 'self'",
+  "connect-src 'self' https: http://127.0.0.1:8767 http://localhost:8767",
   "worker-src 'self' blob:",
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",
   "frame-ancestors 'none'",
-  "upgrade-insecure-requests",
 ].join("; ");
 
 function withSecurityHeaders(response: Response): Response {
