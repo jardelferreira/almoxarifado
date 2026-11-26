@@ -37,6 +37,7 @@ import { useProjetoAtivoId } from "@/hooks/useAppData";
 import { consultarConfiguracaoPush } from "@/lib/push-notifications-r2";
 import { listarMetodosValidacaoTransacao } from "@/services/equipamentos/validacao-transacoes";
 import type { MetodoValidacaoTransacao } from "@/types/validacao-transacao";
+import { FaceApiSettings } from "@/components/equipamentos/FaceApiSettings";
 
 export const Route = createFileRoute("/app/configuracoes")({
   ssr: false,
@@ -314,9 +315,12 @@ function ConfiguracoesPage() {
                 </SelectContent>
               </Select>
               <p className="text-xs leading-5 text-muted-foreground">
-                O PIN é o método disponível atualmente. Digital e facial ficam preparados para
-                módulos locais futuros.
+                O PIN continua disponível. O reconhecimento facial funciona como validação
+                assistida e exige uma API configurada neste navegador.
               </p>
+              {rascunho.seguranca.metodo_validacao_transacoes_equipamentos === "FACIAL" && (
+                <FaceApiSettings />
+              )}
             </div>
           </CardContent>
         </Card>

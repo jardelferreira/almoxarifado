@@ -28,6 +28,14 @@ export type RequisitoValidacaoTransacao = {
   papel: PapelValidacaoTransacao;
 };
 
+export async function obterMetodoValidacaoTransacao(
+  projetoId: string,
+): Promise<MetodoValidacaoDisponivel["id"] | null> {
+  const configuracao = await configuracoesRepo.obter(projetoId);
+  if (!configuracao.seguranca.exigir_validacao_transacoes_equipamentos) return null;
+  return configuracao.seguranca.metodo_validacao_transacoes_equipamentos;
+}
+
 /**
  * Catálogo extensível. Digital e facial ficam explicitamente registrados como
  * métodos futuros, sem fingir que estão disponíveis no ambiente atual.
@@ -49,8 +57,8 @@ export function listarMetodosValidacaoTransacao(): MetodoValidacaoDisponivel[] {
     {
       id: "FACIAL",
       nome: "Reconhecimento facial",
-      disponivel: false,
-      descricao: "Preparado para um módulo facial local, sem enviar imagem para a nuvem.",
+      disponivel: true,
+      descricao: "Verificação assistida pela Face Verification API configurada pelo operador.",
     },
   ];
 }
@@ -87,15 +95,6 @@ export async function obterRequisitosValidacaoTransacao(
   if (!configuracao.seguranca.exigir_validacao_transacoes_equipamentos) {
     return [];
   }
-  if (configuracao.seguranca.metodo_validacao_transacoes_equipamentos !== "PIN") {
-    const metodo = listarMetodosValidacaoTransacao().find(
-      (item) => item.id === configuracao.seguranca.metodo_validacao_transacoes_equipamentos,
-    );
-    throw new Error(
-      `O método de validação ${metodo?.nome ?? "selecionado"} ainda não está disponível neste ambiente.`,
-    );
-  }
-
   const db = getDB();
   const requisitos: RequisitoValidacaoTransacao[] = [];
 
@@ -159,4 +158,57 @@ export async function validarTransacaoPorPin(
   }
 
   return registros;
+}
+
+/**
+ * A Face API devolve medições experimentais. O operador revisa o resultado
+ * no modal e confirma a continuidade; o PWA persiste apenas a evidência
+ * mínima da validação, nunca a imagem nem os escores.
+ */
+export async function validarTransacaoPorFacial(
+  movimento: RascunhoMovimentacaoValidavel,
+  entradas: ValidacaoTransacaoEntrada[],
+): Promise<ValidacaoTransacaoRegistro[]> {
+  const requisitos = await obterRequisitosValidacaoTransacao(movimento);
+  if (requisitos.length === 0) return [];
+
+  return requisitos.map((requisito) => {
+    const entrada = entradas.find(
+      (item) =>
+        item.metodo === "FACIAL" &&
+        item.funcionario_id === requisito.funcionario_id &&
+        item.papel === requisito.papel,
+    );
+    const verificacao = entrada?.metodo === "FACIAL" ? entrada.face_verificacao : undefined;
+    if (
+      !verificacao ||
+      verificacao.subjectId !== requisito.funcionario_id ||
+      verificacao.httpStatus < 200 ||
+      verificacao.httpStatus >= 300 ||
+      !verificacao.captureValid ||
+      !verificacao.verificationReceived ||
+      !verificacao.revisaoOperador
+    ) {
+      throw new Error(`Revise e confirme a verificação facial de ${requisito.funcionario_nome}.`);
+    }
+
+    return {
+      metodo: "FACIAL",
+      funcionario_id: requisito.funcionario_id,
+      papel: requisito.papel,
+      validado_em: new Date().toISOString(),
+    };
+  });
+}
+
+/** Despacho único usado pelo repositório para manter os métodos desacoplados. */
+export async function validarTransacao(
+  movimento: RascunhoMovimentacaoValidavel,
+  entradas: ValidacaoTransacaoEntrada[],
+): Promise<ValidacaoTransacaoRegistro[]> {
+  const metodo = await obterMetodoValidacaoTransacao(movimento.projeto_id);
+  if (!metodo) return [];
+  if (metodo === "PIN") return validarTransacaoPorPin(movimento, entradas);
+  if (metodo === "FACIAL") return validarTransacaoPorFacial(movimento, entradas);
+  throw new Error("O método de validação digital ainda não está disponível neste ambiente.");
 }

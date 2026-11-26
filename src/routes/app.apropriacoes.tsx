@@ -50,7 +50,7 @@ import { num } from "@/utils/format";
 import { HistoricoEquipamento } from "@/components/equipamentos/HistoricoEquipamento";
 import { construirHistoricoEquipamento } from "@/services/equipamentos/historico";
 import { gerarRelatorioEquipamento } from "@/services/equipamentos/relatorio-equipamento";
-import { ValidarPinTransacaoDialog } from "@/components/equipamentos/ValidarPinTransacaoDialog";
+import { ValidarTransacaoDialog } from "@/components/equipamentos/ValidarTransacaoDialog";
 import {
     obterRequisitosValidacaoTransacao,
     type RascunhoMovimentacaoValidavel,
@@ -879,7 +879,7 @@ export function ApropriacoesPage() {
                 </DialogContent>
             </Dialog>
 
-            <ValidarPinTransacaoDialog
+            <ValidarTransacaoDialog
                 open={dialogValidacao}
                 movimento={movimentoPendente}
                 requisitos={requisitosValidacao}

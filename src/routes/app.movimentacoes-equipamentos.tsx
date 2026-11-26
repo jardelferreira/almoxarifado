@@ -52,7 +52,7 @@ import {
   type RascunhoMovimentacaoValidavel,
   type RequisitoValidacaoTransacao,
 } from "@/services/equipamentos/validacao-transacoes";
-import { ValidarPinTransacaoDialog } from "@/components/equipamentos/ValidarPinTransacaoDialog";
+import { ValidarTransacaoDialog } from "@/components/equipamentos/ValidarTransacaoDialog";
 import type {
   Empresa,
   Equipe,
@@ -3584,7 +3584,7 @@ function MovimentacoesEquipamentosPage() {
         </DialogContent>
       </Dialog>
 
-      <ValidarPinTransacaoDialog
+      <ValidarTransacaoDialog
         open={dialogValidacao}
         movimento={movimentoPendente as RascunhoMovimentacaoValidavel | null}
         requisitos={requisitosValidacao}
