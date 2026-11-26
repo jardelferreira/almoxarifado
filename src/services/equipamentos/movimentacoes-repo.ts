@@ -9,7 +9,7 @@ import type {
   ValidacaoTransacaoEntrada,
 } from "@/types";
 import { estadoEquipamentosRepo, type EstadoEstoqueEquipamento } from "./estado-repo";
-import { validarTransacaoPorPin } from "./validacao-transacoes";
+import { validarTransacao } from "./validacao-transacoes";
 
 type MovimentacaoEquipamentoInput = Omit<
   MovimentacaoEquipamento,
@@ -877,7 +877,7 @@ export const movimentacoesEquipamentosRepo = {
     await validarParticipantes(dados);
 
     const { validacao, ...dadosPersistiveis } = dados;
-    const validacoes = await validarTransacaoPorPin(dadosPersistiveis, validacao ?? []);
+    const validacoes = await validarTransacao(dadosPersistiveis, validacao ?? []);
 
     /*
      * ENTRADA é um evento inicial.

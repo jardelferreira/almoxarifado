@@ -48,7 +48,7 @@ import {
   type RascunhoMovimentacaoValidavel,
   type RequisitoValidacaoTransacao,
 } from "@/services/equipamentos/validacao-transacoes";
-import { ValidarPinTransacaoDialog } from "@/components/equipamentos/ValidarPinTransacaoDialog";
+import { ValidarTransacaoDialog } from "@/components/equipamentos/ValidarTransacaoDialog";
 import type {
   Empresa,
   Equipe,
@@ -1022,7 +1022,7 @@ export function PainelApropriacoesPage() {
           </Card>
         ))}
 
-      <ValidarPinTransacaoDialog
+      <ValidarTransacaoDialog
         open={dialogValidacao}
         movimento={movimentoPendente}
         requisitos={requisitosValidacao}
