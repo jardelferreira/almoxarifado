@@ -3,6 +3,7 @@ import { Camera, CheckCircle2, Fingerprint, Server, Trash2, Upload } from "lucid
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -28,9 +29,11 @@ export function CadastrarBiometriaFacialDialog({
 }) {
   const [arquivos, setArquivos] = useState<File[]>([]);
   const [enviando, setEnviando] = useState(false);
+  const [identidadeConfirmada, setIdentidadeConfirmada] = useState(false);
 
   function fechar() {
     setArquivos([]);
+    setIdentidadeConfirmada(false);
     onOpenChange(false);
   }
 
@@ -142,13 +145,25 @@ export function CadastrarBiometriaFacialDialog({
               </div>
             )}
           </div>
+
+          <label className="flex items-start gap-3 rounded-lg border bg-muted/20 p-3 text-sm leading-5">
+            <Checkbox
+              checked={identidadeConfirmada}
+              onCheckedChange={(valor) => setIdentidadeConfirmada(valor === true)}
+              className="mt-0.5"
+            />
+            <span>
+              Confirmei visualmente que todas as imagens pertencem a <strong>{funcionario?.nome ?? "este funcionário"}</strong>.
+              A API valida a qualidade e a similaridade, mas não comprova por conta própria a identidade da pessoa.
+            </span>
+          </label>
         </div>
 
         <DialogFooter className="border-t bg-muted/20 px-6 py-4">
           <Button type="button" variant="outline" onClick={fechar} disabled={enviando}>
             Cancelar
           </Button>
-          <Button type="button" onClick={() => void cadastrar()} disabled={enviando || arquivos.length < 2}>
+          <Button type="button" onClick={() => void cadastrar()} disabled={enviando || arquivos.length < 2 || !identidadeConfirmada}>
             {enviando ? "Cadastrando…" : "Cadastrar biometria"}
           </Button>
         </DialogFooter>
