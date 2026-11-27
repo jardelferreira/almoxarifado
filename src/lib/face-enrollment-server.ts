@@ -6,7 +6,7 @@ const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
 
 type FaceEnrollmentEnv = {
   FACE_API_URL?: string;
-  FACE_ADMIN_TOKEN?: string;
+  FACE_ENROLL_KEY?: string;
 };
 
 const faceEnv = env as typeof env & FaceEnrollmentEnv;
@@ -36,8 +36,8 @@ async function jsonBody(response: Response): Promise<Record<string, unknown>> {
 }
 
 function mensagemApi(status: number): string {
-  if (status === 401) return "A autorização administrativa do servidor facial é inválida.";
-  if (status === 403) return "O servidor facial recusou a autorização administrativa.";
+  if (status === 401) return "A chave de cliente para cadastro facial é inválida.";
+  if (status === 403) return "A chave de cliente não possui o escopo template:enroll ou não está autorizada para este funcionário.";
   if (status === 404) return "O endpoint de cadastro facial não foi encontrado na API configurada.";
   if (status === 413) return "As imagens excedem o limite permitido pela API facial.";
   if (status === 422) return "As imagens não puderam ser processadas. Use fotos com apenas um rosto visível.";
@@ -64,14 +64,14 @@ export const cadastrarBiometriaFacialNoBackend = createServerFn({ method: "POST"
   })
   .handler(async ({ data }) => {
     const apiUrl = normalizarApiUrl(String(faceEnv.FACE_API_URL ?? ""));
-    const adminToken = String(faceEnv.FACE_ADMIN_TOKEN ?? "").trim();
-    if (!adminToken) throw new Error("FACE_ADMIN_TOKEN não está configurado no servidor.");
+    const enrollKey = String(faceEnv.FACE_ENROLL_KEY ?? "").trim();
+    if (!enrollKey) throw new Error("FACE_ENROLL_KEY não está configurada no servidor.");
 
     const form = new FormData();
     data.arquivos.forEach((arquivo) => form.append("reference_images", arquivo, arquivo.name));
     const response = await fetch(
       `${apiUrl}/v1/experimental/subjects/${encodeURIComponent(data.subjectId)}/enroll`,
-      { method: "POST", headers: { "X-Admin-Key": adminToken }, body: form },
+      { method: "POST", headers: { "X-API-Key": enrollKey }, body: form },
     );
     const body = await jsonBody(response);
     if (!response.ok) throw new Error(mensagemApi(response.status));
