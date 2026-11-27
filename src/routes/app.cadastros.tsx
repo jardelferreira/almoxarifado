@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Building2,
   Boxes,
@@ -16,6 +16,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Filter,
+  Fingerprint,
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -49,6 +50,8 @@ import { salvarFuncionario } from "@/services/funcionarios-repo";
 import { criarHashPin, formatarCpf, normalizarCpf } from "@/utils/seguranca";
 import { num } from "@/utils/format";
 import type { Categoria, Empresa, Equipe, Funcionario, Local, Produto, Unidade } from "@/types";
+import { obterMetodoValidacaoTransacao } from "@/services/equipamentos/validacao-transacoes";
+import { CadastrarBiometriaFacialDialog } from "@/components/equipamentos/CadastrarBiometriaFacialDialog";
 
 export const Route = createFileRoute("/app/cadastros")({
   ssr: false,
@@ -89,6 +92,24 @@ function CadastrosPage() {
   const [editando, setEditando] = useState<{ aba: Aba; item: Record<string, unknown> } | null>(
     null,
   );
+  const [reconhecimentoFacialAtivo, setReconhecimentoFacialAtivo] = useState(false);
+  const [funcionarioBiometria, setFuncionarioBiometria] = useState<Funcionario | null>(null);
+
+  useEffect(() => {
+    let ativo = true;
+    if (!projetoId) {
+      setReconhecimentoFacialAtivo(false);
+      return () => {
+        ativo = false;
+      };
+    }
+    void obterMetodoValidacaoTransacao(projetoId).then((metodo) => {
+      if (ativo) setReconhecimentoFacialAtivo(metodo === "FACIAL");
+    });
+    return () => {
+      ativo = false;
+    };
+  }, [projetoId]);
 
   if (!dados) return <p className="text-sm text-muted-foreground">Carregando…</p>;
 
@@ -1008,6 +1029,26 @@ function CadastrosPage() {
                       O PIN é armazenado somente como hash e poderá confirmar operações futuras.
                     </p>
                   </div>
+                  {reconhecimentoFacialAtivo && Boolean(editando.item["id"]) && (
+                    <div className="flex flex-col gap-3 rounded-lg border border-sky-200 bg-sky-50/70 p-4 sm:col-span-2 dark:border-sky-900 dark:bg-sky-950/20">
+                      <div>
+                        <p className="font-semibold text-sky-950 dark:text-sky-100">Biometria facial</p>
+                        <p className="mt-1 text-xs leading-5 text-sky-900/75 dark:text-sky-100/75">
+                          O reconhecimento facial está ativo para validar transações de equipamentos.
+                          Cadastre as referências deste funcionário para habilitar a validação facial.
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-fit border-sky-300 bg-background"
+                        onClick={() => setFuncionarioBiometria(editando.item as unknown as Funcionario)}
+                      >
+                        <Fingerprint className="mr-2 size-4" />
+                        Cadastrar biometria facial
+                      </Button>
+                    </div>
+                  )}
                 </>
               )}
               {editando.aba === "locais" && (
@@ -1088,6 +1129,13 @@ function CadastrosPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <CadastrarBiometriaFacialDialog
+        funcionario={funcionarioBiometria}
+        open={Boolean(funcionarioBiometria)}
+        onOpenChange={(open) => {
+          if (!open) setFuncionarioBiometria(null);
+        }}
+      />
     </div>
   );
 }
