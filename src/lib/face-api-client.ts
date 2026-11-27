@@ -8,6 +8,12 @@ export type FaceApiConfig = {
   apiKey: string;
 };
 
+export type FaceEnrollmentResult = {
+  subjectId: string;
+  enrolledImages: number;
+  apiUrl: string;
+};
+
 export type FaceImagePreparation = {
   file: File;
   info: {
@@ -116,8 +122,41 @@ async function requestJson(
   }
 }
 
-function mensagemHttp(status: number): string {
-  if (status === 401) return "A chave da API facial é inválida ou não foi informada.";
+async function requestAdminJson(
+  path: string,
+  options: RequestInit = {},
+  prazoMs = 30_000,
+): Promise<{ response: Response; body: Record<string, unknown> }> {
+  const configuracao = obterConfiguracaoFaceApi();
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), prazoMs);
+
+  try {
+    const response = await fetch(`${configuracao.apiUrl}${path}`, {
+      ...options,
+      headers: { ...(options.headers ?? {}) },
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    return { response, body: await jsonResponse(response) };
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("A API facial não respondeu dentro do prazo configurado.");
+    }
+    throw new Error(
+      "Não foi possível conectar à API facial. Verifique a URL, a rede e a configuração de CORS.",
+    );
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
+function mensagemHttp(status: number, tipo: "client" | "admin" = "client"): string {
+  if (status === 401) {
+    return tipo === "admin"
+      ? "A chave administrativa da API facial é inválida ou não foi informada."
+      : "A chave da API facial é inválida ou não foi informada.";
+  }
   if (status === 403) return "A chave da API facial não possui o escopo necessário.";
   if (status === 404) return "O cadastro facial do funcionário não foi encontrado.";
   if (status === 413) return "A imagem excede o limite permitido pela API facial.";
@@ -234,6 +273,43 @@ export async function verificarCapturaFacial(file: File): Promise<Record<string,
     throw new Error("A captura precisa conter exatamente um rosto utilizável.");
   }
   return body;
+}
+
+/**
+ * Cadastra as referências faciais de um funcionário.
+ * A chave administrativa é recebida somente em memória e nunca é persistida
+ * na configuração do navegador, no IndexedDB ou no backup do projeto.
+ */
+export async function cadastrarBiometriaFacial(
+  subjectId: string,
+  files: File[],
+  adminKey: string,
+): Promise<FaceEnrollmentResult> {
+  const chave = adminKey.trim();
+  if (!subjectId.trim()) throw new Error("O funcionário não possui um identificador válido.");
+  if (!chave) throw new Error("Informe a chave administrativa da API facial.");
+  if (files.length < 2) throw new Error("Cadastre pelo menos 2 imagens do funcionário.");
+  if (files.length > 5) throw new Error("Cadastre no máximo 5 imagens por funcionário.");
+
+  const preparadas: File[] = [];
+  for (const file of files) {
+    preparadas.push((await prepararImagemFacial(file)).file);
+  }
+
+  const data = new FormData();
+  preparadas.forEach((file) => data.append("reference_images", file));
+  const { response, body } = await requestAdminJson(
+    `/v1/experimental/subjects/${encodeURIComponent(subjectId)}/enroll`,
+    { method: "POST", headers: { "X-Admin-Key": chave }, body: data },
+  );
+  if (!response.ok) throw new Error(mensagemHttp(response.status, "admin"));
+
+  return {
+    subjectId,
+    enrolledImages:
+      typeof body.enrolled_images === "number" ? body.enrolled_images : preparadas.length,
+    apiUrl: obterConfiguracaoFaceApi().apiUrl,
+  };
 }
 
 export async function verificarFuncionarioPorFace(
