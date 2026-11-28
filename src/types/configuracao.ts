@@ -39,6 +39,8 @@ export type ConfiguracaoSeguranca = {
   exigir_validacao_transacoes_equipamentos: boolean;
   /** Método escolhido para a validação quando novos módulos estiverem disponíveis. */
   metodo_validacao_transacoes_equipamentos: MetodoValidacaoTransacao;
+  /** Escore mínimo aceito para validação facial assistida (0 a 1). */
+  limiar_reconhecimento_facial: number;
 };
 
 export interface Configuracao {
@@ -92,6 +94,7 @@ export function criarConfiguracaoPadrao(
     seguranca: {
       exigir_validacao_transacoes_equipamentos: false,
       metodo_validacao_transacoes_equipamentos: "PIN",
+      limiar_reconhecimento_facial: 0.55,
     },
     casas_decimais: 2,
     criado_em: criadoEm,
