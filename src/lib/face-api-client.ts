@@ -248,8 +248,8 @@ export async function verificarCapturaFacial(file: File): Promise<Record<string,
 
 /**
  * Cadastra as referências faciais de um funcionário.
- * A chave administrativa é recebida somente em memória e nunca é persistida
- * na configuração do navegador, no IndexedDB ou no backup do projeto.
+ * A chave de API do aplicativo é usada pelo backend no cadastro e nunca é
+ * persistida pelo PWA como credencial administrativa.
  */
 export async function cadastrarBiometriaFacial(
   subjectId: string,
