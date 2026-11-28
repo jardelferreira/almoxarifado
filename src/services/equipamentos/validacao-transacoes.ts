@@ -85,10 +85,7 @@ export async function obterRequisitosValidacaoTransacao(
   // não haver PIN a solicitar, não devemos consultar a configuração de
   // validação nesse caminho; isso mantém operações legadas funcionando mesmo
   // enquanto um IndexedDB antigo termina sua migração.
-  if (
-    movimento.tipo_origem !== "FUNCIONARIO" &&
-    movimento.tipo_destino !== "FUNCIONARIO"
-  ) {
+  if (movimento.tipo_origem !== "FUNCIONARIO" && movimento.tipo_destino !== "FUNCIONARIO") {
     return [];
   }
   const configuracao = await configuracoesRepo.obter(movimento.projeto_id);
@@ -172,6 +169,9 @@ export async function validarTransacaoPorFacial(
   const requisitos = await obterRequisitosValidacaoTransacao(movimento);
   if (requisitos.length === 0) return [];
 
+  const configuracao = await configuracoesRepo.obter(movimento.projeto_id);
+  const limiar = Math.min(1, Math.max(0, configuracao.seguranca.limiar_reconhecimento_facial));
+
   return requisitos.map((requisito) => {
     const entrada = entradas.find(
       (item) =>
@@ -187,7 +187,11 @@ export async function validarTransacaoPorFacial(
       verificacao.httpStatus >= 300 ||
       !verificacao.captureValid ||
       !verificacao.verificationReceived ||
-      !verificacao.revisaoOperador
+      !verificacao.revisaoOperador ||
+      !verificacao.limiarAtendido ||
+      verificacao.limiar !== limiar ||
+      verificacao.escore == null ||
+      verificacao.escore < limiar
     ) {
       throw new Error(`Revise e confirme a verificação facial de ${requisito.funcionario_nome}.`);
     }
