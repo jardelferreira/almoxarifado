@@ -20,10 +20,12 @@ type FuncionarioFacial = { id: string; nome: string };
 
 export function CadastrarBiometriaFacialDialog({
   funcionario,
+  projetoId,
   open,
   onOpenChange,
 }: {
   funcionario: FuncionarioFacial | null;
+  projetoId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -83,7 +85,7 @@ export function CadastrarBiometriaFacialDialog({
     const aprovados: File[] = [];
     for (const arquivo of candidatos) {
       try {
-        await verificarCapturaFacial(arquivo);
+        await verificarCapturaFacial(arquivo, projetoId);
         aprovados.push(arquivo);
       } catch (error) {
         toast.error(
@@ -155,7 +157,7 @@ export function CadastrarBiometriaFacialDialog({
     if (!funcionario) return;
     setEnviando(true);
     try {
-      const resultado = await cadastrarBiometriaFacial(funcionario.id, arquivos);
+      const resultado = await cadastrarBiometriaFacial(projetoId, funcionario.id, arquivos);
       toast.success(
         `Biometria facial de ${funcionario.nome} cadastrada (${resultado.enrolledImages} imagens).`,
       );
