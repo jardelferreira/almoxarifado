@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Camera, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
+import { configuracoesRepo } from "@/services/configuracoes-repo";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -45,21 +46,23 @@ export function ValidarFacialTransacaoDialog({
   const [resultados, setResultados] = useState<Record<string, FaceVerificationResult>>({});
   const [confirmado, setConfirmado] = useState(false);
   const [validando, setValidando] = useState(false);
+  const [limiar, setLimiar] = useState(0.55);
 
   useEffect(() => {
     if (open) {
       setArquivos({});
       setResultados({});
       setConfirmado(false);
+      if (movimento) {
+        void configuracoesRepo.obter(movimento.projeto_id).then((configuracao) => {
+          setLimiar(Math.min(1, Math.max(0, configuracao.seguranca.limiar_reconhecimento_facial)));
+        });
+      }
     }
-  }, [open, requisitos]);
+  }, [open, requisitos, movimento]);
 
   async function confirmar() {
     if (!movimento) return;
-    if (!confirmado) {
-      toast.error("Leia o resultado e confirme a revisão pelo operador.");
-      return;
-    }
     if (requisitos.some((requisito) => !arquivos[chave(requisito)])) {
       toast.error("Capture uma imagem para cada funcionário envolvido.");
       return;
@@ -79,6 +82,24 @@ export function ValidarFacialTransacaoDialog({
         );
       }
       setResultados(novosResultados);
+      const resultadosFinais = requisitos.map((requisito) => novosResultados[chave(requisito)]);
+      const abaixoDoLimiar = resultadosFinais.find(
+        (resultado) =>
+          (resultado?.centroidCosineSimilarity ??
+            resultado?.meanReferenceSimilarity ??
+            resultado?.medianReferenceSimilarity ??
+            -1) < limiar,
+      );
+      if (abaixoDoLimiar) {
+        toast.error("A biometria facial não corresponde ao funcionário. A transação foi recusada.");
+        return;
+      }
+      if (!confirmado) {
+        toast.info(
+          "As capturas foram aprovadas pelo limiar. Revise os resultados e confirme para continuar.",
+        );
+        return;
+      }
       const entradas: ValidacaoTransacaoEntrada[] = requisitos.map((requisito) => {
         const resultado = novosResultados[chave(requisito)];
         if (!resultado)
@@ -92,7 +113,17 @@ export function ValidarFacialTransacaoDialog({
             httpStatus: resultado.httpStatus,
             captureValid: resultado.captureValid,
             verificationReceived: resultado.verificationReceived,
-            revisaoOperador: true,
+            revisaoOperador: confirmado,
+            escore:
+              resultado.centroidCosineSimilarity ??
+              resultado.meanReferenceSimilarity ??
+              resultado.medianReferenceSimilarity,
+            limiar,
+            limiarAtendido:
+              (resultado.centroidCosineSimilarity ??
+                resultado.meanReferenceSimilarity ??
+                resultado.medianReferenceSimilarity ??
+                -1) >= limiar,
           },
         };
       });
@@ -117,8 +148,8 @@ export function ValidarFacialTransacaoDialog({
         </DialogHeader>
         <div className="space-y-4 text-sm">
           <p className="text-muted-foreground">
-            Capture o rosto de cada funcionário envolvido. A API retorna escores experimentais;
-            revise o resultado antes de autorizar a continuidade. Nenhuma imagem será salva no PWA.
+            Capture o rosto de cada funcionário envolvido. A biometria será validada antes de
+            liberar a transação. Nenhuma imagem será salva no PWA.
           </p>
           {requisitos.map((requisito) => {
             const id = chave(requisito);
@@ -153,16 +184,30 @@ export function ValidarFacialTransacaoDialog({
                   }}
                 />
                 {resultado && (
-                  <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900">
-                    Resultado recebido da API para revisão. Centroide:{" "}
-                    {formatarEscore(resultado.centroidCosineSimilarity)} · média:{" "}
-                    {formatarEscore(resultado.meanReferenceSimilarity)}
+                  <div
+                    className={
+                      (resultado.centroidCosineSimilarity ??
+                        resultado.meanReferenceSimilarity ??
+                        resultado.medianReferenceSimilarity ??
+                        -1) >= limiar
+                        ? "rounded-md border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900"
+                        : "rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-900"
+                    }
+                  >
+                    {(resultado.centroidCosineSimilarity ??
+                      resultado.meanReferenceSimilarity ??
+                      resultado.medianReferenceSimilarity ??
+                      -1) >= limiar
+                      ? "Biometria facial aprovada."
+                      : "Biometria facial recusada. A transação não pode continuar."}
                   </div>
                 )}
               </div>
             );
           })}
-          <label className="flex items-start gap-2 rounded-md border p-3 text-xs leading-5">
+          <label
+            className={`flex items-start gap-2 rounded-md border p-3 text-xs leading-5 ${Object.keys(resultados).length < requisitos.length || Object.values(resultados).some((resultado) => (resultado.centroidCosineSimilarity ?? resultado.meanReferenceSimilarity ?? resultado.medianReferenceSimilarity ?? -1) < limiar) ? "pointer-events-none opacity-50" : ""}`}
+          >
             <input
               type="checkbox"
               className="mt-1"
@@ -170,8 +215,7 @@ export function ValidarFacialTransacaoDialog({
               onChange={(event) => setConfirmado(event.target.checked)}
             />
             <span>
-              Revisei os resultados experimentais apresentados e autorizo a continuidade desta
-              operação como validação assistida.
+              Confirmei que a biometria foi aprovada e autorizo a continuidade desta operação.
             </span>
           </label>
         </div>
@@ -185,7 +229,11 @@ export function ValidarFacialTransacaoDialog({
             Cancelar
           </Button>
           <Button type="button" onClick={() => void confirmar()} disabled={validando || salvando}>
-            {validando || salvando ? "Verificando…" : "Verificar e continuar"}
+            {validando || salvando
+              ? "Verificando…"
+              : Object.keys(resultados).length === requisitos.length
+                ? "Autorizar transação"
+                : "Verificar biometria"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -195,8 +243,4 @@ export function ValidarFacialTransacaoDialog({
 
 function chave(requisito: RequisitoValidacaoTransacao): string {
   return `${requisito.funcionario_id}:${requisito.papel}`;
-}
-
-function formatarEscore(valor: number | null): string {
-  return valor == null ? "—" : valor.toFixed(4);
 }
