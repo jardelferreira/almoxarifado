@@ -30,6 +30,7 @@ import type {
   ConsumoEquipamento,
   ManutencaoDocumento,
   ApropriacaoFinanceiraEquipamento,
+  ClienteFaceApi,
 } from "@/types";
 
 export class AlmoxarifadoDB extends Dexie {
@@ -63,6 +64,7 @@ export class AlmoxarifadoDB extends Dexie {
   regras_consumo_equipamentos!: Table<RegraConsumoEquipamento, string>;
   perfis_parametros_custos!: Table<PerfilParametroCusto, string>;
   substituicoes_equipamentos!: Table<SubstituicaoEquipamento, string>;
+  clientes_face_api!: Table<ClienteFaceApi, string>;
 
   constructor() {
     super("almoxarifado");
@@ -262,6 +264,10 @@ export class AlmoxarifadoDB extends Dexie {
         "id, projeto_id, estoque_equipamento_id, equipamento_id, status_operacional, status_detalhamento, data_abertura, empresa_id, movimento_sinalizacao_id, movimento_envio_id, movimento_retorno_id, [projeto_id+estoque_equipamento_id], [projeto_id+status_operacional]",
       substituicoes_equipamentos:
         "id, projeto_id, estoque_origem_id, equipamento_origem_id, estoque_substituto_id, equipamento_substituto_id, movimentacao_devolucao_id, movimentacao_entrada_id, data",
+    });
+
+    this.version(26).stores({
+      clientes_face_api: "id, projeto_id, client_id, ativo, [projeto_id+ativo]",
     });
   }
 }
