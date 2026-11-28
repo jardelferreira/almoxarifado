@@ -6,6 +6,9 @@ const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 export type FaceApiConfig = {
   apiUrl: string;
   apiKey: string;
+  clientId: string;
+  adminKey: string;
+  authorizedSubjectIds: string[];
 };
 
 export type FaceEnrollmentResult = {
@@ -56,25 +59,57 @@ function normalizarUrl(valor: string): string {
 }
 
 export function obterConfiguracaoFaceApi(): FaceApiConfig {
-  if (typeof window === "undefined") return { apiUrl: DEFAULT_API_URL, apiKey: "" };
+  if (typeof window === "undefined") {
+    return {
+      apiUrl: DEFAULT_API_URL,
+      apiKey: "",
+      clientId: "",
+      adminKey: "",
+      authorizedSubjectIds: [],
+    };
+  }
 
   try {
     const valor = window.localStorage.getItem(STORAGE_KEY);
-    if (!valor) return { apiUrl: DEFAULT_API_URL, apiKey: "" };
+    if (!valor)
+      return {
+        apiUrl: DEFAULT_API_URL,
+        apiKey: "",
+        clientId: "",
+        adminKey: "",
+        authorizedSubjectIds: [],
+      };
     const salvo = JSON.parse(valor) as Partial<FaceApiConfig>;
     return {
       apiUrl: normalizarUrl(String(salvo.apiUrl ?? DEFAULT_API_URL)),
       apiKey: String(salvo.apiKey ?? ""),
+      clientId: String(salvo.clientId ?? "").trim(),
+      adminKey: String(salvo.adminKey ?? "").trim(),
+      authorizedSubjectIds: normalizarSubjects(salvo.authorizedSubjectIds),
     };
   } catch {
-    return { apiUrl: DEFAULT_API_URL, apiKey: "" };
+    return {
+      apiUrl: DEFAULT_API_URL,
+      apiKey: "",
+      clientId: "",
+      adminKey: "",
+      authorizedSubjectIds: [],
+    };
   }
+}
+
+function normalizarSubjects(valor: unknown): string[] {
+  if (!Array.isArray(valor)) return [];
+  return [...new Set(valor.map((item) => String(item).trim()).filter(Boolean))];
 }
 
 export function salvarConfiguracaoFaceApi(configuracao: FaceApiConfig): FaceApiConfig {
   const normalizada = {
     apiUrl: normalizarUrl(configuracao.apiUrl),
     apiKey: configuracao.apiKey.trim(),
+    clientId: configuracao.clientId.trim(),
+    adminKey: configuracao.adminKey.trim(),
+    authorizedSubjectIds: normalizarSubjects(configuracao.authorizedSubjectIds),
   };
   if (typeof window !== "undefined") {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(normalizada));
@@ -84,6 +119,52 @@ export function salvarConfiguracaoFaceApi(configuracao: FaceApiConfig): FaceApiC
 
 function headers(apiKey: string): HeadersInit {
   return apiKey ? { "X-API-Key": apiKey } : {};
+}
+
+function mensagemAdministrativa(status: number): string {
+  if (status === 401) return "A X-Admin-Key é inválida ou não foi informada.";
+  if (status === 403) return "A X-Admin-Key não pode administrar este cliente.";
+  if (status === 404) return "O client_id não foi encontrado na API facial.";
+  if (status === 422) return "A lista de subject_id enviada para autorização é inválida.";
+  return `A API facial respondeu com HTTP ${status} durante a autorização.`;
+}
+
+export async function autorizarSubjectFaceApi(subjectId: string): Promise<void> {
+  const id = subjectId.trim();
+  if (!id) throw new Error("O funcionário não possui um subject_id válido.");
+  const configuracao = obterConfiguracaoFaceApi();
+  if (!configuracao.clientId || !configuracao.adminKey) {
+    throw new Error("Configure o client_id e a X-Admin-Key para autorizar este funcionário.");
+  }
+
+  const subjectIds = normalizarSubjects([...configuracao.authorizedSubjectIds, id]);
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), 12_000);
+  try {
+    const response = await fetch(
+      `${configuracao.apiUrl}/v1/experimental/clients/${encodeURIComponent(configuracao.clientId)}/subjects`,
+      {
+        method: "PUT",
+        headers: {
+          "X-Admin-Key": configuracao.adminKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ subject_ids: subjectIds }),
+        cache: "no-store",
+        signal: controller.signal,
+      },
+    );
+    if (!response.ok) throw new Error(mensagemAdministrativa(response.status));
+    salvarConfiguracaoFaceApi({ ...configuracao, authorizedSubjectIds: subjectIds });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("A API facial não respondeu durante a autorização do funcionário.");
+    }
+    if (error instanceof Error && error.message.startsWith("A API facial")) throw error;
+    throw new Error("Não foi possível autorizar o funcionário. Verifique a URL, a rede e o CORS.");
+  } finally {
+    window.clearTimeout(timer);
+  }
 }
 
 async function jsonResponse(response: Response): Promise<Record<string, unknown>> {
@@ -126,7 +207,9 @@ function mensagemHttp(status: number): string {
   if (status === 401) {
     return "A chave da API facial é inválida ou não foi informada.";
   }
-  if (status === 403) return "A chave da API facial não possui o escopo necessário.";
+  if (status === 403) {
+    return "A API facial recusou o acesso. Confira o escopo necessário e autorize o subject_id deste funcionário para o client_id.";
+  }
   if (status === 404) return "O cadastro facial do funcionário não foi encontrado.";
   if (status === 413) return "A imagem excede o limite permitido pela API facial.";
   if (status === 422)
@@ -252,9 +335,11 @@ export async function verificarCapturaFacial(file: File): Promise<Record<string,
 }
 
 /**
- * Cadastra as referências faciais de um funcionário usando a URL e a chave
- * de cliente configuradas no próprio PWA. A chave administrativa da API
- * nunca participa deste fluxo.
+ * Cadastra as referências faciais de um funcionário.
+ *
+ * O cadastro usa a URL e a chave de cliente configuradas no próprio PWA,
+ * exatamente como a validação da captura e a verificação facial. A chave
+ * administrativa da API nunca participa deste fluxo.
  */
 export async function cadastrarBiometriaFacial(
   subjectId: string,
@@ -273,6 +358,7 @@ export async function cadastrarBiometriaFacial(
   data.append("subject_id", subjectId);
   preparadas.forEach((file) => data.append("reference_images", file));
   const configuracao = obterConfiguracaoFaceApi();
+  if (configuracao.clientId && configuracao.adminKey) await autorizarSubjectFaceApi(subjectId);
   const { response, body } = await requestJson(
     `/v1/experimental/subjects/${encodeURIComponent(subjectId)}/enroll`,
     { method: "POST", body: data },
