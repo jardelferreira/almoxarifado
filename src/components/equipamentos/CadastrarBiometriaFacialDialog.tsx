@@ -82,7 +82,7 @@ export function CadastrarBiometriaFacialDialog({
         <div className="space-y-5 px-6 py-5">
           <div className="rounded-lg border border-sky-300/70 bg-sky-50 px-4 py-3 text-sm leading-5 text-sky-950 dark:bg-sky-950/20 dark:text-sky-100">
             <p className="flex items-center gap-2 font-semibold"><Server className="size-4" /> Cadastro protegido pelo backend</p>
-            <p className="mt-1">As imagens serão enviadas ao backend do Almoxarifado. A chave de cliente com escopo <code>template:enroll</code> permanece somente no servidor e nunca é exposta ao PWA.</p>
+            <p className="mt-1">As imagens serão enviadas ao backend do Almoxarifado. A mesma chave de API do aplicativo autoriza o cadastro e a verificação facial; ela permanece somente no servidor para o cadastro.</p>
             <p className="mt-2 text-xs opacity-80">Use imagens com uma única pessoa, boa iluminação e ângulos levemente diferentes. Confirme visualmente que as fotos pertencem a este funcionário antes de cadastrar.</p>
           </div>
 
