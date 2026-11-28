@@ -315,11 +315,11 @@ function ConfiguracoesPage() {
                 </SelectContent>
               </Select>
               <p className="text-xs leading-5 text-muted-foreground">
-                O PIN continua disponível. O reconhecimento facial funciona como validação
-                assistida e exige uma API configurada neste navegador.
+                O PIN continua disponível. O reconhecimento facial funciona como validação assistida
+                e exige uma API configurada neste navegador.
               </p>
               {rascunho.seguranca.metodo_validacao_transacoes_equipamentos === "FACIAL" && (
-                <FaceApiSettings />
+                <FaceApiSettings projetoId={projetoId ?? ""} />
               )}
             </div>
           </CardContent>
