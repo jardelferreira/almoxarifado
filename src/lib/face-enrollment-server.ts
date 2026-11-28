@@ -6,7 +6,7 @@ const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
 
 type FaceEnrollmentEnv = {
   FACE_API_URL?: string;
-  FACE_ENROLL_KEY?: string;
+  FACE_API_KEY?: string;
 };
 
 const faceEnv = env as typeof env & FaceEnrollmentEnv;
@@ -64,14 +64,14 @@ export const cadastrarBiometriaFacialNoBackend = createServerFn({ method: "POST"
   })
   .handler(async ({ data }) => {
     const apiUrl = normalizarApiUrl(String(faceEnv.FACE_API_URL ?? ""));
-    const enrollKey = String(faceEnv.FACE_ENROLL_KEY ?? "").trim();
-    if (!enrollKey) throw new Error("FACE_ENROLL_KEY não está configurada no servidor.");
+    const apiKey = String(faceEnv.FACE_API_KEY ?? "").trim();
+    if (!apiKey) throw new Error("FACE_API_KEY não está configurada no servidor.");
 
     const form = new FormData();
     data.arquivos.forEach((arquivo) => form.append("reference_images", arquivo, arquivo.name));
     const response = await fetch(
       `${apiUrl}/v1/experimental/subjects/${encodeURIComponent(data.subjectId)}/enroll`,
-      { method: "POST", headers: { "X-API-Key": enrollKey }, body: form },
+      { method: "POST", headers: { "X-API-Key": apiKey }, body: form },
     );
     const body = await jsonBody(response);
     if (!response.ok) throw new Error(mensagemApi(response.status));
