@@ -1,5 +1,3 @@
-import { cadastrarBiometriaFacialNoBackend } from "@/lib/face-enrollment-server";
-
 const STORAGE_KEY = "almoxarifado.face-api.config.v1";
 const DEFAULT_API_URL = "http://127.0.0.1:8767";
 const MAX_IMAGE_EDGE = 1920;
@@ -254,9 +252,9 @@ export async function verificarCapturaFacial(file: File): Promise<Record<string,
 }
 
 /**
- * Cadastra as referências faciais de um funcionário.
- * A chave administrativa é recebida somente em memória e nunca é persistida
- * na configuração do navegador, no IndexedDB ou no backup do projeto.
+ * Cadastra as referências faciais de um funcionário usando a URL e a chave
+ * de cliente configuradas no próprio PWA. A chave administrativa da API
+ * nunca participa deste fluxo.
  */
 export async function cadastrarBiometriaFacial(
   subjectId: string,
@@ -274,7 +272,19 @@ export async function cadastrarBiometriaFacial(
   const data = new FormData();
   data.append("subject_id", subjectId);
   preparadas.forEach((file) => data.append("reference_images", file));
-  return cadastrarBiometriaFacialNoBackend({ data });
+  const configuracao = obterConfiguracaoFaceApi();
+  const { response, body } = await requestJson(
+    `/v1/experimental/subjects/${encodeURIComponent(subjectId)}/enroll`,
+    { method: "POST", body: data },
+  );
+  if (!response.ok) throw new Error(mensagemHttp(response.status));
+
+  return {
+    subjectId,
+    enrolledImages:
+      typeof body.enrolled_images === "number" ? body.enrolled_images : preparadas.length,
+    apiUrl: configuracao.apiUrl,
+  };
 }
 
 export async function verificarFuncionarioPorFace(
