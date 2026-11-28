@@ -1,3 +1,5 @@
+import { cadastrarBiometriaFacialNoBackend } from "@/lib/face-enrollment-server";
+
 const STORAGE_KEY = "almoxarifado.face-api.config.v1";
 const DEFAULT_API_URL = "http://127.0.0.1:8767";
 const MAX_IMAGE_EDGE = 1920;
@@ -6,6 +8,12 @@ const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 export type FaceApiConfig = {
   apiUrl: string;
   apiKey: string;
+};
+
+export type FaceEnrollmentResult = {
+  subjectId: string;
+  enrolledImages: number;
+  apiUrl: string;
 };
 
 export type FaceImagePreparation = {
@@ -117,7 +125,9 @@ async function requestJson(
 }
 
 function mensagemHttp(status: number): string {
-  if (status === 401) return "A chave da API facial é inválida ou não foi informada.";
+  if (status === 401) {
+    return "A chave da API facial é inválida ou não foi informada.";
+  }
   if (status === 403) return "A chave da API facial não possui o escopo necessário.";
   if (status === 404) return "O cadastro facial do funcionário não foi encontrado.";
   if (status === 413) return "A imagem excede o limite permitido pela API facial.";
@@ -234,6 +244,30 @@ export async function verificarCapturaFacial(file: File): Promise<Record<string,
     throw new Error("A captura precisa conter exatamente um rosto utilizável.");
   }
   return body;
+}
+
+/**
+ * Cadastra as referências faciais de um funcionário.
+ * A chave administrativa é recebida somente em memória e nunca é persistida
+ * na configuração do navegador, no IndexedDB ou no backup do projeto.
+ */
+export async function cadastrarBiometriaFacial(
+  subjectId: string,
+  files: File[],
+): Promise<FaceEnrollmentResult> {
+  if (!subjectId.trim()) throw new Error("O funcionário não possui um identificador válido.");
+  if (files.length < 2) throw new Error("Cadastre pelo menos 2 imagens do funcionário.");
+  if (files.length > 5) throw new Error("Cadastre no máximo 5 imagens por funcionário.");
+
+  const preparadas: File[] = [];
+  for (const file of files) {
+    preparadas.push((await prepararImagemFacial(file)).file);
+  }
+
+  const data = new FormData();
+  data.append("subject_id", subjectId);
+  preparadas.forEach((file) => data.append("reference_images", file));
+  return cadastrarBiometriaFacialNoBackend({ data });
 }
 
 export async function verificarFuncionarioPorFace(
