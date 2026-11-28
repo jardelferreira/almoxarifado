@@ -84,6 +84,7 @@ export const repo = {
       "inventarios", "inteligencia_acoes", "manutencoes_equipamentos", "manutencao_documentos",
       "apropriacoes_financeiras_equipamentos", "consumos_equipamentos",
       "regras_consumo_equipamentos", "perfis_parametros_custos",
+      "clientes_face_api",
     ];
 
     const [equipes, estoques, documentos, inventarios] = await Promise.all([
