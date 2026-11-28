@@ -131,7 +131,8 @@ function mensagemHttp(status: number): string {
   if (status === 403) return "A chave da API facial não possui o escopo necessário.";
   if (status === 404) return "O cadastro facial do funcionário não foi encontrado.";
   if (status === 413) return "A imagem excede o limite permitido pela API facial.";
-  if (status === 422) return "A captura não pôde ser processada. Use uma imagem com apenas um rosto visível.";
+  if (status === 422)
+    return "A captura não pôde ser processada. Use uma imagem com apenas um rosto visível.";
   if (status === 503) return "A API facial está temporariamente indisponível.";
   return `A API facial respondeu com HTTP ${status}.`;
 }
@@ -146,7 +147,9 @@ export async function testarConexaoFaceApi(): Promise<Record<string, unknown>> {
   return body;
 }
 
-async function abrirImagem(file: File): Promise<{ image: HTMLImageElement; width: number; height: number }> {
+async function abrirImagem(
+  file: File,
+): Promise<{ image: HTMLImageElement; width: number; height: number }> {
   const url = URL.createObjectURL(file);
   try {
     const image = new Image();
@@ -169,7 +172,8 @@ async function abrirImagem(file: File): Promise<{ image: HTMLImageElement; width
 function canvasBlob(canvas: HTMLCanvasElement, quality: number): Promise<Blob> {
   return new Promise((resolve, reject) => {
     canvas.toBlob(
-      (blob) => (blob ? resolve(blob) : reject(new Error("O navegador não conseguiu preparar a imagem."))),
+      (blob) =>
+        blob ? resolve(blob) : reject(new Error("O navegador não conseguiu preparar a imagem.")),
       "image/jpeg",
       quality,
     );
@@ -218,7 +222,10 @@ export async function prepararImagemFacial(file: File | undefined): Promise<Face
   }
 
   const nome = file.name.replace(/\.[^.]+$/, "") || "captura";
-  const preparado = new File([blob], `${nome}.jpg`, { type: "image/jpeg", lastModified: Date.now() });
+  const preparado = new File([blob], `${nome}.jpg`, {
+    type: "image/jpeg",
+    lastModified: Date.now(),
+  });
   return {
     file: preparado,
     info: {
@@ -248,8 +255,8 @@ export async function verificarCapturaFacial(file: File): Promise<Record<string,
 
 /**
  * Cadastra as referências faciais de um funcionário.
- * A chave de API do aplicativo é usada pelo backend no cadastro e nunca é
- * persistida pelo PWA como credencial administrativa.
+ * A chave administrativa é recebida somente em memória e nunca é persistida
+ * na configuração do navegador, no IndexedDB ou no backup do projeto.
  */
 export async function cadastrarBiometriaFacial(
   subjectId: string,
@@ -289,7 +296,9 @@ export async function verificarFuncionarioPorFace(
     apiUrl: configuracao.apiUrl,
     httpStatus: response.status,
     captureValid: captura.image_usable === true && captura.face_count === 1,
-    verificationReceived: typeof body.centroid_cosine_similarity === "number" || typeof body.mean_reference_similarity === "number",
+    verificationReceived:
+      typeof body.centroid_cosine_similarity === "number" ||
+      typeof body.mean_reference_similarity === "number",
     meanReferenceSimilarity: numeroOuNulo(body.mean_reference_similarity),
     medianReferenceSimilarity: numeroOuNulo(body.median_reference_similarity),
     centroidCosineSimilarity: numeroOuNulo(body.centroid_cosine_similarity),
