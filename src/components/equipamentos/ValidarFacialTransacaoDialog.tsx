@@ -73,6 +73,7 @@ export function ValidarFacialTransacaoDialog({
         if (novosResultados[id]) continue;
         const preparado = await prepararImagemFacial(arquivos[id]);
         novosResultados[id] = await verificarFuncionarioPorFace(
+          movimento.projeto_id,
           requisito.funcionario_id,
           preparado.file,
         );
@@ -80,7 +81,8 @@ export function ValidarFacialTransacaoDialog({
       setResultados(novosResultados);
       const entradas: ValidacaoTransacaoEntrada[] = requisitos.map((requisito) => {
         const resultado = novosResultados[chave(requisito)];
-        if (!resultado) throw new Error(`A verificação de ${requisito.funcionario_nome} não foi concluída.`);
+        if (!resultado)
+          throw new Error(`A verificação de ${requisito.funcionario_nome} não foi concluída.`);
         return {
           metodo: "FACIAL",
           funcionario_id: requisito.funcionario_id,
@@ -96,7 +98,9 @@ export function ValidarFacialTransacaoDialog({
       });
       await onConfirm(entradas);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Não foi possível verificar a captura facial.");
+      toast.error(
+        error instanceof Error ? error.message : "Não foi possível verificar a captura facial.",
+      );
     } finally {
       setValidando(false);
     }
@@ -128,7 +132,9 @@ export function ValidarFacialTransacaoDialog({
                     ({requisito.papel === "ORIGEM" ? "origem" : "destino"})
                   </span>
                 </div>
-                <Label htmlFor={`face-transacao-${id}`}>Captura pela câmera ou arquivo JPEG/PNG</Label>
+                <Label htmlFor={`face-transacao-${id}`}>
+                  Captura pela câmera ou arquivo JPEG/PNG
+                </Label>
                 <Input
                   id={`face-transacao-${id}`}
                   type="file"
@@ -148,7 +154,9 @@ export function ValidarFacialTransacaoDialog({
                 />
                 {resultado && (
                   <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900">
-                    Resultado recebido da API para revisão. Centroide: {formatarEscore(resultado.centroidCosineSimilarity)} · média: {formatarEscore(resultado.meanReferenceSimilarity)}
+                    Resultado recebido da API para revisão. Centroide:{" "}
+                    {formatarEscore(resultado.centroidCosineSimilarity)} · média:{" "}
+                    {formatarEscore(resultado.meanReferenceSimilarity)}
                   </div>
                 )}
               </div>
@@ -168,7 +176,12 @@ export function ValidarFacialTransacaoDialog({
           </label>
         </div>
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={validando || salvando}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={validando || salvando}
+          >
             Cancelar
           </Button>
           <Button type="button" onClick={() => void confirmar()} disabled={validando || salvando}>
