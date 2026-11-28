@@ -25,12 +25,14 @@ export interface ValidacaoTransacaoFacialEntrada {
     captureValid: boolean;
     verificationReceived: boolean;
     revisaoOperador: boolean;
+    escore: number | null;
+    limiar: number;
+    limiarAtendido: boolean;
   };
 }
 
 export type ValidacaoTransacaoEntrada =
-  | ValidacaoTransacaoPinEntrada
-  | ValidacaoTransacaoFacialEntrada;
+  ValidacaoTransacaoPinEntrada | ValidacaoTransacaoFacialEntrada;
 
 /** Registro seguro anexado ao histórico da movimentação. */
 export interface ValidacaoTransacaoRegistro {
