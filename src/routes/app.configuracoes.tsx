@@ -318,6 +318,32 @@ function ConfiguracoesPage() {
                 O PIN continua disponível. O reconhecimento facial funciona como validação assistida
                 e exige uma API configurada neste navegador.
               </p>
+              <div className="space-y-2 rounded-md border bg-background p-3">
+                <Label htmlFor="limiar-reconhecimento-facial">
+                  Limiar mínimo do reconhecimento facial
+                </Label>
+                <div className="flex items-center gap-3">
+                  <input
+                    id="limiar-reconhecimento-facial"
+                    type="number"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value={rascunho.seguranca.limiar_reconhecimento_facial}
+                    onChange={(event) =>
+                      atualizarSeguranca(
+                        "limiar_reconhecimento_facial",
+                        Math.min(1, Math.max(0, Number(event.target.value) || 0)),
+                      )
+                    }
+                    className="h-11 w-32 rounded-md border bg-background px-3 text-sm"
+                  />
+                  <p className="text-xs leading-5 text-muted-foreground">
+                    Abaixo desse valor, a transação será bloqueada automaticamente. O padrão
+                    conservador é 0,55; ajuste após testes controlados da sua API.
+                  </p>
+                </div>
+              </div>
               {rascunho.seguranca.metodo_validacao_transacoes_equipamentos === "FACIAL" && (
                 <FaceApiSettings projetoId={projetoId ?? ""} />
               )}
