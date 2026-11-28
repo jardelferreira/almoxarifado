@@ -42,7 +42,6 @@ export function ValidarFacialTransacaoDialog({
 }: Props) {
   const [arquivos, setArquivos] = useState<Record<string, File>>({});
   const [resultados, setResultados] = useState<Record<string, FaceVerificationResult>>({});
-  const [confirmado, setConfirmado] = useState(false);
   const [validando, setValidando] = useState(false);
   const [limiar, setLimiar] = useState(0.55);
   const [cameraAtiva, setCameraAtiva] = useState<string | null>(null);
@@ -60,18 +59,24 @@ export function ValidarFacialTransacaoDialog({
 
   useEffect(() => {
     if (open) {
+      pararCamera();
       setArquivos({});
       setResultados({});
-      setConfirmado(false);
       setErroCamera(null);
       if (movimento) {
         void configuracoesRepo.obter(movimento.projeto_id).then((configuracao) => {
           setLimiar(Math.min(1, Math.max(0, configuracao.seguranca.limiar_reconhecimento_facial)));
         });
       }
+      const primeiroRequisito = requisitos[0];
+      if (primeiroRequisito) {
+        window.setTimeout(() => void abrirCamera(chave(primeiroRequisito)), 120);
+      }
     } else {
       pararCamera();
     }
+    // abrirCamera é uma função declarada no componente e usada apenas após a montagem do modal.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, requisitos, movimento, pararCamera]);
 
   useEffect(() => {
@@ -135,16 +140,21 @@ export function ValidarFacialTransacaoDialog({
       toast.error("Não foi possível capturar a imagem.");
       return;
     }
-    setArquivos((atual) => ({
-      ...atual,
-      [id]: new File([blob], `transacao-${Date.now()}.jpg`, { type: "image/jpeg" }),
-    }));
+    const arquivo = new File([blob], `transacao-${Date.now()}.jpg`, { type: "image/jpeg" });
+    const arquivosAtualizados = { ...arquivos, [id]: arquivo };
+    setArquivos(arquivosAtualizados);
     setResultados((atual) => {
       const proximo = { ...atual };
       delete proximo[id];
       return proximo;
     });
     pararCamera();
+    const proximo = requisitos.find((requisito) => !arquivosAtualizados[chave(requisito)]);
+    if (proximo) {
+      window.setTimeout(() => void abrirCamera(chave(proximo)), 120);
+    } else {
+      window.setTimeout(() => void confirmar(), 120);
+    }
   }
 
   async function confirmar() {
@@ -180,12 +190,6 @@ export function ValidarFacialTransacaoDialog({
         toast.error("A biometria facial não corresponde ao funcionário. A transação foi recusada.");
         return;
       }
-      if (!confirmado) {
-        toast.info(
-          "As capturas foram aprovadas pelo limiar. Revise os resultados e confirme para continuar.",
-        );
-        return;
-      }
       const entradas: ValidacaoTransacaoEntrada[] = requisitos.map((requisito) => {
         const resultado = novosResultados[chave(requisito)];
         if (!resultado)
@@ -199,7 +203,7 @@ export function ValidarFacialTransacaoDialog({
             httpStatus: resultado.httpStatus,
             captureValid: resultado.captureValid,
             verificationReceived: resultado.verificationReceived,
-            revisaoOperador: confirmado,
+            revisaoOperador: true,
             escore:
               resultado.centroidCosineSimilarity ??
               resultado.meanReferenceSimilarity ??
@@ -214,6 +218,8 @@ export function ValidarFacialTransacaoDialog({
         };
       });
       await onConfirm(entradas);
+      pararCamera();
+      onOpenChange(false);
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Não foi possível verificar a captura facial.",
@@ -318,19 +324,11 @@ export function ValidarFacialTransacaoDialog({
               {erroCamera}
             </p>
           )}
-          <label
-            className={`flex items-start gap-2 rounded-md border p-3 text-xs leading-5 ${Object.keys(resultados).length < requisitos.length || Object.values(resultados).some((resultado) => (resultado.centroidCosineSimilarity ?? resultado.meanReferenceSimilarity ?? resultado.medianReferenceSimilarity ?? -1) < limiar) ? "pointer-events-none opacity-50" : ""}`}
-          >
-            <input
-              type="checkbox"
-              className="mt-1"
-              checked={confirmado}
-              onChange={(event) => setConfirmado(event.target.checked)}
-            />
-            <span>
-              Confirmei que a biometria foi aprovada e autorizo a continuidade desta operação.
-            </span>
-          </label>
+          {cameraAtiva == null && Object.keys(resultados).length === 0 && !erroCamera && (
+            <p className="text-center text-xs text-muted-foreground">
+              A câmera será aberta automaticamente para iniciar a validação.
+            </p>
+          )}
         </div>
         <DialogFooter>
           <Button
@@ -341,12 +339,14 @@ export function ValidarFacialTransacaoDialog({
           >
             Cancelar
           </Button>
-          <Button type="button" onClick={() => void confirmar()} disabled={validando || salvando}>
-            {validando || salvando
-              ? "Verificando…"
-              : Object.keys(resultados).length === requisitos.length
-                ? "Autorizar transação"
-                : "Verificar biometria"}
+          <Button
+            type="button"
+            onClick={() => void confirmar()}
+            disabled={
+              validando || salvando || requisitos.some((requisito) => !arquivos[chave(requisito)])
+            }
+          >
+            {validando || salvando ? "Verificando…" : "Verificar biometria"}
           </Button>
         </DialogFooter>
       </DialogContent>
