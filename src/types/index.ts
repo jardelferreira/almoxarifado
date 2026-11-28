@@ -40,3 +40,4 @@ export * from "./painel-funcionarios";
 export * from "./painel-estoque";
 export * from "./painel-inventario";
 export * from "./push-notifications";
+export * from "./cliente-face-api";
