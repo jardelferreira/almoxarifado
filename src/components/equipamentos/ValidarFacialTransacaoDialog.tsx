@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Camera, ShieldCheck } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Camera, ShieldCheck, Video, VideoOff } from "lucide-react";
 import { toast } from "sonner";
 import { configuracoesRepo } from "@/services/configuracoes-repo";
 
@@ -11,8 +11,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   prepararImagemFacial,
   verificarFuncionarioPorFace,
@@ -47,19 +45,107 @@ export function ValidarFacialTransacaoDialog({
   const [confirmado, setConfirmado] = useState(false);
   const [validando, setValidando] = useState(false);
   const [limiar, setLimiar] = useState(0.55);
+  const [cameraAtiva, setCameraAtiva] = useState<string | null>(null);
+  const [cameraCarregando, setCameraCarregando] = useState(false);
+  const [erroCamera, setErroCamera] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
+  const pararCamera = useCallback(() => {
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
+    setCameraAtiva(null);
+  }, []);
 
   useEffect(() => {
     if (open) {
       setArquivos({});
       setResultados({});
       setConfirmado(false);
+      setErroCamera(null);
       if (movimento) {
         void configuracoesRepo.obter(movimento.projeto_id).then((configuracao) => {
           setLimiar(Math.min(1, Math.max(0, configuracao.seguranca.limiar_reconhecimento_facial)));
         });
       }
+    } else {
+      pararCamera();
     }
-  }, [open, requisitos, movimento]);
+  }, [open, requisitos, movimento, pararCamera]);
+
+  useEffect(() => {
+    if (!cameraAtiva || !videoRef.current || !streamRef.current) return;
+    videoRef.current.srcObject = streamRef.current;
+    void videoRef.current.play();
+  }, [cameraAtiva]);
+
+  useEffect(
+    () => () => {
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+    },
+    [],
+  );
+
+  async function abrirCamera(id: string) {
+    setErroCamera(null);
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setErroCamera("Este navegador não oferece acesso à câmera.");
+      return;
+    }
+    if (!window.isSecureContext) {
+      setErroCamera("A câmera exige HTTPS ou localhost.");
+      return;
+    }
+    pararCamera();
+    setCameraCarregando(true);
+    try {
+      streamRef.current = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 960 } },
+      });
+      setCameraAtiva(id);
+    } catch (error) {
+      setErroCamera(
+        error instanceof DOMException && error.name === "NotAllowedError"
+          ? "A permissão da câmera foi negada. Autorize o acesso para este site."
+          : "Não foi possível abrir a câmera. Verifique se ela está disponível.",
+      );
+    } finally {
+      setCameraCarregando(false);
+    }
+  }
+
+  async function capturarFoto(id: string) {
+    const video = videoRef.current;
+    if (!video || !video.videoWidth || cameraAtiva !== id) return;
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const context = canvas.getContext("2d", { alpha: false });
+    if (!context) {
+      toast.error("Este navegador não oferece suporte à captura da câmera.");
+      return;
+    }
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, "image/jpeg", 0.9),
+    );
+    if (!blob) {
+      toast.error("Não foi possível capturar a imagem.");
+      return;
+    }
+    setArquivos((atual) => ({
+      ...atual,
+      [id]: new File([blob], `transacao-${Date.now()}.jpg`, { type: "image/jpeg" }),
+    }));
+    setResultados((atual) => {
+      const proximo = { ...atual };
+      delete proximo[id];
+      return proximo;
+    });
+    pararCamera();
+  }
 
   async function confirmar() {
     if (!movimento) return;
@@ -163,26 +249,45 @@ export function ValidarFacialTransacaoDialog({
                     ({requisito.papel === "ORIGEM" ? "origem" : "destino"})
                   </span>
                 </div>
-                <Label htmlFor={`face-transacao-${id}`}>
-                  Captura pela câmera ou arquivo JPEG/PNG
-                </Label>
-                <Input
-                  id={`face-transacao-${id}`}
-                  type="file"
-                  accept="image/jpeg,image/png"
-                  capture="user"
-                  onChange={(event) => {
-                    const arquivo = event.target.files?.[0];
-                    if (arquivo) {
-                      setArquivos((atual) => ({ ...atual, [id]: arquivo }));
-                      setResultados((atual) => {
-                        const proximo = { ...atual };
-                        delete proximo[id];
-                        return proximo;
-                      });
-                    }
-                  }}
-                />
+                {cameraAtiva === id ? (
+                  <div className="space-y-2 rounded-md border bg-black p-2">
+                    <video
+                      ref={videoRef}
+                      autoPlay
+                      playsInline
+                      muted
+                      className="aspect-video w-full rounded object-cover"
+                    />
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        className="flex-1"
+                        onClick={() => void capturarFoto(id)}
+                      >
+                        <Camera className="mr-2 size-4" /> Capturar agora
+                      </Button>
+                      <Button type="button" variant="secondary" onClick={pararCamera}>
+                        <VideoOff className="mr-2 size-4" /> Fechar câmera
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <Button
+                    type="button"
+                    variant={arquivos[id] ? "outline" : "default"}
+                    onClick={() => void abrirCamera(id)}
+                    disabled={cameraCarregando || validando || salvando}
+                    className="w-full"
+                  >
+                    <Video className="mr-2 size-4" />
+                    {arquivos[id] ? "Capturar novamente" : "Abrir câmera"}
+                  </Button>
+                )}
+                {arquivos[id] && !resultado && (
+                  <p className="text-xs text-muted-foreground">
+                    Captura realizada. Clique em verificar biometria.
+                  </p>
+                )}
                 {resultado && (
                   <div
                     className={
@@ -205,6 +310,14 @@ export function ValidarFacialTransacaoDialog({
               </div>
             );
           })}
+          {erroCamera && (
+            <p
+              className="rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-900"
+              role="alert"
+            >
+              {erroCamera}
+            </p>
+          )}
           <label
             className={`flex items-start gap-2 rounded-md border p-3 text-xs leading-5 ${Object.keys(resultados).length < requisitos.length || Object.values(resultados).some((resultado) => (resultado.centroidCosineSimilarity ?? resultado.meanReferenceSimilarity ?? resultado.medianReferenceSimilarity ?? -1) < limiar) ? "pointer-events-none opacity-50" : ""}`}
           >
