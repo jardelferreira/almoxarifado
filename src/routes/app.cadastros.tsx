@@ -52,6 +52,7 @@ import { num } from "@/utils/format";
 import type { Categoria, Empresa, Equipe, Funcionario, Local, Produto, Unidade } from "@/types";
 import { obterMetodoValidacaoTransacao } from "@/services/equipamentos/validacao-transacoes";
 import { CadastrarBiometriaFacialDialog } from "@/components/equipamentos/CadastrarBiometriaFacialDialog";
+import { sincronizarFuncionarioComClienteFaceApi } from "@/lib/face-api-client";
 
 export const Route = createFileRoute("/app/cadastros")({
   ssr: false,
@@ -187,7 +188,8 @@ function CadastrosPage() {
 
         await repo.salvarMembrosDaEquipe(
           equipe.id,
-          (membros as Array<{ funcionario_id: string; papel: "LIDER" | "MEMBRO" }> | undefined) ?? [],
+          (membros as Array<{ funcionario_id: string; papel: "LIDER" | "MEMBRO" }> | undefined) ??
+            [],
         );
 
         toast.success("Equipe salva");
@@ -205,9 +207,12 @@ function CadastrosPage() {
         const pinNovo = String(item["pin_novo"] ?? "").trim();
         const { pin_novo: _pinNovo, ...itemFuncionario } = item;
         const funcionarioId = String(itemFuncionario["id"] ?? "");
-        const encarregadoId = (itemFuncionario["encarregado_id"] as string | null | undefined) ?? null;
+        const encarregadoId =
+          (itemFuncionario["encarregado_id"] as string | null | undefined) ?? null;
         const equipeAutomatica = encarregadoId ? equipeDoEncarregado(encarregadoId) : null;
-        const equipeId = encarregadoId ? equipeAutomatica : ((itemFuncionario["equipe_raiz_id"] as string | null) ?? null);
+        const equipeId = encarregadoId
+          ? equipeAutomatica
+          : ((itemFuncionario["equipe_raiz_id"] as string | null) ?? null);
         const dadosFuncionario = {
           ...itemFuncionario,
           equipe_raiz_id: equipeId ?? undefined,
@@ -216,6 +221,15 @@ function CadastrosPage() {
         if (pinNovo) Object.assign(dadosFuncionario, await criarHashPin(pinNovo));
         const funcionarioSalvo = await salvarFuncionario(projetoId, dadosFuncionario);
         await repo.atualizarVinculoFuncionarioEquipe(funcionarioSalvo.id, equipeId);
+        try {
+          await sincronizarFuncionarioComClienteFaceApi(projetoId, funcionarioSalvo.id);
+        } catch (error) {
+          toast.warning(
+            error instanceof Error
+              ? `Funcionário salvo, mas não autorizado no client facial: ${error.message}`
+              : "Funcionário salvo, mas a autorização facial falhou.",
+          );
+        }
       } else if (aba === "locais") {
         await repo.locais.save(projetoId, item as unknown as Local);
       } else if (aba === "produtos") {
@@ -236,7 +250,9 @@ function CadastrosPage() {
     return (
       dados.equipeMembros.find(
         (membro) => membro.funcionario_id === encarregadoId && membro.papel === "LIDER",
-      )?.equipe_id ?? dados.equipeMembros.find((membro) => membro.funcionario_id === encarregadoId)?.equipe_id ?? null
+      )?.equipe_id ??
+      dados.equipeMembros.find((membro) => membro.funcionario_id === encarregadoId)?.equipe_id ??
+      null
     );
   };
 
@@ -664,7 +680,9 @@ function CadastrosPage() {
                           <TableRow key={e.id}>
                             <TableCell className="font-medium">{e.nome}</TableCell>
                             <TableCell>{membros.length}</TableCell>
-                            <TableCell>{lideres.length ? lideres.join(", ") : "Nenhum líder"}</TableCell>
+                            <TableCell>
+                              {lideres.length ? lideres.join(", ") : "Nenhum líder"}
+                            </TableCell>
                             <TableCell>
                               <Badge variant="secondary">
                                 {e.estoque_segregado ? "Segregado" : "Compartilhado"}
@@ -961,7 +979,9 @@ function CadastrosPage() {
                           item: {
                             ...editando.item,
                             encarregado_id: v,
-                            equipe_raiz_id: v ? equipeDoEncarregado(v) : editando.item["equipe_raiz_id"] ?? null,
+                            equipe_raiz_id: v
+                              ? equipeDoEncarregado(v)
+                              : (editando.item["equipe_raiz_id"] ?? null),
                           },
                         })
                       }
@@ -998,7 +1018,10 @@ function CadastrosPage() {
                     </p>
                     <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900/40">
                       <span className="font-medium">Equipe atual: </span>
-                      {nomeDe(dados.equipes, (editando.item["equipe_raiz_id"] as string | null) ?? null) || "Nenhuma"}
+                      {nomeDe(
+                        dados.equipes,
+                        (editando.item["equipe_raiz_id"] as string | null) ?? null,
+                      ) || "Nenhuma"}
                     </div>
                   </div>
                   <div className="space-y-1.5 sm:col-span-2">
@@ -1032,17 +1055,22 @@ function CadastrosPage() {
                   {reconhecimentoFacialAtivo && Boolean(editando.item["id"]) && (
                     <div className="flex flex-col gap-3 rounded-lg border border-sky-200 bg-sky-50/70 p-4 sm:col-span-2 dark:border-sky-900 dark:bg-sky-950/20">
                       <div>
-                        <p className="font-semibold text-sky-950 dark:text-sky-100">Biometria facial</p>
+                        <p className="font-semibold text-sky-950 dark:text-sky-100">
+                          Biometria facial
+                        </p>
                         <p className="mt-1 text-xs leading-5 text-sky-900/75 dark:text-sky-100/75">
-                          O reconhecimento facial está ativo para validar transações de equipamentos.
-                          Cadastre as referências deste funcionário para habilitar a validação facial.
+                          O reconhecimento facial está ativo para validar transações de
+                          equipamentos. Cadastre as referências deste funcionário para habilitar a
+                          validação facial.
                         </p>
                       </div>
                       <Button
                         type="button"
                         variant="outline"
                         className="w-fit border-sky-300 bg-background"
-                        onClick={() => setFuncionarioBiometria(editando.item as unknown as Funcionario)}
+                        onClick={() =>
+                          setFuncionarioBiometria(editando.item as unknown as Funcionario)
+                        }
                       >
                         <Fingerprint className="mr-2 size-4" />
                         Cadastrar biometria facial
@@ -1092,13 +1120,19 @@ function CadastrosPage() {
                     <div>
                       <Label>Membros e papel</Label>
                       <p className="text-xs text-muted-foreground">
-                        Novos funcionários sem equipe podem ser adicionados aqui. Para trocar ou liberar alguém já vinculado, edite o cadastro do funcionário.
+                        Novos funcionários sem equipe podem ser adicionados aqui. Para trocar ou
+                        liberar alguém já vinculado, edite o cadastro do funcionário.
                       </p>
                     </div>
                     {(() => {
                       const equipeId = String(editando.item["id"] ?? "");
-                      const selecionados = (editando.item["membros"] as Array<{ funcionario_id: string; papel: "LIDER" | "MEMBRO" }> | undefined) ?? [];
-                      const selecionadosIds = new Set(selecionados.map((membro) => membro.funcionario_id));
+                      const selecionados =
+                        (editando.item["membros"] as
+                          | Array<{ funcionario_id: string; papel: "LIDER" | "MEMBRO" }>
+                          | undefined) ?? [];
+                      const selecionadosIds = new Set(
+                        selecionados.map((membro) => membro.funcionario_id),
+                      );
                       const ocupadosEmOutraEquipe = new Set(
                         dados.equipeMembros
                           .filter((membro) => membro.equipe_id !== equipeId)
@@ -1107,7 +1141,11 @@ function CadastrosPage() {
                       return (
                         <SelecaoMultipla
                           opcoes={dados.funcionarios
-                            .filter((f) => f.status === "ATIVO" && (selecionadosIds.has(f.id) || !ocupadosEmOutraEquipe.has(f.id)))
+                            .filter(
+                              (f) =>
+                                f.status === "ATIVO" &&
+                                (selecionadosIds.has(f.id) || !ocupadosEmOutraEquipe.has(f.id)),
+                            )
                             .map((f) => ({ id: f.id, nome: f.nome }))}
                           selecionados={selecionados}
                           onChange={(membros) =>
@@ -1130,6 +1168,7 @@ function CadastrosPage() {
         </DialogContent>
       </Dialog>
       <CadastrarBiometriaFacialDialog
+        projetoId={projetoId ?? ""}
         funcionario={funcionarioBiometria}
         open={Boolean(funcionarioBiometria)}
         onOpenChange={(open) => {
@@ -1171,50 +1210,58 @@ function SelecaoMultipla({
         />
       </div>
       <div className="max-h-56 space-y-1 overflow-y-auto p-3">
-      {filtradas.map((opcao) => {
-        const membro = selecionados.find((selecionado) => selecionado.funcionario_id === opcao.id);
-        const marcado = Boolean(membro);
-        return (
-          <div key={opcao.id} className="flex flex-wrap items-center gap-2 rounded-md px-1 py-1.5 hover:bg-muted/40">
-            <Checkbox
-              checked={marcado}
-              onCheckedChange={(checked) =>
-                onChange(
-                  checked
-                    ? [...selecionados, { funcionario_id: opcao.id, papel: "MEMBRO" }]
-                    : selecionados.filter((item) => item.funcionario_id !== opcao.id),
-                )
-              }
-            />
-            <span className="min-w-0 flex-1 truncate text-sm font-medium" title={opcao.nome}>{opcao.nome}</span>
-            {marcado && (
-              <select
-                aria-label={`Papel de ${opcao.nome}`}
-                value={membro?.papel ?? "MEMBRO"}
-                onChange={(event) =>
+        {filtradas.map((opcao) => {
+          const membro = selecionados.find(
+            (selecionado) => selecionado.funcionario_id === opcao.id,
+          );
+          const marcado = Boolean(membro);
+          return (
+            <div
+              key={opcao.id}
+              className="flex flex-wrap items-center gap-2 rounded-md px-1 py-1.5 hover:bg-muted/40"
+            >
+              <Checkbox
+                checked={marcado}
+                onCheckedChange={(checked) =>
                   onChange(
-                    selecionados.map((item) =>
-                      item.funcionario_id === opcao.id
-                        ? { ...item, papel: event.target.value as "LIDER" | "MEMBRO" }
-                        : item,
-                    ),
+                    checked
+                      ? [...selecionados, { funcionario_id: opcao.id, papel: "MEMBRO" }]
+                      : selecionados.filter((item) => item.funcionario_id !== opcao.id),
                   )
                 }
-                className="h-8 rounded-md border border-slate-300 bg-background px-2 text-xs font-medium text-foreground"
-              >
-                <option value="MEMBRO">Membro</option>
-                <option value="LIDER">Líder</option>
-              </select>
-            )}
-          </div>
-        );
-      })}
-      {filtradas.length === 0 && (
-        <p className="text-sm text-muted-foreground">Nenhuma opção disponível.</p>
-      )}
+              />
+              <span className="min-w-0 flex-1 truncate text-sm font-medium" title={opcao.nome}>
+                {opcao.nome}
+              </span>
+              {marcado && (
+                <select
+                  aria-label={`Papel de ${opcao.nome}`}
+                  value={membro?.papel ?? "MEMBRO"}
+                  onChange={(event) =>
+                    onChange(
+                      selecionados.map((item) =>
+                        item.funcionario_id === opcao.id
+                          ? { ...item, papel: event.target.value as "LIDER" | "MEMBRO" }
+                          : item,
+                      ),
+                    )
+                  }
+                  className="h-8 rounded-md border border-slate-300 bg-background px-2 text-xs font-medium text-foreground"
+                >
+                  <option value="MEMBRO">Membro</option>
+                  <option value="LIDER">Líder</option>
+                </select>
+              )}
+            </div>
+          );
+        })}
+        {filtradas.length === 0 && (
+          <p className="text-sm text-muted-foreground">Nenhuma opção disponível.</p>
+        )}
       </div>
       <div className="border-t bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-        {selecionados.length} selecionado(s) · Líderes recebem papel estruturado para notificações futuras.
+        {selecionados.length} selecionado(s) · Líderes recebem papel estruturado para notificações
+        futuras.
       </div>
     </div>
   );
